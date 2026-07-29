@@ -222,49 +222,6 @@ function guessAudioExt(file?: File, url?: string): string {
   return "mp3";
 }
 
-/** Konversi warna CSS (hex "#RRGGBB"/"#RGB" atau "rgba(r,g,b,a)") ke format
- *  yang dipahami filter ffmpeg `drawbox` ("0xRRGGBB[AA]"). Dipakai supaya
- *  warna progressLayer.color di data template (yang ditulis gaya CSS buat
- *  dipakai di canvas/preview) tetap kepakai konsisten pas di-export lewat
- *  ffmpeg, bukan cuma default putih. Kalau formatnya nggak dikenali,
- *  fallback ke "white" (aman, drawbox tetap jalan). */
-function cssColorToDrawboxColor(css?: string): string {
-  if (!css) return "white";
-  const trimmed = css.trim();
-
-  const hexMatch = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(trimmed);
-  if (hexMatch) {
-    let hex = hexMatch[1];
-    if (hex.length === 3) {
-      hex = hex
-        .split("")
-        .map((c) => c + c)
-        .join("");
-    }
-    return `0x${hex.toUpperCase()}`;
-  }
-
-  const rgbaMatch =
-    /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/i.exec(trimmed);
-  if (rgbaMatch) {
-    const [, r, g, b, a] = rgbaMatch;
-    const toHex = (v: string) =>
-      Math.max(0, Math.min(255, Number(v))).toString(16).padStart(2, "0");
-    const hex = `${toHex(r)}${toHex(g)}${toHex(b)}`;
-    if (a !== undefined) {
-      const alphaHex = Math.round(Math.max(0, Math.min(1, Number(a))) * 255)
-        .toString(16)
-        .padStart(2, "0");
-      return `0x${hex}${alphaHex}`.toUpperCase().replace("0X", "0x");
-    }
-    return `0x${hex.toUpperCase()}`;
-  }
-
-  // Nama warna CSS umum ("white", "black", dst) kebetulan valid juga di
-  // ffmpeg, jadi diteruskan apa adanya sebagai fallback terakhir.
-  return trimmed;
-}
-
 // Bikin dimensi genap (syarat encoder libx264 pixel format yuv420)
 function toEven(n: number): number {
   const r = Math.round(n);
@@ -682,17 +639,30 @@ export async function exportTemplateVideo(
       // oleh ffmpeg di SETIAP frame output, bukan dari gambar statis yang
       // di-hold. Lihat blok `progressLayer` setelah overlay di bawah.
       if (needsPerSegmentFront) {
-        // Tick di sini SEKARANG cuma perlu untuk label durasi teks
-        // (currentSec/totalSec berubah tiap detik) — kalau template tidak
-        // punya durationLayer sama sekali, tidak ada apa pun di overlay ini
-        // yang berubah seiring waktu, jadi cukup SATU frame statis (jauh
-        // lebih cepat & ringan daripada generate puluhan PNG percuma).
-        // Batasi maks 5 tick PNG — tiap tick di 1080x1920 ±2MB, kalau 60
-        // tick (untuk audio 1 menit) = 120MB+ sekaligus di WASM FS → FS error.
-        // Dengan maks 5 tick, teks durasi update tiap ~(duration/5) detik,
-        // masih cukup informatif dan hemat memori.
-        const numTicks = template.durationLayer
-          ? Math.max(1, Math.min(5, Math.ceil(duration)))
+        // Tick di sini dipakai untuk DUA hal yang sama-sama berubah tiap
+        // waktu: label durasi teks DAN isian progress bar (progressLayer
+        // sekarang digambar di canvas bareng durationLayer — lihat
+        // compositeLayers di bawah — BUKAN lagi lewat filter drawbox
+        // ffmpeg, karena drawbox tidak punya variabel waktu; huruf `t` di
+        // ekspresinya adalah opsi thickness milik drawbox sendiri, bukan
+        // detik berjalan, jadi hasilnya selalu diam/patah di satu nilai).
+        // Kalau template tidak punya durationLayer maupun progressLayer,
+        // tidak ada apa pun di overlay ini yang berubah seiring waktu,
+        // jadi cukup SATU frame statis.
+        //
+        // Target 1 tick per detik supaya angka durasi jalan urut
+        // (0,1,2,3,...) tanpa loncat, dan progress bar ikut update tiap
+        // detik (jauh lebih mulus dibanding sebelumnya yang cuma maks 5
+        // tick sepanjang durasi). Dibatasi maks 30 tick per segmen supaya
+        // tetap aman untuk memori WASM FS (tiap tick PNG di canvas ini
+        // ±1-2MB) — kalau durasi segmen lebih dari 30 detik, update-nya
+        // jadi tiap ~(duration/30) detik (masih jauh lebih halus daripada
+        // tiap ~(duration/5) detik seperti sebelumnya).
+        const needsAnimatedOverlay = Boolean(
+          template.durationLayer || template.progressLayer,
+        );
+        const numTicks = needsAnimatedOverlay
+          ? Math.max(1, Math.min(30, Math.ceil(duration)))
           : 1;
         const tickDur = duration / numTicks;
 
@@ -716,8 +686,7 @@ export async function exportTemplateVideo(
             textValues,
             {
               durationLayer: template.durationLayer,
-              // progressLayer SENGAJA tidak dikirim di sini — isiannya
-              // digambar terpisah lewat drawbox (native, per-frame, mulus).
+              progressLayer: template.progressLayer,
               currentSec: tickCurrentSec,
               totalSec: totalDurationForMux,
             },
@@ -730,42 +699,8 @@ export async function exportTemplateVideo(
         const animFilters = [`${tickLabels.join("")}concat=n=${numTicks}:v=1:a=0[frontanim]`];
         const baseIdx = numTicks;
 
-        let filterChain = `${animFilters.join(";")};[${baseIdx}:v][frontanim]overlay=0:0:format=auto[ovfinal]`;
-        let mapLabel = "ovfinal";
-
-        // Isian progress bar (garis putih yang "berjalan") — digambar
-        // LANGSUNG oleh ffmpeg pakai drawbox dengan lebar (`w`) berupa
-        // ekspresi matematis dari variabel waktu bawaan ffmpeg `t` (detik).
-        // CATATAN: filter `drawbox` TIDAK punya opsi `eval` (itu cuma ada
-        // di `drawtext`) — sempat ditambahkan keliru di sini dan bikin
-        // FFmpeg gagal parse filter ("Option 'eval' not found"). Nggak
-        // perlu juga: ekspresi w= yang pakai variabel `t` MEMANG otomatis
-        // dihitung ulang tiap frame oleh drawbox tanpa opsi tambahan apa
-        // pun. Karena ffmpeg yang menghitung sendiri per-frame output
-        // (bukan kita generate gambar per-tick lalu di-hold), gerakannya
-        // otomatis SEMULUS frame rate video (`-r 25` di bawah) — dan
-        // skalanya independen dari durasi/jumlah tick, jadi tetap ngalir
-        // pelan meski durasi pendek.
-        if (template.progressLayer) {
-          const pl = template.progressLayer;
-          const x1px = Math.round((pl.x1 / 100) * canvasW);
-          const x2px = Math.round((pl.x2 / 100) * canvasW);
-          const yPx = Math.round((pl.y / 100) * canvasH);
-          const thickness = Math.max(1, Math.round(pl.thickness));
-          const fullW = Math.max(0, x2px - x1px);
-          const startSec = slot.startSec ?? 0;
-          const total = Math.max(0.001, totalDurationForMux);
-          const color = cssColorToDrawboxColor(pl.color);
-          // ratio = clamp((startSec + t) / total, 0, 1); w = fullW * ratio
-          // Dibungkus tanda kutip satu di filterChain di bawah, jadi koma di
-          // sini TIDAK perlu di-escape lagi (kutip satu sudah cukup buat
-          // melindungi koma dari parser filtergraph ffmpeg).
-          const wExpr = `${fullW}*min(1,max(0,(${startSec}+t)/${total}))`;
-          filterChain += `;[ovfinal]drawbox=x=${x1px}:y=${
-            yPx - Math.floor(thickness / 2)
-          }:w='${wExpr}':h=${thickness}:color=${color}:t=fill[final]`;
-          mapLabel = "final";
-        }
+        const filterChain = `${animFilters.join(";")};[${baseIdx}:v][frontanim]overlay=0:0:format=auto[ovfinal]`;
+        const mapLabel = "ovfinal";
 
         await execChecked(
           ffmpeg,
