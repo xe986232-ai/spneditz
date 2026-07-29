@@ -12,30 +12,3 @@ body {
   margin: 0;
   background: #fafafa;
 }
-
-@keyframes export-sweep {
-  0% {
-    transform: translateY(-100%);
-  }
-  100% {
-    transform: translateY(100%);
-  }
-}
-
-.animate-export-sweep {
-  animation: export-sweep 2.2s ease-in-out infinite;
-}
-
-@keyframes export-pulse-scale {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.03);
-  }
-}
-
-.animate-export-pulse-scale {
-  animation: export-pulse-scale 3.5s ease-in-out infinite;
-}

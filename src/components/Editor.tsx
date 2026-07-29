@@ -38,7 +38,7 @@ import {
   ImageCache,
 } from "../lib/render";
 import type { SlotMediaEntry } from "../lib/render";
-import { exportTemplateVideoAuto, type ExportProgress } from "../lib/engine";
+import { exportTemplateVideoAuto, type ExportProgress, type ExportEngine } from "../lib/engine";
 import { analyzeAudio, type AudioAnalysis } from "../lib/waveform";
 
 type Tool = {
@@ -145,7 +145,7 @@ export default function Editor({
     null,
   );
   const [exportResultUrl, setExportResultUrl] = useState<string | null>(null);
-  const [exportSnapshot, setExportSnapshot] = useState<string | null>(null);
+  const [exportEngineUsed, setExportEngineUsed] = useState<ExportEngine | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
@@ -552,17 +552,12 @@ export default function Editor({
 
   async function handleExport() {
     if (!template.baseAssetSrc) return;
-    try {
-      const snapshot = canvasRef.current?.toDataURL("image/jpeg", 0.8) ?? null;
-      setExportSnapshot(snapshot);
-    } catch {
-      setExportSnapshot(null);
-    }
     setIsExporting(true);
     setExportError(null);
     setExportResultUrl(null);
+    setExportEngineUsed(null);
     try {
-      const { blob } = await exportTemplateVideoAuto(
+      const { blob, engine } = await exportTemplateVideoAuto(
         template,
         slotMedia,
         layerOpacity,
@@ -573,6 +568,7 @@ export default function Editor({
         textValues,
       );
       setExportResultUrl(URL.createObjectURL(blob));
+      setExportEngineUsed(engine);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[export] gagal:", err);
@@ -1129,25 +1125,12 @@ export default function Editor({
       {/* Modal progress / hasil export */}
       {(isExporting || exportResultUrl || exportError) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
-          {isExporting && (
-            <div className="absolute inset-0 overflow-hidden">
-              {exportSnapshot && (
-                <div
-                  className="animate-export-pulse-scale absolute inset-0 bg-black bg-cover bg-center opacity-40 blur-md"
-                  style={{ backgroundImage: `url(${exportSnapshot})` }}
-                />
-              )}
-              <div className="absolute inset-0 bg-black/50" />
-              <div className="animate-export-sweep absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/10 to-transparent" />
-            </div>
-          )}
-
-          <div className="relative w-full max-w-xs rounded-2xl bg-panel p-5 text-center shadow-xl">
+          <div className="w-full max-w-xs rounded-2xl bg-panel p-5 text-center shadow-xl">
             {isExporting && (
               <>
                 <Loader2 className="mx-auto mb-3 animate-spin text-paper" size={28} />
                 <p className="text-sm font-medium text-paper">
-                  Mengekspor video kamu…
+                  {exportProgress?.label ?? "Memproses…"}
                 </p>
                 <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-graphite">
                   <div
@@ -1176,7 +1159,25 @@ export default function Editor({
 
             {!isExporting && exportResultUrl && (
               <>
-                <p className="text-sm font-medium text-paper">Video siap 🎉</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-paper">Video siap 🎉</p>
+                  {exportEngineUsed && (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        exportEngineUsed === "webcodecs"
+                          ? "bg-emerald-500/20 text-emerald-400"
+                          : "bg-amber-500/20 text-amber-400"
+                      }`}
+                      title={
+                        exportEngineUsed === "webcodecs"
+                          ? "Dirender pakai WebCodecs API (VideoEncoder/AudioEncoder) — hardware-accelerated"
+                          : "Dirender pakai FFmpeg.wasm (fallback) — WebCodecs tidak didukung/gagal di browser ini"
+                      }
+                    >
+                      {exportEngineUsed === "webcodecs" ? "⚡ WebCodecs" : "🐢 FFmpeg (fallback)"}
+                    </span>
+                  )}
+                </div>
                 <video
                   src={exportResultUrl}
                   controls
