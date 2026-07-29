@@ -397,6 +397,31 @@ export async function exportTemplateVideoWebCodecs(
     if (audioEncoderError) throw audioEncoderError;
   };
 
+  // Backpressure yang BENAR: nunggu sampai antrian encoder beneran turun,
+  // pakai event "dequeue" bawaan WebCodecs — bukan polling setTimeout(0)
+  // yang cuma nge-yield satu tick tanpa jaminan antrian udah berkurang.
+  // Tanpa ini, kalau kecepatan render frame > kecepatan encode, antrian
+  // (dan memori yang menyertainya) numpuk tanpa batas -> renderer OOM ->
+  // tab Chrome di-crash paksa (persis kasus export dengan audio panjang).
+  function waitForQueueDrain(
+    encoder: VideoEncoder | AudioEncoder,
+    maxQueueSize: number,
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      if (encoder.encodeQueueSize <= maxQueueSize) {
+        resolve();
+        return;
+      }
+      const onDequeue = () => {
+        if (encoder.encodeQueueSize <= maxQueueSize) {
+          encoder.removeEventListener("dequeue", onDequeue);
+          resolve();
+        }
+      };
+      encoder.addEventListener("dequeue", onDequeue);
+    });
+  }
+
   // --- Render loop: per-frame, segmen berurutan. ---
   const totalFrames = Math.max(1, Math.round(totalDurationForMux * TARGET_FPS));
   const frameDurationUs = Math.round(1_000_000 / TARGET_FPS);
@@ -459,10 +484,11 @@ export async function exportTemplateVideoWebCodecs(
     videoEncoder.encode(videoFrame, { keyFrame: isKeyFrame });
     videoFrame.close();
 
-    // Backpressure sederhana: kalau antrian encoder menumpuk, kasih jeda
-    // sebentar supaya memori nggak meledak di video panjang.
+    // Backpressure: tunggu antrian beneran turun sebelum lanjut push
+    // frame berikutnya, supaya memori nggak meledak di video panjang
+    // (mis. durasi export yang di-stretch ikutin audio yang panjang).
     if (videoEncoder.encodeQueueSize > 8) {
-      await new Promise((r) => setTimeout(r, 0));
+      await waitForQueueDrain(videoEncoder, 4);
     }
 
     const percent = 20 + Math.round((frame / totalFrames) * 55); // 20 -> 75
@@ -533,7 +559,7 @@ export async function exportTemplateVideoWebCodecs(
       audioEncoder.encode(audioData);
       audioData.close();
       if (audioEncoder.encodeQueueSize > 16) {
-        await new Promise((r) => setTimeout(r, 0));
+        await waitForQueueDrain(audioEncoder, 8);
       }
     }
     await audioEncoder.flush();
