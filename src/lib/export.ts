@@ -39,6 +39,31 @@ function canvasToBlob(
   });
 }
 
+// PENTING: `ffmpeg.exec()` dari @ffmpeg/ffmpeg TIDAK melempar (reject) promise
+// kalau proses FFmpeg-nya gagal di dalam — dia cuma resolve dengan RETURN CODE
+// (0 = sukses, selain itu = gagal). Kalau ini tidak dicek manual, kegagalan
+// FFmpeg (mis. concat gagal karena segmen corrupt) akan diam-diam LOLOS, kode
+// lanjut jalan seolah sukses, dan error baru muncul beberapa step kemudian di
+// tempat yang tidak berhubungan (biasanya sebagai "FS error" generik pas ada
+// yang coba baca/pakai file yang sebetulnya tidak pernah berhasil ditulis).
+// Semua pemanggilan ffmpeg.exec() di file ini WAJIB lewat helper ini.
+async function execChecked(
+  ffmpeg: { exec: (args: string[]) => Promise<number> },
+  args: string[],
+  errorContext: string,
+  recentLogs: string[],
+): Promise<void> {
+  const ret = await ffmpeg.exec(args);
+  if (ret !== 0) {
+    const logTail = recentLogs.slice(-6).join(" | ");
+    throw new Error(
+      `${errorContext} (FFmpeg keluar dengan kode error ${ret}).${
+        logTail ? ` Log terakhir: ${logTail}` : ""
+      }`,
+    );
+  }
+}
+
 // Seberapa banyak background di-zoom (overscan, px per level blur) biar
 // pas di-blur nggak ada gradasi hitam di tepian — samain sama Editor.tsx.
 const BACKGROUND_BLUR_OVERSCAN_FACTOR = 2;
@@ -589,17 +614,22 @@ export async function exportTemplateVideo(
         nextInputIndex++;
       }
 
-      await ffmpeg.exec([
-        ...inputArgs,
-        "-filter_complex", filters.join(";"),
-        "-map", `[${currentLabel}]`,
-        "-r", "25",
-        "-pix_fmt", "yuv420p",
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-t", `${renderDuration}`,
-        baseName,
-      ]);
+      await execChecked(
+        ffmpeg,
+        [
+          ...inputArgs,
+          "-filter_complex", filters.join(";"),
+          "-map", `[${currentLabel}]`,
+          "-r", "25",
+          "-pix_fmt", "yuv420p",
+          "-c:v", "libx264",
+          "-preset", "ultrafast",
+          "-t", `${renderDuration}`,
+          baseName,
+        ],
+        `Gagal merender base segmen "${slot.label}".`,
+        recentLogs,
+      );
 
       // Slot image / mask sudah tidak dibutuhkan setelah encode base selesai
       // — hapus segera supaya FS tidak penuh.
@@ -616,13 +646,18 @@ export async function exportTemplateVideo(
         // Sambung/ulang klip pendek tadi jadi durasi asli tanpa re-encode
         // (stream copy) — ini bagian yang bikin render nggak lagi "setaun".
         const extendedName = needsPerSegmentFront ? `seg_${i}_full.mp4` : segName;
-        await ffmpeg.exec([
-          "-stream_loop", "-1",
-          "-i", baseName,
-          "-c", "copy",
-          "-t", `${duration}`,
-          extendedName,
-        ]);
+        await execChecked(
+          ffmpeg,
+          [
+            "-stream_loop", "-1",
+            "-i", baseName,
+            "-c", "copy",
+            "-t", `${duration}`,
+            extendedName,
+          ],
+          `Gagal memperpanjang segmen "${slot.label}".`,
+          recentLogs,
+        );
         // base (klip pendek) sudah tidak dipakai, hapus.
         try { await ffmpeg.deleteFile(baseName); } catch { /* abaikan */ }
         baseFullName = extendedName;
@@ -727,19 +762,24 @@ export async function exportTemplateVideo(
           mapLabel = "final";
         }
 
-        await ffmpeg.exec([
-          ...tickInputArgs,
-          "-i", baseFullName,
-          "-filter_complex",
-          filterChain,
-          "-map", `[${mapLabel}]`,
-          "-r", "25",
-          "-pix_fmt", "yuv420p",
-          "-c:v", "libx264",
-          "-preset", "ultrafast",
-          "-t", `${duration}`,
-          segName,
-        ]);
+        await execChecked(
+          ffmpeg,
+          [
+            ...tickInputArgs,
+            "-i", baseFullName,
+            "-filter_complex",
+            filterChain,
+            "-map", `[${mapLabel}]`,
+            "-r", "25",
+            "-pix_fmt", "yuv420p",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-t", `${duration}`,
+            segName,
+          ],
+          `Gagal menempel overlay animasi ke segmen "${slot.label}".`,
+          recentLogs,
+        );
 
         // Hapus tick PNGs setelah segName selesai dibuat.
         for (const tf of tickFileNames) {
@@ -777,13 +817,18 @@ export async function exportTemplateVideo(
   const concatList = segFiles.map((f) => `file '${f}'`).join("\n");
   try {
     await ffmpeg.writeFile("concat.txt", concatList);
-    await ffmpeg.exec([
-      "-f", "concat",
-      "-safe", "0",
-      "-i", "concat.txt",
-      "-c", "copy",
-      "video_noaudio.mp4",
-    ]);
+    await execChecked(
+      ffmpeg,
+      [
+        "-f", "concat",
+        "-safe", "0",
+        "-i", "concat.txt",
+        "-c", "copy",
+        "video_noaudio.mp4",
+      ],
+      "Gagal menggabungkan segmen video.",
+      recentLogs,
+    );
   } catch (e) {
     throw new Error(
       `Gagal menggabungkan segmen video. (${
@@ -814,17 +859,22 @@ export async function exportTemplateVideo(
     try {
       await ffmpeg.writeFile(audioName, await fetchFile(source));
 
-      await ffmpeg.exec([
-        "-i", "video_noaudio.mp4",
-        "-i", audioName,
-        "-map", "0:v",
-        "-map", "1:a",
-        "-c:v", "copy",
-        "-c:a", "aac",
-        "-shortest",
-        "-t", `${totalDurationForMux}`,
-        "final.mp4",
-      ]);
+      await execChecked(
+        ffmpeg,
+        [
+          "-i", "video_noaudio.mp4",
+          "-i", audioName,
+          "-map", "0:v",
+          "-map", "1:a",
+          "-c:v", "copy",
+          "-c:a", "aac",
+          "-shortest",
+          "-t", `${totalDurationForMux}`,
+          "final.mp4",
+        ],
+        "Gagal menambahkan musik latar.",
+        recentLogs,
+      );
       finalName = "final.mp4";
     } catch (e) {
       throw new Error(
