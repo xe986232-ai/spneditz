@@ -141,6 +141,7 @@ export default function Editor({
 
   // ---- Export state ----
   const [isExporting, setIsExporting] = useState(false);
+  const [exportSnapshot, setExportSnapshot] = useState<string | null>(null);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(
     null,
   );
@@ -556,6 +557,11 @@ export default function Editor({
     setExportError(null);
     setExportResultUrl(null);
     setExportEngineUsed(null);
+    try {
+      setExportSnapshot(canvasRef.current?.toDataURL("image/jpeg", 0.8) ?? null);
+    } catch {
+      setExportSnapshot(null);
+    }
     try {
       const { blob, engine } = await exportTemplateVideoAuto(
         template,
@@ -1128,14 +1134,14 @@ export default function Editor({
           <div className="w-full max-w-xs rounded-2xl bg-panel p-5 text-center shadow-xl">
             {isExporting && (
               <>
-                <div className="relative mx-auto mb-3 flex h-12 w-12 items-center justify-center">
-                  <span className="animate-export-ring absolute inset-0 rounded-full bg-rec/40" />
-                  <span
-                    className="animate-export-ring absolute inset-0 rounded-full bg-rec/40"
-                    style={{ animationDelay: "0.6s" }}
+                {exportSnapshot && (
+                  <img
+                    src={exportSnapshot}
+                    alt=""
+                    className="mx-auto mb-3 aspect-[9/16] w-full rounded-lg object-cover transition-opacity duration-300 ease-linear"
+                    style={{ opacity: 0.25 + 0.75 * ((exportProgress?.percent ?? 0) / 100) }}
                   />
-                  <Loader2 className="relative z-10 animate-spin text-paper" size={24} />
-                </div>
+                )}
                 <p className="text-sm font-medium text-paper">
                   eksport video eluuu...
                 </p>
