@@ -38,7 +38,7 @@ import {
   ImageCache,
 } from "../lib/render";
 import type { SlotMediaEntry } from "../lib/render";
-import { exportTemplateVideoAuto, type ExportProgress } from "../lib/engine";
+import { exportTemplateVideoAuto, type ExportProgress, type ExportEngine } from "../lib/engine";
 import { analyzeAudio, type AudioAnalysis } from "../lib/waveform";
 
 type Tool = {
@@ -145,6 +145,7 @@ export default function Editor({
     null,
   );
   const [exportResultUrl, setExportResultUrl] = useState<string | null>(null);
+  const [exportEngineUsed, setExportEngineUsed] = useState<ExportEngine | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
@@ -554,8 +555,9 @@ export default function Editor({
     setIsExporting(true);
     setExportError(null);
     setExportResultUrl(null);
+    setExportEngineUsed(null);
     try {
-      const blob = await exportTemplateVideoAuto(
+      const { blob, engine } = await exportTemplateVideoAuto(
         template,
         slotMedia,
         layerOpacity,
@@ -566,6 +568,7 @@ export default function Editor({
         textValues,
       );
       setExportResultUrl(URL.createObjectURL(blob));
+      setExportEngineUsed(engine);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[export] gagal:", err);
@@ -1156,7 +1159,25 @@ export default function Editor({
 
             {!isExporting && exportResultUrl && (
               <>
-                <p className="text-sm font-medium text-paper">Video siap 🎉</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-paper">Video siap 🎉</p>
+                  {exportEngineUsed && (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        exportEngineUsed === "webcodecs"
+                          ? "bg-emerald-500/20 text-emerald-400"
+                          : "bg-amber-500/20 text-amber-400"
+                      }`}
+                      title={
+                        exportEngineUsed === "webcodecs"
+                          ? "Dirender pakai WebCodecs API (VideoEncoder/AudioEncoder) — hardware-accelerated"
+                          : "Dirender pakai FFmpeg.wasm (fallback) — WebCodecs tidak didukung/gagal di browser ini"
+                      }
+                    >
+                      {exportEngineUsed === "webcodecs" ? "⚡ WebCodecs" : "🐢 FFmpeg (fallback)"}
+                    </span>
+                  )}
+                </div>
                 <video
                   src={exportResultUrl}
                   controls

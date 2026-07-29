@@ -15,6 +15,16 @@ import { exportTemplateVideoWebCodecs, isWebCodecsExportSupported } from "./webc
 
 export type { ExportProgress } from "./export";
 
+export type ExportEngine = "webcodecs" | "ffmpeg";
+
+export type ExportResult = {
+  blob: Blob;
+  /** Engine mana yang BENERAN dipakai buat menghasilkan video ini —
+   *  dipakai UI buat nunjukkin badge, dan berguna banget buat debugging
+   *  (misal user lapor "render lambat", tinggal tanya/cek ini duluan). */
+  engine: ExportEngine;
+};
+
 export async function exportTemplateVideoAuto(
   template: Template,
   slotMedia: SlotMediaState,
@@ -24,10 +34,12 @@ export async function exportTemplateVideoAuto(
   backgroundOpacity: number = 100,
   backgroundBlur: number = 0,
   textValues: TextValueState = {},
-): Promise<Blob> {
+): Promise<ExportResult> {
   if (isWebCodecsExportSupported()) {
+    // eslint-disable-next-line no-console
+    console.info("[export] WebCodecs didukung browser ini, mencoba engine WebCodecs…");
     try {
-      return await exportTemplateVideoWebCodecs(
+      const blob = await exportTemplateVideoWebCodecs(
         template,
         slotMedia,
         layerOpacity,
@@ -37,16 +49,22 @@ export async function exportTemplateVideoAuto(
         backgroundBlur,
         textValues,
       );
+      // eslint-disable-next-line no-console
+      console.info("[export] ✅ Berhasil pakai engine WebCodecs (VideoEncoder/AudioEncoder + mp4-muxer).");
+      return { blob, engine: "webcodecs" };
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn(
-        "[export] Engine WebCodecs gagal, fallback ke FFmpeg.wasm…",
+        "[export] ⚠️ Engine WebCodecs gagal, fallback ke FFmpeg.wasm…",
         e instanceof Error ? e.message : e,
       );
     }
+  } else {
+    // eslint-disable-next-line no-console
+    console.info("[export] Browser ini tidak mendukung WebCodecs API, langsung pakai FFmpeg.wasm.");
   }
 
-  return exportTemplateVideo(
+  const blob = await exportTemplateVideo(
     template,
     slotMedia,
     layerOpacity,
@@ -56,4 +74,7 @@ export async function exportTemplateVideoAuto(
     backgroundBlur,
     textValues,
   );
+  // eslint-disable-next-line no-console
+  console.info("[export] ✅ Berhasil pakai engine FFmpeg.wasm.");
+  return { blob, engine: "ffmpeg" };
 }
