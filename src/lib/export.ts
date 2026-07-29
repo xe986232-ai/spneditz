@@ -735,12 +735,17 @@ export async function exportTemplateVideo(
 
         // Isian progress bar (garis putih yang "berjalan") — digambar
         // LANGSUNG oleh ffmpeg pakai drawbox dengan lebar (`w`) berupa
-        // ekspresi matematis dari variabel waktu bawaan ffmpeg `t` (detik,
-        // dievaluasi ULANG tiap frame karena `eval=frame`). Karena ffmpeg
-        // yang menghitung sendiri per-frame output (bukan kita generate
-        // gambar per-tick lalu di-hold), gerakannya otomatis SEMULUS frame
-        // rate video (`-r 25` di bawah) — dan skalanya independen dari
-        // durasi/jumlah tick, jadi tetap ngalir pelan meski durasi pendek.
+        // ekspresi matematis dari variabel waktu bawaan ffmpeg `t` (detik).
+        // CATATAN: filter `drawbox` TIDAK punya opsi `eval` (itu cuma ada
+        // di `drawtext`) — sempat ditambahkan keliru di sini dan bikin
+        // FFmpeg gagal parse filter ("Option 'eval' not found"). Nggak
+        // perlu juga: ekspresi w= yang pakai variabel `t` MEMANG otomatis
+        // dihitung ulang tiap frame oleh drawbox tanpa opsi tambahan apa
+        // pun. Karena ffmpeg yang menghitung sendiri per-frame output
+        // (bukan kita generate gambar per-tick lalu di-hold), gerakannya
+        // otomatis SEMULUS frame rate video (`-r 25` di bawah) — dan
+        // skalanya independen dari durasi/jumlah tick, jadi tetap ngalir
+        // pelan meski durasi pendek.
         if (template.progressLayer) {
           const pl = template.progressLayer;
           const x1px = Math.round((pl.x1 / 100) * canvasW);
@@ -758,7 +763,7 @@ export async function exportTemplateVideo(
           const wExpr = `${fullW}*min(1,max(0,(${startSec}+t)/${total}))`;
           filterChain += `;[ovfinal]drawbox=x=${x1px}:y=${
             yPx - Math.floor(thickness / 2)
-          }:w='${wExpr}':h=${thickness}:color=${color}:t=fill:eval=frame[final]`;
+          }:w='${wExpr}':h=${thickness}:color=${color}:t=fill[final]`;
           mapLabel = "final";
         }
 
