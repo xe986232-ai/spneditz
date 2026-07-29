@@ -38,7 +38,7 @@ import {
   ImageCache,
 } from "../lib/render";
 import type { SlotMediaEntry } from "../lib/render";
-import { exportTemplateVideo, type ExportProgress } from "../lib/export";
+import { exportTemplateVideoAuto, type ExportProgress } from "../lib/engine";
 import { analyzeAudio, type AudioAnalysis } from "../lib/waveform";
 
 type Tool = {
@@ -555,7 +555,7 @@ export default function Editor({
     setExportError(null);
     setExportResultUrl(null);
     try {
-      const blob = await exportTemplateVideo(
+      const blob = await exportTemplateVideoAuto(
         template,
         slotMedia,
         layerOpacity,

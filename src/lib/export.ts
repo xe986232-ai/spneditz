@@ -12,10 +12,11 @@ import {
   drawTextLayers,
   drawDurationLayer,
   drawProgressFill,
+  getAudioDuration,
 } from "./render";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
 
-function loadImageEl(src: string): Promise<HTMLImageElement> {
+export function loadImageEl(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -98,7 +99,7 @@ async function createRoundedMaskBlob(
  *  "bg.jpg" jadi hasil composite ini. `opaque=true` -> hasilnya JPEG
  *  (buat background, nggak butuh alpha). `opaque=false` -> PNG dengan
  *  alpha (buat overlay depan yang area kosongnya harus tetap transparan). */
-async function compositeLayers(
+export async function compositeLayers(
   canvasW: number,
   canvasH: number,
   baseSrc: string | null,
@@ -226,36 +227,6 @@ function guessAudioExt(file?: File, url?: string): string {
 function toEven(n: number): number {
   const r = Math.round(n);
   return r % 2 === 0 ? r : r + 1;
-}
-
-/** Baca durasi asli file/url audio (detik), dipakai supaya panjang video
- *  bisa otomatis ikut panjang lagu yang diupload user, bukan durasi
- *  template yang di-hardcode. */
-function getAudioDuration(source: File | string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const el = new Audio();
-    const objectUrl = source instanceof File ? URL.createObjectURL(source) : null;
-    const srcUrl: string = objectUrl ?? (source as string);
-    const cleanup = () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-      el.removeEventListener("loadedmetadata", onLoaded);
-      el.removeEventListener("error", onError);
-    };
-    const onLoaded = () => {
-      const d = el.duration;
-      cleanup();
-      if (isFinite(d) && d > 0) resolve(d);
-      else reject(new Error("Durasi audio tidak valid"));
-    };
-    const onError = () => {
-      cleanup();
-      reject(new Error("Gagal baca metadata audio"));
-    };
-    el.addEventListener("loadedmetadata", onLoaded);
-    el.addEventListener("error", onError);
-    el.preload = "metadata";
-    el.src = srcUrl;
-  });
 }
 
 export async function exportTemplateVideo(

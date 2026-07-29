@@ -238,6 +238,57 @@ export function drawProgressFill(
   ctx.restore();
 }
 
+/** Baca durasi asli file/url audio (detik), dipakai supaya panjang video
+ *  bisa otomatis ikut panjang lagu yang diupload user, bukan durasi
+ *  template yang di-hardcode.
+ *
+ *  PENTING: dikasih `timeoutMs` (default 6 detik) karena event
+ *  "loadedmetadata"/"error" TIDAK DIJAMIN selalu fire di semua browser
+ *  untuk semua kombinasi codec/blob audio — kalau nggak ada timeout,
+ *  promise ini bisa hang SELAMANYA dan bikin proses export freeze total
+ *  di step ini tanpa pernah reject/resolve. */
+export function getAudioDuration(
+  source: File | string,
+  timeoutMs = 6000,
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const el = new Audio();
+    const objectUrl = source instanceof File ? URL.createObjectURL(source) : null;
+    const srcUrl: string = objectUrl ?? (source as string);
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error("Timeout baca durasi audio (metadata tidak kunjung dimuat)"));
+    }, timeoutMs);
+    const cleanup = () => {
+      clearTimeout(timer);
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      el.removeEventListener("loadedmetadata", onLoaded);
+      el.removeEventListener("error", onError);
+    };
+    const onLoaded = () => {
+      if (settled) return;
+      settled = true;
+      const d = el.duration;
+      cleanup();
+      if (isFinite(d) && d > 0) resolve(d);
+      else reject(new Error("Durasi audio tidak valid"));
+    };
+    const onError = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error("Gagal baca metadata audio"));
+    };
+    el.addEventListener("loadedmetadata", onLoaded);
+    el.addEventListener("error", onError);
+    el.preload = "metadata";
+    el.src = srcUrl;
+  });
+}
+
 /** Simple in-memory image loader + cache, dipakai render loop supaya
  *  nggak reload gambar yang sama tiap frame. */
 export class ImageCache {
