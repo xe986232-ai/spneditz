@@ -323,7 +323,14 @@ export async function exportTemplateVideo(
   });
 
   const ffmpeg = new FFmpeg();
+  // Simpan beberapa baris log FFmpeg terakhir — dipakai buat memperkaya
+  // pesan error di bawah (mis. saat readFile gagal dengan "FS error" yang
+  // generik), supaya kelihatan error FFmpeg SEBENARNYA yang mendahuluinya
+  // (biasanya lebih spesifik daripada "FS error" itu sendiri).
+  const recentLogs: string[] = [];
   ffmpeg.on("log", ({ message }) => {
+    recentLogs.push(message);
+    if (recentLogs.length > 20) recentLogs.shift();
     // eslint-disable-next-line no-console
     console.log("[ffmpeg]", message);
   });
@@ -785,6 +792,14 @@ export async function exportTemplateVideo(
     );
   }
 
+  // segFiles (seg_0.mp4, seg_1.mp4, dst) sudah ke-mux jadi video_noaudio.mp4
+  // dan tidak dipakai lagi — hapus supaya FS ffmpeg.wasm nggak numpuk,
+  // apalagi kalau slot-nya banyak (setiap seg_i.mp4 tetap menempati memory
+  // MEMFS sampai sekarang, walau cuma dibaca sekali lewat concat.txt).
+  for (const f of segFiles) {
+    try { await ffmpeg.deleteFile(f); } catch { /* abaikan kalau sudah tidak ada */ }
+  }
+
   let finalName = "video_noaudio.mp4";
 
   if (audioMedia) {
@@ -822,7 +837,21 @@ export async function exportTemplateVideo(
 
   onProgress({ stage: "done", percent: 100, label: "Selesai!" });
 
-  const data = await ffmpeg.readFile(finalName);
-  const bytes = data as Uint8Array;
+  let bytes: Uint8Array;
+  try {
+    bytes = (await ffmpeg.readFile(finalName)) as Uint8Array;
+  } catch (e) {
+    // Ini titik yang SEBELUMNYA tidak dibungkus try/catch — kalau
+    // finalName gagal dibaca dari FS ffmpeg.wasm (mis. penulisan file
+    // sebelumnya gagal diam-diam / FS kehabisan memori), errornya lolos
+    // sebagai "FS error" mentah tanpa konteks. Sekarang dibungkus supaya
+    // pesannya jelas & gampang di-debug.
+    const logTail = recentLogs.slice(-5).join(" | ");
+    throw new Error(
+      `Gagal membaca hasil video akhir dari FFmpeg (kemungkinan FS ffmpeg.wasm kehabisan memori atau file "${finalName}" tidak berhasil ditulis). (${
+        e instanceof Error ? e.message : String(e)
+      })${logTail ? ` — log terakhir: ${logTail}` : ""}`,
+    );
+  }
   return new Blob([bytes.buffer as ArrayBuffer], { type: "video/mp4" });
 }
