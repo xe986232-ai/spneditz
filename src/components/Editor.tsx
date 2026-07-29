@@ -39,6 +39,7 @@ import {
 } from "../lib/render";
 import type { SlotMediaEntry } from "../lib/render";
 import { exportTemplateVideo, type ExportProgress } from "../lib/export";
+import { exportTemplateVideoWebCodecs, WebCodecsUnsupportedError } from "../lib/webcodecs-export";
 import { analyzeAudio, type AudioAnalysis } from "../lib/waveform";
 
 type Tool = {
@@ -555,16 +556,37 @@ export default function Editor({
     setExportError(null);
     setExportResultUrl(null);
     try {
-      const blob = await exportTemplateVideo(
-        template,
-        slotMedia,
-        layerOpacity,
-        (p) => setExportProgress(p),
-        customBackground,
-        backgroundOpacity,
-        backgroundBlur,
-        textValues,
-      );
+      let blob: Blob;
+      try {
+        // Coba engine WebCodecs dulu — native, jauh lebih cepat, dan
+        // tidak butuh download core FFmpeg dari CDN sama sekali.
+        blob = await exportTemplateVideoWebCodecs(
+          template,
+          slotMedia,
+          layerOpacity,
+          (p) => setExportProgress(p),
+          customBackground,
+          backgroundOpacity,
+          backgroundBlur,
+          textValues,
+        );
+      } catch (webCodecsErr) {
+        if (!(webCodecsErr instanceof WebCodecsUnsupportedError)) throw webCodecsErr;
+        // Browser tidak mendukung WebCodecs (mis. Safari lama / in-app
+        // browser tertentu) — fallback ke engine FFmpeg.wasm lama.
+        // eslint-disable-next-line no-console
+        console.warn("[export] WebCodecs tidak didukung, fallback ke FFmpeg:", webCodecsErr);
+        blob = await exportTemplateVideo(
+          template,
+          slotMedia,
+          layerOpacity,
+          (p) => setExportProgress(p),
+          customBackground,
+          backgroundOpacity,
+          backgroundBlur,
+          textValues,
+        );
+      }
       setExportResultUrl(URL.createObjectURL(blob));
     } catch (err) {
       // eslint-disable-next-line no-console
