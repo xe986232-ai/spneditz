@@ -1128,9 +1128,16 @@ export default function Editor({
           <div className="w-full max-w-xs rounded-2xl bg-panel p-5 text-center shadow-xl">
             {isExporting && (
               <>
-                <Loader2 className="mx-auto mb-3 animate-spin text-paper" size={28} />
+                <div className="relative mx-auto mb-3 flex h-12 w-12 items-center justify-center">
+                  <span className="animate-export-ring absolute inset-0 rounded-full bg-rec/40" />
+                  <span
+                    className="animate-export-ring absolute inset-0 rounded-full bg-rec/40"
+                    style={{ animationDelay: "0.6s" }}
+                  />
+                  <Loader2 className="relative z-10 animate-spin text-paper" size={24} />
+                </div>
                 <p className="text-sm font-medium text-paper">
-                  {exportProgress?.label ?? "Memproses…"}
+                  eksport video eluuu...
                 </p>
                 <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-graphite">
                   <div
