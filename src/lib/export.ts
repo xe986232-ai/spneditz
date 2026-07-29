@@ -645,8 +645,12 @@ export async function exportTemplateVideo(
         // punya durationLayer sama sekali, tidak ada apa pun di overlay ini
         // yang berubah seiring waktu, jadi cukup SATU frame statis (jauh
         // lebih cepat & ringan daripada generate puluhan PNG percuma).
+        // Batasi maks 5 tick PNG — tiap tick di 1080x1920 ±2MB, kalau 60
+        // tick (untuk audio 1 menit) = 120MB+ sekaligus di WASM FS → FS error.
+        // Dengan maks 5 tick, teks durasi update tiap ~(duration/5) detik,
+        // masih cukup informatif dan hemat memori.
         const numTicks = template.durationLayer
-          ? Math.max(1, Math.min(60, Math.ceil(duration)))
+          ? Math.max(1, Math.min(5, Math.ceil(duration)))
           : 1;
         const tickDur = duration / numTicks;
 
@@ -730,12 +734,18 @@ export async function exportTemplateVideo(
           segName,
         ]);
 
-        // Hapus tick PNGs & base-full setelah segName selesai dibuat.
+        // Hapus tick PNGs setelah segName selesai dibuat.
         for (const tf of tickFileNames) {
           try { await ffmpeg.deleteFile(tf); } catch { /* abaikan */ }
         }
-        if (needsExtend) {
-          // baseFullName = seg_${i}_full.mp4 (kalau needsExtend)
+        // Hapus baseFullName apapun kondisinya (needsExtend atau tidak) —
+        // kalau needsExtend=true, baseFullName = seg_i_full.mp4 (sudah
+        // berbeda dari segName). Kalau needsExtend=false, baseFullName =
+        // baseName = seg_i_base.mp4 yang belum pernah dihapus di blok
+        // sebelumnya (hanya masuk ke intermediateFiles cleanup yang sudah
+        // terlanjur dipakai oleh baseName encode, bukan baseFullName).
+        // Intinya: setelah segName ada, baseFullName tidak dipakai lagi.
+        if (baseFullName !== segName) {
           try { await ffmpeg.deleteFile(baseFullName); } catch { /* abaikan */ }
         }
       } else if (needsExtend && baseName !== baseFullName) {
