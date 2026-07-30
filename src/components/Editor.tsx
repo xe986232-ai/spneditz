@@ -48,6 +48,7 @@ type Tool = {
 };
 
 const TOOLS: Tool[] = [
+  { id: "media", label: "Media", icon: ImageIcon },
   { id: "audio", label: "Audio", icon: Music },
   { id: "text", label: "Teks", icon: Type },
 ];
@@ -168,6 +169,10 @@ export default function Editor({
 
   const audioSlotDef = template.slots.find((s) => s.type === "audio");
   const audioMedia = audioSlotDef ? slotMedia[audioSlotDef.id] : undefined;
+  // Slot media pertama (foto/video, bukan audio) — dipakai tombol "Media"
+  // di toolbar bawah buat langsung menuju slot itu (sama seperti nge-tap
+  // slot-nya langsung di timeline), tanpa buka file picker duluan.
+  const mediaSlotDef = template.slots.find((s) => s.type !== "audio");
 
   useEffect(() => {
     const el = timelineScrollRef.current;
@@ -1157,42 +1162,68 @@ export default function Editor({
           </label>
         </div>
       ) : (
-        <div className="grid shrink-0 grid-cols-2 border-t border-mute/10 bg-panel px-1 py-1.5">
-          {TOOLS.map(({ id, label, icon: Icon }) => {
-            const active = activeTool === id;
-            return (
+        <div className="flex shrink-0 flex-col border-t border-mute/10 bg-panel">
+          {/* Muncul cuma pas tombol "Audio" lagi aktif — tombol kecil buat
+              beneran buka file picker. Sengaja dipisah dari tombol "Audio"
+              di bawah biar klik "Audio" nggak langsung lompat ke pemilihan
+              file, tapi mampir dulu ke sini. */}
+          {activeTool === "audio" && (
+            <div className="flex items-center justify-center border-b border-mute/10 px-3 py-2">
               <button
-                key={id}
-                onClick={() => {
-                  setActiveTool(id);
-                  // Tombol "Audio" langsung buka file picker audio, hasil
-                  // upload-nya langsung nempel jadi layer audio baru di
-                  // timeline (nggak muncul sebelum ini diklik). Keluar dulu
-                  // dari mode Teks kalau lagi aktif.
-                  if (id === "audio" && audioSlotDef) {
-                    setIsTextMode(false);
-                    setSelectedTextLayerId(null);
-                    openPicker(audioSlotDef);
-                  }
-                  // Tombol "Teks" ganti timeline jadi nampilin track teks
-                  // aja (hide track lain) — bukan file picker.
-                  if (id === "text") {
-                    setSelectedSlotId(null);
-                    setSelectedLayerId(null);
-                    setIsTextMode(true);
-                  }
-                }}
-                className={`flex flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 transition ${
-                  active ? "text-rec" : "text-mute hover:text-paper"
-                }`}
+                onClick={() => audioSlotDef && openPicker(audioSlotDef)}
+                className="flex items-center gap-1.5 rounded-full bg-paper px-3.5 py-1.5 text-[11px] font-semibold text-graphite transition active:scale-95"
               >
-                <Icon size={19} strokeWidth={active ? 2.2 : 1.8} />
-                <span className="text-[9.5px] font-medium leading-none">
-                  {label}
-                </span>
+                <Plus size={13} />
+                Tambah Audio
               </button>
-            );
-          })}
+            </div>
+          )}
+          <div className="grid grid-cols-3 px-1 py-1.5">
+            {TOOLS.map(({ id, label, icon: Icon }) => {
+              const active = activeTool === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => {
+                    setActiveTool(id);
+                    // Tombol "Media" langsung menuju slot media (foto/video)
+                    // pertama di template — sama efeknya kayak nge-tap slot
+                    // itu langsung di timeline (munculin toolbar "Ganti").
+                    if (id === "media") {
+                      setIsTextMode(false);
+                      setSelectedTextLayerId(null);
+                      setSelectedLayerId(null);
+                      if (mediaSlotDef) setSelectedSlotId(mediaSlotDef.id);
+                    }
+                    // Tombol "Audio" cuma nampilin tombol kecil "Tambah
+                    // Audio" di atas (lihat blok di atas) — file picker
+                    // baru kebuka begitu tombol kecil itu yang diklik.
+                    if (id === "audio") {
+                      setIsTextMode(false);
+                      setSelectedTextLayerId(null);
+                      setSelectedSlotId(null);
+                      setSelectedLayerId(null);
+                    }
+                    // Tombol "Teks" ganti timeline jadi nampilin track teks
+                    // aja (hide track lain) — bukan file picker.
+                    if (id === "text") {
+                      setSelectedSlotId(null);
+                      setSelectedLayerId(null);
+                      setIsTextMode(true);
+                    }
+                  }}
+                  className={`flex flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 transition ${
+                    active ? "text-rec" : "text-mute hover:text-paper"
+                  }`}
+                >
+                  <Icon size={19} strokeWidth={active ? 2.2 : 1.8} />
+                  <span className="text-[9.5px] font-medium leading-none">
+                    {label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
