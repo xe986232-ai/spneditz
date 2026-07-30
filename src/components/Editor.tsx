@@ -59,6 +59,15 @@ const SLOT_ICON: Record<SlotType, LucideIcon> = {
   audio: Music,
 };
 
+// Label singkat per tipe slot — dipakai teks tombol "Ganti ..." di toolbar
+// bawah biar nggak kepanjangan (misal slot.label "Foto sampul" cukup
+// ditulis "Foto" aja: "Ganti Foto").
+const SLOT_SHORT_LABEL: Record<SlotType, string> = {
+  image: "Foto",
+  video: "Video",
+  audio: "Audio",
+};
+
 // ID khusus (bukan decorLayer beneran dari template) buat nandain track
 // "Background" di timeline — dipakai bareng selectedLayerId yang sama
 // biar reuse UI seleksi track yang sudah ada.
@@ -1115,10 +1124,10 @@ export default function Editor({
           </button>
           <button
             onClick={() => openPicker(selectedSlot)}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-paper px-3 py-2.5 text-xs font-semibold text-graphite transition active:scale-95"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-paper/40 px-3 py-2.5 text-xs font-semibold text-paper transition active:scale-95"
           >
             <RefreshCcw size={15} />
-            Ganti {selectedSlot.label}
+            Ganti {SLOT_SHORT_LABEL[selectedSlot.type]}
           </button>
           {selectedSlot.type === "image" && (
             <button
