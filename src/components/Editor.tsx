@@ -548,7 +548,7 @@ export default function Editor({
           template.progressLayer,
           currentSec,
           DURATION,
-          audioInfo?.peaks?.length ? audioInfo.peaks : FALLBACK_PEAKS,
+          audioInfo?.bassPeaks?.length ? audioInfo.bassPeaks : FALLBACK_PEAKS,
         );
       } else {
         drawProgressFill(
@@ -873,7 +873,7 @@ export default function Editor({
           offset,
         })),
         progressStyle,
-        audioInfo?.peaks?.length ? audioInfo.peaks : FALLBACK_PEAKS,
+        audioInfo?.bassPeaks?.length ? audioInfo.bassPeaks : FALLBACK_PEAKS,
       );
       setExportResultUrl(URL.createObjectURL(blob));
       setExportEngineUsed(engine);
