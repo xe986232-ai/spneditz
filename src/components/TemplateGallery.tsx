@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { Image as ImageIcon, Video, Music, Search } from "lucide-react";
 import { TEMPLATES } from "../data/templates";
 import type { Template, SlotType } from "../types";
+import { subscribeTemplateUsage } from "../lib/exportLog";
 
 function slotCounts(template: Template) {
   const counts: Partial<Record<SlotType, number>> = {};
@@ -24,6 +26,14 @@ function TemplateCard({
   onSelect: (t: Template) => void;
 }) {
   const counts = slotCounts(template);
+
+  // Jumlah "X kali digunakan" — dengerin real-time dari Firebase Realtime
+  // Database, di-update otomatis tiap ada export baru (nggak perlu refresh).
+  const [usageCount, setUsageCount] = useState<number | null>(null);
+  useEffect(() => {
+    const unsubscribe = subscribeTemplateUsage(template.id, setUsageCount);
+    return unsubscribe;
+  }, [template.id]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -75,6 +85,14 @@ function TemplateCard({
       >
         Gunakan
       </button>
+
+      {/* "X kali digunakan" — di bawah tombol Gunakan. Selama data belum
+          kebaca (null), disembunyikan dulu daripada sempat kelip "0 kali". */}
+      {usageCount !== null && (
+        <p className="text-center text-[11px] text-mute">
+          {usageCount.toLocaleString("id-ID")} kali digunakan
+        </p>
+      )}
     </div>
   );
 }
