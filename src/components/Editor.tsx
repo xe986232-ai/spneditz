@@ -23,7 +23,10 @@ import {
   RotateCcw,
   Trash2,
   AudioWaveform,
+  SkipBack,
+  SkipForward,
 } from "lucide-react";
+import { getDominantColor } from "../lib/color";
 import type { Template, TemplateSlot, SlotType } from "../types";
 import {
   parseDurationSec,
@@ -103,6 +106,10 @@ const FALLBACK_PEAKS = Array.from({ length: WAVEFORM_BAR_COUNT }, () => 0.22);
 // Durasi minimum satu potongan klip audio (detik) — dijaga biar nggak
 // bisa ditrim/dipotong sampai lebih pendek dari ini (biar nggak "hilang").
 const MIN_CLIP_DURATION = 0.3;
+// Berapa detik playhead digeser tiap klik tombol mundur/maju di sebelah
+// tombol play — 1 detik cukup presisi buat nyari posisi tanpa harus
+// drag manual di timeline.
+const SEEK_STEP_SEC = 1;
 
 // Satu potongan klip di track audio: menyimpan rentang mana dari file
 // audio ASLI yang dipakai (trimStart..trimEnd, dalam detik source asli)
@@ -182,6 +189,11 @@ export default function Editor({
   // di timeline, cuma relevan selama customBackground aktif.
   const [backgroundOpacity, setBackgroundOpacity] = useState(100);
   const [backgroundBlur, setBackgroundBlur] = useState(0);
+  // Warna dominan (vivid) hasil ekstraksi dari foto yang lagi diupload
+  // user — dipakai buat ambient glow/shadow di belakang canvas preview,
+  // biar nyatu sama warna foto-nya (mirip "Canvas" Spotify). Default abu2
+  // netral selama belum ada foto/belum selesai dianalisis.
+  const [dominantColor, setDominantColor] = useState("110, 110, 120");
   const [renderTick, setRenderTick] = useState(0);
   const imageCacheRef = useRef(new ImageCache());
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -246,6 +258,30 @@ export default function Editor({
   const visibleTools = template.progressLayer
     ? [...TOOLS, PROGRESS_STYLE_TOOL]
     : TOOLS;
+
+  // Foto sumber buat glow ambient di belakang canvas — sampul yang
+  // diupload user (slot media pertama non-audio), fallback ke background
+  // kustom kalau itu yang aktif. Cuma dipakai kalau bukan sample bawaan
+  // (biar glow-nya representasi foto ASLI user, bukan placeholder).
+  const coverSourceUrl =
+    (mediaSlotDef && slotMedia[mediaSlotDef.id]?.kind === "file"
+      ? slotMedia[mediaSlotDef.id]?.url
+      : undefined) ?? customBackground?.url;
+
+  // Ekstrak ulang warna dominan tiap kali foto sumbernya ganti.
+  useEffect(() => {
+    if (!coverSourceUrl) {
+      setDominantColor("110, 110, 120");
+      return;
+    }
+    let cancelled = false;
+    getDominantColor(coverSourceUrl).then((rgb) => {
+      if (!cancelled) setDominantColor(rgb);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [coverSourceUrl]);
 
   useEffect(() => {
     const el = timelineScrollRef.current;
@@ -978,7 +1014,19 @@ export default function Editor({
       </div>
 
       {/* Canvas / preview area — takes remaining space, keeps 9:16 ratio */}
-      <div className="flex min-h-0 flex-1 items-center justify-center bg-graphite p-3">
+      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-graphite p-3">
+        {/* Ambient glow — warnanya ngikutin warna dominan foto yang
+            diupload user (lihat coverSourceUrl/dominantColor di atas),
+            transisi halus tiap kali warnanya berubah. Diletakkan di
+            belakang canvas (persis kayak efek "Canvas" Spotify). */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 transition-[background] duration-700 ease-out"
+          style={{
+            background: `radial-gradient(60% 55% at 50% 45%, rgba(${dominantColor}, 0.55), rgba(${dominantColor}, 0.18) 45%, rgba(${dominantColor}, 0) 75%)`,
+            filter: "blur(40px)",
+          }}
+        />
         <div className="relative aspect-[9/16] h-full max-h-full max-w-full overflow-hidden rounded-md bg-black shadow-sm">
           {template.baseAssetSrc ? (
             <canvas
@@ -1048,17 +1096,51 @@ export default function Editor({
           </button>
         </div>
 
-        <button
-          onClick={() => setIsPlaying((p) => !p)}
-          className="justify-self-center flex h-10 w-10 items-center justify-center rounded-full bg-paper text-graphite transition hover:bg-paper/90 active:scale-95"
-          title={isPlaying ? "Jeda" : "Putar"}
-        >
-          {isPlaying ? (
-            <Pause size={16} fill="#15171C" />
-          ) : (
-            <Play size={16} fill="#15171C" className="ml-0.5" />
-          )}
-        </button>
+        <div className="justify-self-center flex items-center gap-3">
+          <button
+            onClick={() => {
+              setIsPlaying(false);
+              setCurrentSec((s) => Math.max(0, s - SEEK_STEP_SEC));
+            }}
+            disabled={currentSec <= 0}
+            className={`flex h-8 w-8 items-center justify-center rounded-full transition active:scale-90 ${
+              currentSec <= 0
+                ? "cursor-not-allowed text-mute/30"
+                : "text-mute hover:bg-graphite hover:text-paper"
+            }`}
+            title={`Mundur ${SEEK_STEP_SEC} detik`}
+          >
+            <SkipBack size={15} fill="currentColor" />
+          </button>
+
+          <button
+            onClick={() => setIsPlaying((p) => !p)}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-paper text-graphite transition hover:bg-paper/90 active:scale-95"
+            title={isPlaying ? "Jeda" : "Putar"}
+          >
+            {isPlaying ? (
+              <Pause size={16} fill="#15171C" />
+            ) : (
+              <Play size={16} fill="#15171C" className="ml-0.5" />
+            )}
+          </button>
+
+          <button
+            onClick={() => {
+              setIsPlaying(false);
+              setCurrentSec((s) => Math.min(DURATION, s + SEEK_STEP_SEC));
+            }}
+            disabled={currentSec >= DURATION}
+            className={`flex h-8 w-8 items-center justify-center rounded-full transition active:scale-90 ${
+              currentSec >= DURATION
+                ? "cursor-not-allowed text-mute/30"
+                : "text-mute hover:bg-graphite hover:text-paper"
+            }`}
+            title={`Maju ${SEEK_STEP_SEC} detik`}
+          >
+            <SkipForward size={15} fill="currentColor" />
+          </button>
+        </div>
 
         <div className="justify-self-end flex items-center gap-1">
           <button
