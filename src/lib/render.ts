@@ -306,9 +306,17 @@ export function drawWaveformProgress(
     // barTimeOffset < 0 -> di kiri titik tengah (sudah lewat/played),
     // > 0 -> di kanan (belum diputar). Playhead selalu persis di tengah.
     const barTimeOffset = (i - barCount / 2) * (windowSpanSec / barCount);
-    const idx = Math.round(centerIdx - idxSpanVisible / 2 + i * idxStep);
+    // Rentang index sumber (peaks) yang "diwakili" bar visual ke-i ini —
+    // BUKAN cuma satu titik yang di-Math.round() kayak sebelumnya (itu
+    // yang bikin banyak bar tetangga kebagian nilai identik/patah2 kalau
+    // datanya lebih jarang dari jumlah bar visual). Sekarang tiap bar
+    // sample RENTANG-nya sendiri lewat sampleWaveformValue di bawah.
+    const idxStart = centerIdx - idxSpanVisible / 2 + i * idxStep;
+    const idxEnd = idxStart + idxStep;
     const value =
-      idx >= 0 && idx < peaks.length ? (peaks[idx] ?? 0.05) : 0.05;
+      idxEnd > 0 && idxStart < peaks.length
+        ? sampleWaveformValue(peaks, idxStart, idxEnd)
+        : 0.05;
     const barH = Math.max(trackThickness, value * ampMax);
     const x = x1 + i * step;
     const isPlayed = barTimeOffset <= 0;
@@ -319,6 +327,46 @@ export function drawWaveformProgress(
     ctx.fill();
   }
   ctx.restore();
+}
+
+/** Ambil nilai satu bar visual dari array data (peaks/bassPeaks) yang
+ *  mewakili rentang index pecahan [idxStart, idxEnd) — dipakai
+ *  drawWaveformProgress supaya HALUS di kedua arah:
+ *
+ *  - Kalau data LEBIH RAPAT dari kebutuhan bar (rentang < 1 index, kasus
+ *    umum sekarang berkat BASS_POINTS_PER_SEC di waveform.ts): interpolasi
+ *    linear antara 2 titik data terdekat di TENGAH rentang, jadi tiap bar
+ *    tetangga dapat nilai yang beda dikit2 (ngalir), bukan sama persis
+ *    lalu tiba2 loncat kayak Math.round() sebelumnya.
+ *  - Kalau data LEBIH JARANG dari kebutuhan bar (rentang > 1 index, misal
+ *    lagu sangat panjang / window di-zoom jauh): ambil nilai MAKSIMUM di
+ *    rentang itu (bukan rata-rata) supaya transient/kick pendek tetap
+ *    kebaca jelas, nggak "ketelen" jadi rata & lembek. */
+function sampleWaveformValue(
+  peaks: number[],
+  idxStart: number,
+  idxEnd: number,
+): number {
+  const span = Math.max(idxEnd - idxStart, 0.0001);
+
+  if (span <= 1) {
+    const mid = (idxStart + idxEnd) / 2;
+    const lo = Math.floor(mid);
+    const hi = lo + 1;
+    const frac = mid - lo;
+    const vLo = lo >= 0 && lo < peaks.length ? (peaks[lo] ?? 0) : 0;
+    const vHi = hi >= 0 && hi < peaks.length ? (peaks[hi] ?? 0) : 0;
+    return vLo + (vHi - vLo) * frac;
+  }
+
+  let maxVal = 0;
+  const start = Math.max(0, Math.floor(idxStart));
+  const end = Math.min(peaks.length - 1, Math.ceil(idxEnd));
+  for (let idx = start; idx <= end; idx++) {
+    const v = peaks[idx] ?? 0;
+    if (v > maxVal) maxVal = v;
+  }
+  return maxVal;
 }
 
 

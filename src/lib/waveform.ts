@@ -1,10 +1,29 @@
+/** Berapa titik data bass dihitung PER DETIK lagu, khusus buat array
+ *  `bassPeaks` yang dipakai visual "waveform berjalan". Ini terpisah dari
+ *  `barCount` yang dipakai buat `peaks` broadband (yang cuma buat
+ *  thumbnail statis di timeline, jadi cukup jumlah tetap kecil).
+ *
+ *  KENAPA INI PENTING: visual "waveform berjalan" cuma nampilin JENDELA
+ *  beberapa detik (lihat windowSpanSec di drawWaveformProgress), bukan
+ *  seluruh lagu. Kalau bassPeaks cuma sejumlah kecil titik (misal 120)
+ *  buat MEWAKILI SELURUH lagu yang panjangnya bisa menitan, maka pas
+ *  di-"zoom" ke jendela 5 detik, satu titik data itu bisa mewakili
+ *  sepersekian detik yang harus "diregangkan" jadi puluhan bar visual —
+ *  hasilnya banyak bar tetangga yang kebagian nilai sama persis (patah2/
+ *  ngeblok), baru "loncat" pas titik data berikutnya. Dengan menyamakan
+ *  resolusi data ke SETIAP DETIK lagu (bukan cuma keseluruhan lagu),
+ *  setiap bar visual di jendela 5 detik itu punya titik data sendiri2
+ *  yang beda, jadi gerakannya kerasa ngalir mulus kayak waveform asli. */
+const BASS_POINTS_PER_SEC = 30;
+
 export type AudioAnalysis = {
   /** Durasi asli file audio (detik) — dipakai biar timeline & preview
    *  ngikutin panjang lagu beneran, bukan durasi template yang di-hardcode. */
   duration: number;
   /** Peak amplitude per bar (broadband, semua frekuensi), dinormalisasi
    *  0-1 — dipakai buat gambar batang waveform "umum" di layer audio
-   *  timeline editor (trim/potong klip). */
+   *  timeline editor (trim/potong klip). Resolusinya tetap (barCount yang
+   *  dikirim ke analyzeAudio), cukup buat thumbnail statis. */
   peaks: number[];
   /** Energi kick/bass per bar (cuma frekuensi rendah ~40-150Hz, plus
    *  transient beat DITONJOLKAN lebih dari bass yang cuma "ngedengung"
@@ -12,7 +31,9 @@ export type AudioAnalysis = {
    *  berjalan" (lihat drawWaveformProgress di render.ts) biar
    *  gerakannya kerasa "mukul" ngikutin beat/kick lagu, bukan cuma
    *  ngikutin volume keseluruhan (vokal/hi-hat ikut bikin bar tinggi
-   *  kalau pakai peaks broadband). */
+   *  kalau pakai peaks broadband). Resolusinya JAUH LEBIH RAPAT dari
+   *  `peaks` (lihat BASS_POINTS_PER_SEC) — scaling ngikutin durasi lagu,
+   *  bukan angka tetap — supaya nggak patah2 pas di-zoom jendela pendek. */
   bassPeaks: number[];
 };
 
@@ -163,10 +184,19 @@ export async function analyzeAudio(
     // Analisis bass/kick — kalau gagal (browser aneh/OfflineAudioContext
     // bermasalah), fallback ke peaks broadband biasa daripada bikin
     // seluruh proses upload audio gagal cuma gara-gara fitur tambahan ini.
+    // Resolusinya SENGAJA dibikin ikut durasi lagu (bukan pakai `barCount`
+    // yang sama kayak `peaks`), soalnya bassPeaks ini yang bakal di-"zoom"
+    // ke jendela beberapa detik doang di drawWaveformProgress — kalau
+    // resolusinya kekecilan, hasil zoom-nya patah2 (lihat penjelasan di
+    // BASS_POINTS_PER_SEC di atas).
+    const bassBarCount = Math.max(
+      barCount,
+      Math.ceil(audioBuffer.duration * BASS_POINTS_PER_SEC),
+    );
     let bassPeaks: number[];
     try {
       const bassBuffer = await renderBassBand(audioBuffer);
-      bassPeaks = computeBassBarsFromBuffer(bassBuffer, barCount);
+      bassPeaks = computeBassBarsFromBuffer(bassBuffer, bassBarCount);
     } catch {
       bassPeaks = peaks;
     }
