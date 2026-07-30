@@ -61,19 +61,28 @@ function TemplateCard({
           <p className="truncate text-[13px] font-semibold text-paper">
             {template.name}
           </p>
-          <div className="mt-1 flex items-center gap-2">
-            {(Object.keys(counts) as SlotType[]).map((type) => {
-              const Icon = SLOT_ICON[type];
-              return (
-                <span
-                  key={type}
-                  className="flex items-center gap-0.5 text-[10px] text-paper/75"
-                >
-                  <Icon size={11} strokeWidth={2} />
-                  {counts[type]}
-                </span>
-              );
-            })}
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              {(Object.keys(counts) as SlotType[]).map((type) => {
+                const Icon = SLOT_ICON[type];
+                return (
+                  <span
+                    key={type}
+                    className="flex items-center gap-0.5 text-[10px] text-paper/75"
+                  >
+                    <Icon size={11} strokeWidth={2} />
+                    {counts[type]}
+                  </span>
+                );
+              })}
+            </div>
+
+            {/* "X kali digunakan" — sejajar row ikon slot foto/audio */}
+            {usageCount !== null && (
+              <span className="text-[10px] text-paper/60">
+                {usageCount.toLocaleString("id-ID")} kali digunakan
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -85,14 +94,6 @@ function TemplateCard({
       >
         Gunakan
       </button>
-
-      {/* "X kali digunakan" — di bawah tombol Gunakan. Selama data belum
-          kebaca (null), disembunyikan dulu daripada sempat kelip "0 kali". */}
-      {usageCount !== null && (
-        <p className="text-center text-[11px] text-mute">
-          {usageCount.toLocaleString("id-ID")} kali digunakan
-        </p>
-      )}
     </div>
   );
 }
