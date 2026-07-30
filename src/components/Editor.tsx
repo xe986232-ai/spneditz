@@ -314,7 +314,9 @@ export default function Editor({
     setAudioClips([]);
     setSelectedAudioClipId(null);
     if (!audioMedia) return;
-    const source = audioMedia.file ?? audioMedia.url;
+    // Blob URL dulu, File cuma fallback — File mentah dari input picker suka
+    // jadi stale di Chrome Android (bikin FileReader gagal baca).
+    const source = audioMedia.url ?? audioMedia.file;
     analyzeAudio(source, WAVEFORM_BAR_COUNT)
       .then((info) => {
         if (cancelled) return;

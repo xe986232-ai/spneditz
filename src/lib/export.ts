@@ -29,6 +29,29 @@ export function loadImageEl(src: string): Promise<HTMLImageElement> {
   });
 }
 
+// Baca source (biasanya blob URL) jadi Uint8Array lewat fetchFile, dengan
+// retry — jaga-jaga kalau sesekali masih gagal (mis. hiccup sesaat di
+// WebView), daripada langsung bikin export gagal total padahal biasanya
+// begitu dicoba ulang langsung jalan.
+async function fetchFileWithRetry(
+  fetchFileFn: (source: File | string | Blob) => Promise<Uint8Array>,
+  source: File | string | Blob,
+  attempts = 3,
+): Promise<Uint8Array> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetchFileFn(source);
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, 200 * (i + 1)));
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 function canvasToBlob(
   canvas: HTMLCanvasElement,
   type: string,
@@ -284,10 +307,15 @@ export async function exportTemplateVideo(
 ): Promise<Blob> {
   // Sumber buat di-load sebagai <img> (preview compositing) — butuh URL.
   const backgroundImageSrc = customBackground?.url ?? template.baseAssetSrc;
-  // Sumber buat ditulis ke filesystem ffmpeg — boleh File langsung
-  // (lebih hemat, nggak perlu fetch ulang blob URL-nya).
+  // Sumber buat ditulis ke filesystem ffmpeg — PAKAI blob URL (string) dulu,
+  // BUKAN object File mentah. @ffmpeg/util punya bug: kalau dikasih File
+  // langsung, dia baca pakai FileReader.readAsArrayBuffer(), dan handle File
+  // dari input picker itu suka jadi stale di Chrome Android (misal abis tab
+  // di-background sebentar / memory pressure) -> FileReader gagal dengan
+  // pesan persis "File could not be read! Code=-1". Blob URL (string) lewat
+  // jalur fetch() yang jauh lebih stabil. JANGAN balik urutan ini lagi.
   const backgroundFileSrc: File | string | undefined =
-    customBackground?.file ?? customBackground?.url ?? template.baseAssetSrc;
+    customBackground?.url ?? customBackground?.file ?? template.baseAssetSrc;
 
   if (!backgroundImageSrc || !backgroundFileSrc) {
     throw new Error("Template ini belum punya base asset untuk di-export.");
@@ -407,7 +435,7 @@ export async function exportTemplateVideo(
       );
       await ffmpeg.writeFile("bg.jpg", await fetchFile(bgBlob));
     } else {
-      await ffmpeg.writeFile("bg.jpg", await fetchFile(backgroundFileSrc));
+      await ffmpeg.writeFile("bg.jpg", await fetchFileWithRetry(fetchFile, backgroundFileSrc));
     }
 
     // Kalau ada textLayers TAPI TIDAK ada durationLayer, teks (judul/artist/
@@ -456,7 +484,7 @@ export async function exportTemplateVideo(
   let remappedAudioBlob: Blob | null = null;
   if (audioMedia) {
     try {
-      const audioDuration = await getAudioDuration(audioMedia.file ?? audioMedia.url);
+      const audioDuration = await getAudioDuration(audioMedia.url ?? audioMedia.file);
       totalDurationForMux = audioDuration;
       timeScale = audioDuration / referenceDuration;
     } catch {
@@ -467,11 +495,9 @@ export async function exportTemplateVideo(
     if (audioClips && !clipsAreTrivial(audioClips, totalDurationForMux)) {
       try {
         const audioCtx = new AudioContext();
-        const source = audioMedia.file ?? audioMedia.url;
-        const arrayBuffer =
-          source instanceof File
-            ? await source.arrayBuffer()
-            : await (await fetch(source)).arrayBuffer();
+        // `url` selalu ada (blob URL) — pakai itu langsung, lebih stabil di
+        // Chrome Android daripada baca ulang object File mentah.
+        const arrayBuffer = await (await fetch(audioMedia.url)).arrayBuffer();
         const decoded = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
         const remapped = buildRemappedAudioBuffer(audioCtx, decoded, audioClips);
         remappedAudioBlob = audioBufferToWavBlob(remapped);
@@ -558,8 +584,10 @@ export async function exportTemplateVideo(
       if (media) {
         const ext = guessImageExt(media.file, media.url);
         const fgName = `slot_${i}.${ext}`;
-        const source = media.file ?? media.url;
-        await ffmpeg.writeFile(fgName, await fetchFile(source));
+        // Blob URL dulu, BUKAN File mentah — lihat catatan di backgroundFileSrc
+        // di atas soal bug "File could not be read! Code=-1" di Chrome Android.
+        const source = media.url ?? media.file;
+        await ffmpeg.writeFile(fgName, await fetchFileWithRetry(fetchFile, source));
         intermediateFiles.push(fgName);
 
         const sw = toEven(((slot.width ?? 100) / 100) * canvasW);
@@ -837,9 +865,10 @@ export async function exportTemplateVideo(
     });
     const ext = remappedAudioBlob ? "wav" : guessAudioExt(audioMedia.file, audioMedia.url);
     const audioName = `audio.${ext}`;
-    const source: File | string | Blob = remappedAudioBlob ?? audioMedia.file ?? audioMedia.url;
+    // Blob URL dulu, File cuma fallback — sama alasannya kayak backgroundFileSrc.
+    const source: File | string | Blob = remappedAudioBlob ?? audioMedia.url ?? audioMedia.file;
     try {
-      await ffmpeg.writeFile(audioName, await fetchFile(source));
+      await ffmpeg.writeFile(audioName, await fetchFileWithRetry(fetchFile, source));
 
       await execChecked(
         ffmpeg,
