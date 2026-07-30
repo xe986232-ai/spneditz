@@ -4,10 +4,19 @@
 //      dulu — lebih cepat (hardware-accelerated) & progress-nya presisi
 //      per-frame. Lihat webcodecs-export.ts.
 //   2. Kalau browser tidak dukung WebCodecs SAMA SEKALI, ATAU proses
-//      WebCodecs gagal di tengah jalan (config tidak didukung, encoder
-//      error, dsb), otomatis fallback ke engine FFmpeg.wasm yang lama
-//      (export.ts) — supaya export tetap berhasil di browser lama/aneh
-//      (termasuk in-app browser TikTok/Instagram yang suka aneh-aneh).
+//      WebCodecs gagal SEBELUM sempet mulai encode frame (config codec
+//      gak didukung, dsb — lihat FALLBACK_PROGRESS_CEILING di bawah),
+//      otomatis fallback ke engine FFmpeg.wasm yang lama (export.ts) —
+//      supaya export tetap berhasil di browser lama/aneh (termasuk
+//      in-app browser TikTok/Instagram yang suka aneh-aneh).
+//   3. TAPI kalau WebCodecs sempet mulai encode frame beneran (progress
+//      udah lewat tahap persiapan) terus baru gagal di tengah jalan,
+//      kita SENGAJA TIDAK auto-fallback lagi. Alasannya: fallback di
+//      titik itu berarti buang semua kerja yang udah dilakuin lalu
+//      ngulang total pakai FFmpeg yang jauh lebih lambat — dari sisi
+//      user kerasa kayak export "stuck"/lama padahal sebenarnya lagi
+//      render ulang dari nol diam-diam. Mending export gagal jelas &
+//      user coba lagi, daripada nunggu lama tanpa tau kenapa.
 import type { Template } from "../types";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
 import { exportTemplateVideo, ExportCancelledError, type ExportProgress } from "./export";
@@ -26,6 +35,13 @@ export type ExportResult = {
    *  (misal user lapor "render lambat", tinggal tanya/cek ini duluan). */
   engine: ExportEngine;
 };
+
+// Batas persen progress WebCodecs yang MASIH BOLEH silent-fallback ke
+// FFmpeg kalau gagal. Lihat webcodecs-export.ts: tahap persiapan (load
+// asset, cek config encoder lewat isConfigSupported, dst) berhenti di
+// 20% — encode frame beneran baru mulai SETELAH itu. Jadi kegagalan di
+// <=20% dijamin belum ada kerja berat yang kebuang percuma.
+const FALLBACK_PROGRESS_CEILING = 20;
 
 export async function exportTemplateVideoAuto(
   template: Template,
@@ -51,12 +67,21 @@ export async function exportTemplateVideoAuto(
   if (isWebCodecsExportSupported()) {
     // eslint-disable-next-line no-console
     console.info("[export] WebCodecs didukung browser ini, mencoba engine WebCodecs…");
+
+    // Nyimpen progress TERAKHIR yang dilaporin WebCodecs, dipakai buat
+    // mutusin boleh silent-fallback atau enggak kalau dia gagal.
+    let lastPercent = 0;
+    const trackedOnProgress = (p: ExportProgress) => {
+      lastPercent = p.percent;
+      onProgress(p);
+    };
+
     try {
       const blob = await exportTemplateVideoWebCodecs(
         template,
         slotMedia,
         layerOpacity,
-        onProgress,
+        trackedOnProgress,
         customBackground,
         backgroundOpacity,
         backgroundBlur,
@@ -73,11 +98,33 @@ export async function exportTemplateVideoAuto(
       // Kalau user yang membatalkan, jangan fallback ke FFmpeg — langsung
       // lempar ke pemanggil supaya export beneran berhenti.
       if (e instanceof ExportCancelledError) throw e;
+
+      if (lastPercent > FALLBACK_PROGRESS_CEILING) {
+        // Udah sempet mulai encode frame beneran — jangan diam-diam
+        // ngulang total pakai FFmpeg (bakal kerasa "stuck" lama banget).
+        // Gagal jelas aja, user tau harus coba lagi.
+        // eslint-disable-next-line no-console
+        console.error(
+          "[export] ❌ Engine WebCodecs gagal di tengah proses render (setelah encode dimulai) — TIDAK fallback ke FFmpeg biar gak dobel lama.",
+          e instanceof Error ? e.message : e,
+        );
+        throw new Error(
+          "Render gagal di tengah proses (WebCodecs). Coba ekspor ulang — kalau berulang kali gagal di titik yang sama, coba buka lewat browser lain.",
+        );
+      }
+
+      // Masih di tahap persiapan (belum ada frame yang di-encode) —
+      // aman buat pindah diam-diam ke FFmpeg, gak ada kerja yang kebuang.
       // eslint-disable-next-line no-console
       console.warn(
-        "[export] ⚠️ Engine WebCodecs gagal, fallback ke FFmpeg.wasm…",
+        "[export] ⚠️ Engine WebCodecs gagal sebelum encode dimulai, fallback ke FFmpeg.wasm…",
         e instanceof Error ? e.message : e,
       );
+      onProgress({
+        stage: "switching-engine",
+        percent: 5,
+        label: "Metode render utama gak didukung, mencoba metode lain…",
+      });
     }
   } else {
     // eslint-disable-next-line no-console

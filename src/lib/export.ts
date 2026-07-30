@@ -208,6 +208,7 @@ export async function compositeLayers(
 
 export type ExportStage =
   | "loading-engine"
+  | "switching-engine"
   | "rendering-segment"
   | "combining"
   | "adding-audio"
