@@ -252,15 +252,6 @@ export default function Editor({
     const unsubscribe = subscribeWaveformEnabled(setWaveformEnabled);
     return unsubscribe;
   }, []);
-  // Kalau lagi jalan pas fiturnya masih terkunci, tapi ternyata kepilih
-  // "waveform" dari preset lama (lihat Save/Load Preset) sebelum fiturnya
-  // resmi aktif, otomatis balikin ke "bar" biar nggak nyangkut pakai gaya
-  // yang harusnya belum boleh dipakai.
-  useEffect(() => {
-    if (waveformEnabled === false && progressStyle === "waveform") {
-      setProgressStyle("bar");
-    }
-  }, [waveformEnabled, progressStyle]);
   // ---- Klip-klip di track audio (hasil potong/geser/trim user). Mulai
   // dari satu klip yang membentang penuh file audio, direset tiap kali
   // audio-nya diganti (lihat effect analisis audio di bawah). ----
@@ -1097,6 +1088,15 @@ export default function Editor({
 
   async function handleExport() {
     if (!template.baseAssetSrc) return;
+    // Gaya "Waveform berjalan" boleh dipilih & di-preview bebas, tapi
+    // EXPORT-nya dikunci selama config/waveformEnabled di Firebase belum
+    // true — badge "Premium" di tombolnya sudah ngasih tau ini dari awal.
+    if (progressStyle === "waveform" && !waveformEnabled) {
+      setExportError(
+        "Gaya \"Waveform berjalan\" masih Premium — belum bisa dipakai buat export. Ganti dulu ke gaya \"Standar\", atau tunggu fiturnya diaktifkan.",
+      );
+      return;
+    }
     setIsExporting(true);
     setExportError(null);
     setExportResultUrl(null);
@@ -1920,22 +1920,19 @@ export default function Editor({
                 </span>
               </button>
               <button
-                onClick={() => {
-                  if (!waveformEnabled) return; // masih terkunci, abaikan klik
-                  setProgressStyle("waveform");
-                }}
-                aria-disabled={!waveformEnabled}
-                className={`relative flex flex-col items-center gap-1.5 rounded-xl border px-3.5 py-2.5 transition ${
-                  waveformEnabled ? "active:scale-95" : "opacity-60"
-                } ${
+                onClick={() => setProgressStyle("waveform")}
+                className={`relative flex flex-col items-center gap-1.5 rounded-xl border px-3.5 py-2.5 transition active:scale-95 ${
                   progressStyle === "waveform"
                     ? "border-paper bg-paper/10"
                     : "border-mute/15 bg-graphite/40"
                 }`}
               >
                 {/* Badge "Premium" — muncul selama config/waveformEnabled
-                    di Firebase belum di-set true. Ilang otomatis (real-time)
-                    begitu diaktifkan lewat Firebase Console. */}
+                    di Firebase belum di-set true. Gaya ini tetap BOLEH
+                    dipilih di sini (cuma preview), tapi export-nya nanti
+                    diblokir di handleExport kalau masih terkunci. Ilang
+                    otomatis (real-time) begitu diaktifkan lewat dashboard
+                    /sawadikap. */}
                 {!waveformEnabled && (
                   <span className="absolute -top-2 right-1 flex items-center gap-0.5 rounded-full bg-amber-400 px-1.5 py-0.5 text-[8px] font-bold text-graphite shadow-sm">
                     <Lock size={8} strokeWidth={3} />
