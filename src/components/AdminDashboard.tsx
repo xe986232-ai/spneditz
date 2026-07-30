@@ -7,7 +7,7 @@ import { db } from "../lib/firebase";
 // (nggak pakai Firebase Auth), cuma penghalang tambahan di atas nama
 // halamannya yang udah sengaja dibikin susah ditebak ("/sawadikap").
 // Ganti nilainya sendiri kapan aja kalau mau.
-const DASHBOARD_PASSWORD = "wiwok-sawadikap-88";
+const DASHBOARD_PASSWORD = "p";
 
 interface ExportsData {
   total: number;

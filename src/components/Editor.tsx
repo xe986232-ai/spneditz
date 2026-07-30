@@ -1936,7 +1936,7 @@ export default function Editor({
                 {!waveformEnabled && (
                   <span className="absolute -top-2 right-1 flex items-center gap-0.5 rounded-full bg-amber-400 px-1.5 py-0.5 text-[8px] font-bold text-graphite shadow-sm">
                     <Lock size={8} strokeWidth={3} />
-                    Premium
+                    Premium haha🗿
                   </span>
                 )}
                 <div className="flex h-6 w-24 items-end justify-center gap-[2px] rounded-full bg-black/50 px-1.5 py-1">
