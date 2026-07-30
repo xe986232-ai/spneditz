@@ -13,3 +13,19 @@ body {
   background: #fafafa;
 }
 
+@keyframes export-scan {
+  0% {
+    transform: translateY(-100%);
+  }
+  50% {
+    transform: translateY(400%);
+  }
+  100% {
+    transform: translateY(-100%);
+  }
+}
+
+.animate-export-scan {
+  animation: export-scan 2.2s ease-in-out infinite;
+}
+

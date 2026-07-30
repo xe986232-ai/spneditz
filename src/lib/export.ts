@@ -199,6 +199,13 @@ export type ExportProgress = {
   label: string;
 };
 
+export class ExportCancelledError extends Error {
+  constructor() {
+    super("Export dibatalkan oleh user.");
+    this.name = "ExportCancelledError";
+  }
+}
+
 function guessImageExt(file?: File, url?: string): string {
   if (file?.type === "image/png") return "png";
   if (file?.type === "image/webp") return "webp";
@@ -245,6 +252,7 @@ export async function exportTemplateVideo(
   // Isi textLayers (judul/artist/nama device) hasil custom user di editor
   // — dipakai buat gambar teks ke overlay export, konsisten sama preview.
   textValues: TextValueState = {},
+  signal?: AbortSignal,
 ): Promise<Blob> {
   // Sumber buat di-load sebagai <img> (preview compositing) — butuh URL.
   const backgroundImageSrc = customBackground?.url ?? template.baseAssetSrc;
@@ -432,6 +440,7 @@ export async function exportTemplateVideo(
   const totalStages = imageSlots.length + 1; // segments + concat
 
   for (let i = 0; i < imageSlots.length; i++) {
+    if (signal?.aborted) throw new ExportCancelledError();
     const slot = imageSlots[i];
     const duration = Math.max(
       0.2,

@@ -38,7 +38,7 @@ import {
   ImageCache,
 } from "../lib/render";
 import type { SlotMediaEntry } from "../lib/render";
-import { exportTemplateVideoAuto, type ExportProgress, type ExportEngine } from "../lib/engine";
+import { exportTemplateVideoAuto, ExportCancelledError, type ExportProgress, type ExportEngine } from "../lib/engine";
 import { analyzeAudio, type AudioAnalysis } from "../lib/waveform";
 
 type Tool = {
@@ -138,6 +138,7 @@ export default function Editor({
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingSlotRef = useRef<string | null>(null);
+  const exportAbortRef = useRef<AbortController | null>(null);
 
   // ---- Export state ----
   const [isExporting, setIsExporting] = useState(false);
@@ -557,6 +558,8 @@ export default function Editor({
     setExportError(null);
     setExportResultUrl(null);
     setExportEngineUsed(null);
+    const controller = new AbortController();
+    exportAbortRef.current = controller;
     try {
       setExportSnapshot(canvasRef.current?.toDataURL("image/jpeg", 0.8) ?? null);
     } catch {
@@ -572,10 +575,15 @@ export default function Editor({
         backgroundOpacity,
         backgroundBlur,
         textValues,
+        controller.signal,
       );
       setExportResultUrl(URL.createObjectURL(blob));
       setExportEngineUsed(engine);
     } catch (err) {
+      if (err instanceof ExportCancelledError) {
+        // User yang batalin sendiri — nggak usah dianggap error, tutup aja diam-diam.
+        return;
+      }
       // eslint-disable-next-line no-console
       console.error("[export] gagal:", err);
       const detail =
@@ -594,8 +602,13 @@ export default function Editor({
         detail && detail !== "{}" ? detail : "Export gagal, coba lagi.",
       );
     } finally {
+      exportAbortRef.current = null;
       setIsExporting(false);
     }
+  }
+
+  function handleCancelExport() {
+    exportAbortRef.current?.abort();
   }
 
   return (
@@ -1135,12 +1148,15 @@ export default function Editor({
             {isExporting && (
               <>
                 {exportSnapshot && (
-                  <img
-                    src={exportSnapshot}
-                    alt=""
-                    className="mx-auto mb-3 aspect-[9/16] w-full rounded-lg object-cover transition-opacity duration-300 ease-linear"
-                    style={{ opacity: 0.25 + 0.75 * ((exportProgress?.percent ?? 0) / 100) }}
-                  />
+                  <div className="relative mx-auto mb-3 aspect-[9/16] w-full overflow-hidden rounded-lg">
+                    <img
+                      src={exportSnapshot}
+                      alt=""
+                      className="h-full w-full object-cover transition-opacity duration-300 ease-linear"
+                      style={{ opacity: 0.25 + 0.75 * ((exportProgress?.percent ?? 0) / 100) }}
+                    />
+                    <div className="animate-export-scan pointer-events-none absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-transparent via-white/25 to-transparent" />
+                  </div>
                 )}
                 <p className="text-sm font-medium text-paper">
                   eksport video eluuu...
@@ -1154,6 +1170,12 @@ export default function Editor({
                 <p className="mt-1 text-[10px] text-mute">
                   {exportProgress?.percent ?? 0}%
                 </p>
+                <button
+                  onClick={handleCancelExport}
+                  className="mt-4 rounded-full bg-graphite px-4 py-2 text-xs font-medium text-paper"
+                >
+                  Batalkan
+                </button>
               </>
             )}
 

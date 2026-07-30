@@ -10,10 +10,11 @@
 //      (termasuk in-app browser TikTok/Instagram yang suka aneh-aneh).
 import type { Template } from "../types";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
-import { exportTemplateVideo, type ExportProgress } from "./export";
+import { exportTemplateVideo, ExportCancelledError, type ExportProgress } from "./export";
 import { exportTemplateVideoWebCodecs, isWebCodecsExportSupported } from "./webcodecs-export";
 
 export type { ExportProgress } from "./export";
+export { ExportCancelledError } from "./export";
 
 export type ExportEngine = "webcodecs" | "ffmpeg";
 
@@ -34,6 +35,7 @@ export async function exportTemplateVideoAuto(
   backgroundOpacity: number = 100,
   backgroundBlur: number = 0,
   textValues: TextValueState = {},
+  signal?: AbortSignal,
 ): Promise<ExportResult> {
   if (isWebCodecsExportSupported()) {
     // eslint-disable-next-line no-console
@@ -48,11 +50,15 @@ export async function exportTemplateVideoAuto(
         backgroundOpacity,
         backgroundBlur,
         textValues,
+        signal,
       );
       // eslint-disable-next-line no-console
       console.info("[export] ✅ Berhasil pakai engine WebCodecs (VideoEncoder/AudioEncoder + mp4-muxer).");
       return { blob, engine: "webcodecs" };
     } catch (e) {
+      // Kalau user yang membatalkan, jangan fallback ke FFmpeg — langsung
+      // lempar ke pemanggil supaya export beneran berhenti.
+      if (e instanceof ExportCancelledError) throw e;
       // eslint-disable-next-line no-console
       console.warn(
         "[export] ⚠️ Engine WebCodecs gagal, fallback ke FFmpeg.wasm…",
@@ -64,6 +70,8 @@ export async function exportTemplateVideoAuto(
     console.info("[export] Browser ini tidak mendukung WebCodecs API, langsung pakai FFmpeg.wasm.");
   }
 
+  if (signal?.aborted) throw new ExportCancelledError();
+
   const blob = await exportTemplateVideo(
     template,
     slotMedia,
@@ -73,6 +81,7 @@ export async function exportTemplateVideoAuto(
     backgroundOpacity,
     backgroundBlur,
     textValues,
+    signal,
   );
   // eslint-disable-next-line no-console
   console.info("[export] ✅ Berhasil pakai engine FFmpeg.wasm.");

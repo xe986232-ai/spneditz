@@ -34,7 +34,7 @@ import {
   getAudioDuration,
 } from "./render";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
-import { loadImageEl, compositeLayers } from "./export";
+import { loadImageEl, compositeLayers, ExportCancelledError } from "./export";
 import type { ExportProgress } from "./export";
 
 const TARGET_FPS = 25;
@@ -175,6 +175,7 @@ export async function exportTemplateVideoWebCodecs(
   backgroundOpacity: number = 100,
   backgroundBlur: number = 0,
   textValues: TextValueState = {},
+  signal?: AbortSignal,
 ): Promise<Blob> {
   if (!isWebCodecsExportSupported()) {
     throw new Error("Browser ini tidak mendukung WebCodecs API (VideoEncoder/AudioEncoder).");
@@ -436,6 +437,14 @@ export async function exportTemplateVideoWebCodecs(
   let lastVideoSeekSec = -1;
 
   for (let frame = 0; frame < totalFrames; frame++) {
+    if (signal?.aborted) {
+      try {
+        videoEncoder.close();
+      } catch {
+        /* abaikan */
+      }
+      throw new ExportCancelledError();
+    }
     checkEncoderErrors();
     const currentSec = frame / TARGET_FPS;
 
@@ -542,6 +551,14 @@ export async function exportTemplateVideoWebCodecs(
       : totalSamples;
 
     for (let offset = 0; offset < resampledTotal; offset += FRAME_SIZE) {
+      if (signal?.aborted) {
+        try {
+          audioEncoder.close();
+        } catch {
+          /* abaikan */
+        }
+        throw new ExportCancelledError();
+      }
       checkEncoderErrors();
       const len = Math.min(FRAME_SIZE, resampledTotal - offset);
       const planar = new Float32Array(len * channels);
