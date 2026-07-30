@@ -239,13 +239,23 @@ export function drawProgressFill(
 }
 
 /** Mode "waveform berjalan" buat progress — GANTINYA drawProgressFill,
- *  BUKAN tambahan. Alih-alih garis isian polos, gambar deretan bar
- *  equalizer sepanjang track (posisi & lebar x1/x2/y persis sama kayak
- *  progressLayer, jadi reusable buat TEMPLATE MANAPUN yang punya
- *  progressLayer — tidak hardcode ke satu template doang). Bar yang
- *  sudah "dilewatin" playhead digambar terang (progressLayer.color),
- *  sisanya redup — jadi progress-nya "berjalan" menyusuri bentuk lagu
- *  asli, bukan cuma garis lurus.
+ *  BUKAN tambahan. Bukan bentuk statis satu lagu penuh, tapi "JENDELA"
+ *  beberapa detik di sekitar posisi lagu SEKARANG yang terus GESER ke
+ *  kiri seiring currentSec naik (mirip tampilan waveform karaoke/DJ) —
+ *  makanya kelihatan "berjalan"/mengalir terus, bukan diam. Posisi &
+ *  lebar (x1/x2/y/thickness) persis sama kayak progressLayer, jadi
+ *  reusable buat TEMPLATE MANAPUN yang punya progressLayer.
+ *
+ *  Digambar sebagai FUNGSI MURNI dari currentSec (bukan dari waktu asli/
+ *  Date.now() atau state animasi terpisah) — supaya PERSIS SAMA hasilnya
+ *  baik di preview (browser, tiap rAF) maupun export (di-render ulang
+ *  frame-by-frame/tick-by-tick oleh kedua engine export). Kalau dipakai
+ *  Date.now(), preview & hasil export bisa beda posisi bar-nya.
+ *
+ *  Bar di sisi KIRI dari titik tengah = sudah "kelewatan" (terang),
+ *  sisi KANAN = belum diputar (redup) — playhead-nya selalu di TENGAH
+ *  jendela (persis kayak DJ waveform bergerak, bukan playhead yang gerak
+ *  di atas gambar diam).
  *
  *  `peaks` idealnya dari analyzeAudio(file) (lihat lib/waveform.ts) —
  *  kalau belum ada (audio belum diupload/masih dianalisis), boleh kirim
@@ -258,9 +268,12 @@ export function drawWaveformProgress(
   currentSec: number,
   totalSec: number,
   peaks: number[],
+  // Berapa detik "konteks" yang kelihatan melintang di jendela (setengah
+  // di kiri/sudah lewat, setengah di kanan/belum) — makin kecil, makin
+  // "zoom in" & makin cepat kelihatan geser-nya. Default 5 detik.
+  windowSpanSec = 5,
 ) {
-  if (!peaks.length) return;
-  const ratio = totalSec > 0 ? Math.min(1, Math.max(0, currentSec / totalSec)) : 0;
+  if (!peaks.length || totalSec <= 0) return;
 
   const x1 = (progressLayer.x1 / 100) * canvasW;
   const x2 = (progressLayer.x2 / 100) * canvasW;
@@ -281,14 +294,24 @@ export function drawWaveformProgress(
   const ampMax = Math.max(trackThickness * 7, canvasH * 0.018);
   const activeColor = progressLayer.color ?? "#FFFFFF";
 
+  // Titik "sekarang" di dalam array peaks (peaks dianggap terbentang
+  // rata di 0..totalSec, sama seperti asumsi drawProgressFill).
+  const idxPerSec = peaks.length / totalSec;
+  const centerIdx = currentSec * idxPerSec;
+  const idxSpanVisible = windowSpanSec * idxPerSec;
+  const idxStep = idxSpanVisible / barCount;
+
   ctx.save();
   for (let i = 0; i < barCount; i++) {
-    const t = barCount > 1 ? i / (barCount - 1) : 0;
-    const peakIdx = Math.min(peaks.length - 1, Math.floor(t * peaks.length));
-    const value = peaks[peakIdx] ?? 0.3;
+    // barTimeOffset < 0 -> di kiri titik tengah (sudah lewat/played),
+    // > 0 -> di kanan (belum diputar). Playhead selalu persis di tengah.
+    const barTimeOffset = (i - barCount / 2) * (windowSpanSec / barCount);
+    const idx = Math.round(centerIdx - idxSpanVisible / 2 + i * idxStep);
+    const value =
+      idx >= 0 && idx < peaks.length ? (peaks[idx] ?? 0.05) : 0.05;
     const barH = Math.max(trackThickness, value * ampMax);
     const x = x1 + i * step;
-    const isPlayed = t <= ratio;
+    const isPlayed = barTimeOffset <= 0;
 
     ctx.globalAlpha = isPlayed ? 1 : 0.32;
     ctx.fillStyle = activeColor;
