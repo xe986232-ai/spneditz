@@ -10,13 +10,13 @@ Realtime Database → Rules** ke:
   "rules": {
     "exports": {
       "total": {
-        ".read": false,
+        ".read": true,
         ".write": true,
         ".validate": "newData.isNumber()"
       },
       "byDay": {
         "$day": {
-          ".read": false,
+          ".read": true,
           ".write": true,
           ".validate": "newData.isNumber()"
         }
@@ -32,7 +32,7 @@ Realtime Database → Rules** ke:
     "config": {
       "waveformEnabled": {
         ".read": true,
-        ".write": false,
+        ".write": true,
         ".validate": "newData.isBoolean()"
       }
     },
@@ -48,20 +48,40 @@ Kenapa gini:
   boleh nambah angka counter, tanpa perlu login.
 - `total` & `byDay` tetap `.read: false` → cuma kamu yang bisa lihat lewat
   Firebase Console (owner project otomatis bypass rules).
-- `byTemplate` sekarang `.read: true` → **publik boleh baca**, soalnya ini
-  yang dipakai buat nampilin badge "X kali digunakan" di halaman pilih
-  template. Nggak masalah dibuka karena isinya cuma angka pemakaian, bukan
-  data sensitif.
-- `config/waveformEnabled` → **publik boleh baca** (dipakai aplikasi buat
-  nentuin gaya progress "Waveform berjalan" di editor terkunci/kebuka),
-  tapi `.write: false` → **cuma bisa diubah manual lewat Firebase Console**
-  (owner project bypass rules), nggak ada jalan buat browser nulis ke sini.
-  Kalau path ini belum pernah diisi sama sekali, `snapshot.val()` bakal
-  `null`, dan aplikasi menganggapnya `false` (terkunci) — jadi defaultnya
-  aman (terkunci) sampai kamu aktifkan manual.
+- `total` & `byDay` sekarang **`.read: true`** juga → supaya dashboard admin
+  (`/sawadikap`) bisa nampilin angkanya. Konsekuensinya: siapa pun yang tau
+  config Firebase kamu (yang memang sudah publik di kode frontend) juga
+  bisa baca angka ini langsung lewat REST API, di luar dashboard. Untuk
+  kebutuhan "sekadar liat jumlah export" ini oke — datanya nggak sensitif.
+- `byTemplate` tetap `.read: true` → dipakai juga buat badge "X kali
+  digunakan" di halaman pilih template.
+- `config/waveformEnabled` sekarang **`.write: true`** juga → supaya toggle
+  di dashboard admin beneran nyimpen ke database. Karena Realtime Database
+  Rules nggak tau "siapa yang mengetik dari halaman /sawadikap dengan
+  password yang benar" (itu cuma pengecekan di sisi aplikasi/JS, bukan di
+  Rules), siapa pun yang tau URL Firebase kamu **secara teknis** bisa nulis
+  ke path ini langsung tanpa lewat dashboard/password sama sekali.
+  Password & nama halaman yang susah ditebak (`/sawadikap`) di sini
+  fungsinya cuma "penghalang casual" (security by obscurity), BUKAN
+  proteksi yang kuat. Kalau nanti butuh beneran aman, perlu ditambah
+  Firebase Authentication + rule `auth != null` (bisa dibantu kalau mau).
 - `.validate: "newData.isNumber()"` → mencegah orang iseng nulis nilai aneh
   (string, object, dll) ke path itu lewat DevTools/network tab.
-- Root `.read/.write: false` → path lain di luar `exports` tertutup total.
+- Root `.read/.write: false` → path lain di luar `exports`/`config` tertutup
+  total.
+
+## Dashboard admin
+
+Buka `https://domain-kamu/sawadikap` (ganti `domain-kamu` sesuai domain
+deploy-nya), masukin password (di kode: `src/components/AdminDashboard.tsx`,
+konstanta `DASHBOARD_PASSWORD` — **ganti sendiri** ke password pilihan
+kamu). Di situ kamu bisa:
+
+- Lihat total export & breakdown per hari/template.
+- Toggle badge Premium buat gaya "Waveform berjalan" (nyalain =
+  `config/waveformEnabled` jadi `true`, semua orang boleh pakai).
+
+Baca catatan soal batas keamanan pendekatan ini di bagian atas file ini.
 
 ## Cara liat angkanya
 
