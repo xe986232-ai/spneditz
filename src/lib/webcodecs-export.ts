@@ -210,7 +210,12 @@ export async function exportTemplateVideoWebCodecs(
   const canvasH = pickCanvasEven(template.canvasHeight ?? 1920);
 
   const backDecorLayers = (template.decorLayers ?? []).filter((l) => l.order === "back");
-  const frontDecorLayers = (template.decorLayers ?? []).filter((l) => l.order === "front");
+  // Kalau progressStyle "waveform", skip decorLayer track statis
+  // (progressbar.png) — samain sama preview & export ffmpeg, biar gak
+  // dobel/numpuk sama bar waveform yang digambar dari nol.
+  const frontDecorLayers = (template.decorLayers ?? []).filter(
+    (l) => l.order === "front" && !(progressStyle === "waveform" && l.hideInWaveformMode),
+  );
 
   // --- Layer statis: dirender SEKALI, dipakai ulang tiap frame. ---
   onProgress({ stage: "loading-engine", percent: 10, label: "Menyusun latar & dekorasi…" });

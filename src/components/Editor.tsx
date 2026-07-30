@@ -350,7 +350,9 @@ export default function Editor({
     (l) => l.order === "back",
   );
   const frontDecorLayers = (template.decorLayers ?? []).filter(
-    (l) => l.order === "front",
+    (l) =>
+      l.order === "front" &&
+      !(progressStyle === "waveform" && l.hideInWaveformMode),
   );
   const adjustableLayers = (template.decorLayers ?? []).filter(
     (l) => l.adjustable,

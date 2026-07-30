@@ -44,6 +44,12 @@ export interface TemplateDecorLayer {
    *  false/undefined, layer cuma dirender diam-diam sebagai dekorasi
    *  statis (nggak bisa diklik/diedit). */
   adjustable?: boolean;
+  /** Kalau true, layer ini adalah track statis progress bar (misal
+   *  progressbar.png) yang cuma relevan buat mode progressStyle "bar".
+   *  Di mode "waveform", bar-nya gambar ulang total (bukan cuma isian),
+   *  jadi track statis ini harus di-skip biar nggak dobel sama bar
+   *  waveform yang baru. */
+  hideInWaveformMode?: boolean;
 }
 
 /** Layer teks yang bisa di-custom user (judul, artist, nama device, dsb).

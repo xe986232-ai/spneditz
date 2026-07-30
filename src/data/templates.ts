@@ -112,6 +112,11 @@ export const TEMPLATES: Template[] = [
         label: "Progress bar",
         assetSrc: "/templates/iphone-music-player/progressbar.png",
         order: "front",
+        // Track abu-abu statis ini cuma buat mode "bar" (drawProgressFill
+        // isian di atasnya). Mode "waveform" gambar bar-nya dari nol
+        // (drawWaveformProgress), jadi track ini harus disembunyikan biar
+        // gak dobel/numpuk sama waveform-nya.
+        hideInWaveformMode: true,
       },
       {
         id: "musicplayer",

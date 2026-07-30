@@ -373,7 +373,12 @@ export async function exportTemplateVideo(
   // satu PNG transparan terpisah ("front.png") & di-overlay PALING akhir
   // tiap segmen, supaya selalu di atas foto sampul.
   const backDecorLayers = (template.decorLayers ?? []).filter((l) => l.order === "back");
-  const frontDecorLayers = (template.decorLayers ?? []).filter((l) => l.order === "front");
+  // Kalau progressStyle "waveform", skip decorLayer track statis
+  // (progressbar.png) — waveform gambar bar-nya dari nol, jadi track lama
+  // harus disembunyikan biar gak dobel/numpuk (samain sama preview).
+  const frontDecorLayers = (template.decorLayers ?? []).filter(
+    (l) => l.order === "front" && !(progressStyle === "waveform" && l.hideInWaveformMode),
+  );
   let hasFrontComposite = false;
   // Kalau template punya durationLayer, front overlay HARUS beda tiap
   // segmen (waktu berjalan berubah tiap foto) -> dibuat per-segmen di
