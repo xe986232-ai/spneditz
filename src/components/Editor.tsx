@@ -955,9 +955,6 @@ export default function Editor({
               {isExporting ? "Merender…" : "Ekspor"}
             </button>
           )}
-          <button className="rounded-full bg-rec px-4 py-2 text-sm font-semibold text-paper transition hover:bg-rec/90 active:scale-95">
-            Selesai
-          </button>
         </div>
       </div>
 

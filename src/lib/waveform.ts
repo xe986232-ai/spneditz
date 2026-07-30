@@ -72,18 +72,15 @@ async function renderBassBand(audioBuffer: AudioBuffer): Promise<AudioBuffer> {
   return offline.startRendering();
 }
 
-/** Dari sinyal yang sudah di-filter band bass, hitung energi RMS per bar
- *  lalu TONJOLKAN transient-nya (beat/kick yang "nyentak" naik tiba-tiba)
- *  dibanding bass yang cuma ngedengung rata/statis — supaya visual bar
- *  keliatan "mukul" pas kick-nya bunyi, bukan cuma naik-turun pelan. */
-function computeBassBarsFromBuffer(
-  bassBuffer: AudioBuffer,
-  barCount: number,
-): number[] {
-  const channelCount = bassBuffer.numberOfChannels;
-  const length = bassBuffer.length;
+/** Hitung energi RMS per bar dari SATU buffer audio apa aja (bisa full
+ *  spectrum ataupun yang udah di-filter band tertentu). Dipakai baik
+ *  buat sinyal bass (lewat renderBassBand) maupun sinyal full-spectrum
+ *  asli — biar dua-duanya bisa di-gabung nanti. */
+function computeRmsPerBar(buffer: AudioBuffer, barCount: number): number[] {
+  const channelCount = buffer.numberOfChannels;
+  const length = buffer.length;
   const channels: Float32Array[] = [];
-  for (let c = 0; c < channelCount; c++) channels.push(bassBuffer.getChannelData(c));
+  for (let c = 0; c < channelCount; c++) channels.push(buffer.getChannelData(c));
 
   const samplesPerBar = Math.max(1, Math.floor(length / barCount));
   const rms: number[] = [];
@@ -102,6 +99,24 @@ function computeBassBarsFromBuffer(
     }
     rms.push(n > 0 ? Math.sqrt(sumSq / n) : 0);
   }
+  return rms;
+}
+
+/** Gabungin energi BASS (buat transient/kick "mukul") sama energi FULL
+ *  SPECTRUM asli (vokal, gitar, hi-hat, cymbal, dst) per bar — supaya
+ *  visual "waveform berjalan" nggak cuma nunjukin kick doang (dulu
+ *  fullband-nya nggak ikut dihitung sama sekali, jadi keliatan MONOTON
+ *  ngikutin kick padahal banyak instrumen lain lagi bunyi). Kick tetap
+ *  ditonjolkan (dapet porsi transient terbesar), tapi frequency lain
+ *  sekarang ikut "ngisi" badan bar-nya, jadi lebih kerasa ngikutin lagu
+ *  secara keseluruhan, bukan cuma detak kick-nya doang. */
+function computeBassBarsFromBuffer(
+  bassBuffer: AudioBuffer,
+  fullBuffer: AudioBuffer,
+  barCount: number,
+): number[] {
+  const rms = computeRmsPerBar(bassBuffer, barCount);
+  const fullRms = computeRmsPerBar(fullBuffer, barCount);
 
   // Baseline = rata-rata bergerak beberapa bar sekitarnya (bass "dasar"/
   // sustain) — selisih rms terhadap baseline ini yang jadi sinyal
@@ -121,10 +136,23 @@ function computeBassBarsFromBuffer(
   });
 
   const transient = rms.map((v, i) => Math.max(0, v - baseline[i] * 0.65));
-  // Gabungkan: sebagian besar dari "sentakan" transient (bikin kick
-  // menonjol tajam), sisanya dari energi bass mentah (biar bassline yang
-  // nahan nada tetap kelihatan badannya, nggak ilang total jadi nol).
-  const combined = rms.map((v, i) => v * 0.35 + transient[i] * 1.4);
+  // Normalisasi fullRms dulu SENDIRI (skalanya beda dari rms bass yang
+  // udah di-highpass/lowpass) biar porsinya seimbang pas dijumlah, bukan
+  // ketelen skala salah satunya.
+  const maxFullRms = Math.max(...fullRms, 0.0001);
+  const normFullRms = fullRms.map((v) => v / maxFullRms);
+  const maxBassRms = Math.max(...rms, 0.0001);
+  const normBassRms = rms.map((v) => v / maxBassRms);
+  const maxTransient = Math.max(...transient, 0.0001);
+  const normTransient = transient.map((v) => v / maxTransient);
+
+  // Gabungan: porsi terbesar sekarang dari FULL SPECTRUM (semua
+  // instrumen ikut kebaca), transient kick tetap dikasih porsi lumayan
+  // biar tetap "mukul"/menonjol pas ada beat, sisanya dikit dari badan
+  // bass mentah biar bassline yang nahan nada nggak ilang total.
+  const combined = normFullRms.map(
+    (v, i) => v * 0.6 + normTransient[i] * 0.75 + normBassRms[i] * 0.2,
+  );
 
   const maxVal = Math.max(...combined, 0.0001);
   // Kurva pow(0.7) — sedikit "compress" biar hit yang lebih kecil tetap
@@ -196,7 +224,7 @@ export async function analyzeAudio(
     let bassPeaks: number[];
     try {
       const bassBuffer = await renderBassBand(audioBuffer);
-      bassPeaks = computeBassBarsFromBuffer(bassBuffer, bassBarCount);
+      bassPeaks = computeBassBarsFromBuffer(bassBuffer, audioBuffer, bassBarCount);
     } catch {
       bassPeaks = peaks;
     }
