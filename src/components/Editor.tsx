@@ -113,10 +113,15 @@ export default function Editor({
   // "Teks" di toolbar bawah. Label durasi TIDAK ada di sini — itu selalu
   // dihitung otomatis (lihat drawDurationLayer), bukan dari state ini.
   const [textValues, setTextValues] = useState(() => initialTextValues(template));
-  // Panel "Teks" lagi kebuka/nggak — beda dari selectedSlotId/selectedLayerId
-  // karena teks nggak butuh diklik satu-satu di canvas/timeline, cukup satu
-  // panel isi semua field teks yang tersedia untuk template ini.
-  const [textPanelOpen, setTextPanelOpen] = useState(false);
+  // Mode "Teks" lagi aktif/nggak — begitu true, timeline berganti tampilan:
+  // cuma nampilin track teks (sejumlah textLayers template ini), track lain
+  // (Background/slot/decor) disembunyikan sementara.
+  const [isTextMode, setIsTextMode] = useState(false);
+  // Track teks yang lagi diketuk/terseleksi di timeline (dalam isTextMode) —
+  // kalau ada isinya, toolbar bawah berubah jadi input edit khusus teks itu.
+  const [selectedTextLayerId, setSelectedTextLayerId] = useState<string | null>(
+    null,
+  );
 
   // ---- Mesin render: state media tiap slot (diisi contoh dari internet
   // dulu via sampleSrc, user bisa ganti kapan saja) ----
@@ -251,6 +256,11 @@ export default function Editor({
     (l) => l.adjustable,
   );
   const selectedLayer = adjustableLayers.find((l) => l.id === selectedLayerId);
+  // Track teks (dalam isTextMode) yang lagi terseleksi — dipakai buat nentuin
+  // isi toolbar bawah (input edit teks khusus layer itu).
+  const selectedTextLayer = template.textLayers?.find(
+    (l) => l.id === selectedTextLayerId,
+  );
   // Track pseudo "Background" (bukan decorLayer template) — aktif kalau
   // customBackground ada & lagi diseleksi user di timeline.
   const isBackgroundLayerSelected =
@@ -768,7 +778,58 @@ export default function Editor({
               <div className="pointer-events-none absolute -top-1 left-1/2 h-0 w-0 -translate-x-1/2 border-x-[6px] border-x-transparent border-t-[8px] border-t-rec" />
             </div>
 
-            {template.baseAssetSrc ? (
+            {template.baseAssetSrc && isTextMode ? (
+              /* Mode "Teks" aktif — hide semua track lain (Background, slot
+                 foto/video/audio, decor layer), cuma tampilin track teks
+                 sejumlah textLayers template ini. Klik salah satu track buat
+                 munculin input edit teks khusus layer itu di toolbar bawah. */
+              template.textLayers?.length ? (
+                <div style={{ width: TRACK_WIDTH }} className="flex flex-col gap-1 pb-1">
+                  {template.textLayers.map((layer) => {
+                    const isSelected = selectedTextLayerId === layer.id;
+                    const value = textValues[layer.id] || layer.defaultText;
+                    return (
+                      <div
+                        key={layer.id}
+                        className="relative h-9 rounded-md border border-mute/10 bg-black/20"
+                      >
+                        <div
+                          onClick={() => {
+                            setSelectedSlotId(null);
+                            setSelectedLayerId(null);
+                            setSelectedTextLayerId(layer.id);
+                          }}
+                          className={`absolute inset-y-0.5 left-0.5 cursor-pointer overflow-hidden rounded border transition ${
+                            isSelected
+                              ? "border-paper ring-2 ring-paper bg-amber-400/20"
+                              : "border-amber-400/40 bg-amber-400/15"
+                          }`}
+                          style={{ width: Math.max(28, DURATION * effectivePxPerSec - 4) }}
+                          title={layer.label}
+                        >
+                          <div className="flex h-full items-center gap-1 px-1.5">
+                            <Type size={11} className="shrink-0 text-amber-200" />
+                            <span className="truncate text-[9px] font-medium text-paper">
+                              {layer.label}
+                            </span>
+                            <span className="ml-auto max-w-[45%] shrink-0 truncate text-[8px] text-amber-200/80">
+                              {value}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div
+                  style={{ width: TRACK_WIDTH }}
+                  className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-mute/25 bg-graphite/40 py-2.5 text-xs text-mute"
+                >
+                  Template ini belum punya teks yang bisa di-custom.
+                </div>
+              )
+            ) : template.baseAssetSrc ? (
               /* Layer per elemen — tiap slot (foto/video/audio) punya
                  baris/track sendiri, kayak editor video beneran. Klik
                  buat SELECT (bukan langsung buka file picker) — ganti
@@ -1066,44 +1127,34 @@ export default function Editor({
             </button>
           )}
         </div>
-      ) : textPanelOpen ? (
-        <div className="flex max-h-48 shrink-0 flex-col gap-2 overflow-y-auto border-t border-mute/10 bg-panel px-3 py-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-paper">Teks</span>
-            <button
-              onClick={() => setTextPanelOpen(false)}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
-              title="Selesai"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          {template.textLayers?.length ? (
-            template.textLayers.map((layer) => (
-              <label key={layer.id} className="flex flex-col gap-1">
-                <span className="text-[10px] font-medium text-mute">
-                  {layer.label}
-                </span>
-                <input
-                  type="text"
-                  value={textValues[layer.id] ?? ""}
-                  maxLength={layer.maxLength}
-                  onChange={(e) =>
-                    setTextValues((prev) => ({
-                      ...prev,
-                      [layer.id]: e.target.value,
-                    }))
-                  }
-                  placeholder={layer.defaultText}
-                  className="w-full rounded-lg border border-mute/20 bg-graphite px-3 py-2 text-sm text-paper outline-none transition focus:border-paper/50"
-                />
-              </label>
-            ))
-          ) : (
-            <span className="py-2 text-center text-xs text-mute">
-              Template ini belum punya teks yang bisa di-custom.
+      ) : selectedTextLayer ? (
+        <div className="flex shrink-0 items-center gap-3 border-t border-mute/10 bg-panel px-3 py-2.5">
+          <button
+            onClick={() => setSelectedTextLayerId(null)}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
+            title="Selesai"
+          >
+            <X size={18} />
+          </button>
+          <label className="flex flex-1 flex-col gap-1">
+            <span className="text-[10px] font-medium text-mute">
+              {selectedTextLayer.label}
             </span>
-          )}
+            <input
+              type="text"
+              autoFocus
+              value={textValues[selectedTextLayer.id] ?? ""}
+              maxLength={selectedTextLayer.maxLength}
+              onChange={(e) =>
+                setTextValues((prev) => ({
+                  ...prev,
+                  [selectedTextLayer.id]: e.target.value,
+                }))
+              }
+              placeholder={selectedTextLayer.defaultText}
+              className="w-full rounded-lg border border-mute/20 bg-graphite px-3 py-2 text-sm text-paper outline-none transition focus:border-paper/50"
+            />
+          </label>
         </div>
       ) : (
         <div className="grid shrink-0 grid-cols-2 border-t border-mute/10 bg-panel px-1 py-1.5">
@@ -1116,14 +1167,19 @@ export default function Editor({
                   setActiveTool(id);
                   // Tombol "Audio" langsung buka file picker audio, hasil
                   // upload-nya langsung nempel jadi layer audio baru di
-                  // timeline (nggak muncul sebelum ini diklik).
+                  // timeline (nggak muncul sebelum ini diklik). Keluar dulu
+                  // dari mode Teks kalau lagi aktif.
                   if (id === "audio" && audioSlotDef) {
+                    setIsTextMode(false);
+                    setSelectedTextLayerId(null);
                     openPicker(audioSlotDef);
                   }
-                  // Tombol "Teks" buka panel edit teks (judul/artist/nama
-                  // device) — khusus layer teks aja, bukan file picker.
+                  // Tombol "Teks" ganti timeline jadi nampilin track teks
+                  // aja (hide track lain) — bukan file picker.
                   if (id === "text") {
-                    setTextPanelOpen(true);
+                    setSelectedSlotId(null);
+                    setSelectedLayerId(null);
+                    setIsTextMode(true);
                   }
                 }}
                 className={`flex flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 transition ${
