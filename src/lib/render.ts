@@ -238,6 +238,68 @@ export function drawProgressFill(
   ctx.restore();
 }
 
+/** Mode "waveform berjalan" buat progress — GANTINYA drawProgressFill,
+ *  BUKAN tambahan. Alih-alih garis isian polos, gambar deretan bar
+ *  equalizer sepanjang track (posisi & lebar x1/x2/y persis sama kayak
+ *  progressLayer, jadi reusable buat TEMPLATE MANAPUN yang punya
+ *  progressLayer — tidak hardcode ke satu template doang). Bar yang
+ *  sudah "dilewatin" playhead digambar terang (progressLayer.color),
+ *  sisanya redup — jadi progress-nya "berjalan" menyusuri bentuk lagu
+ *  asli, bukan cuma garis lurus.
+ *
+ *  `peaks` idealnya dari analyzeAudio(file) (lihat lib/waveform.ts) —
+ *  kalau belum ada (audio belum diupload/masih dianalisis), boleh kirim
+ *  array datar sebagai fallback (lihat FALLBACK_PEAKS di Editor.tsx). */
+export function drawWaveformProgress(
+  ctx: CanvasRenderingContext2D,
+  canvasW: number,
+  canvasH: number,
+  progressLayer: TemplateProgressLayer,
+  currentSec: number,
+  totalSec: number,
+  peaks: number[],
+) {
+  if (!peaks.length) return;
+  const ratio = totalSec > 0 ? Math.min(1, Math.max(0, currentSec / totalSec)) : 0;
+
+  const x1 = (progressLayer.x1 / 100) * canvasW;
+  const x2 = (progressLayer.x2 / 100) * canvasW;
+  const y = (progressLayer.y / 100) * canvasH;
+  const trackThickness = progressLayer.thickness;
+  const fullW = x2 - x1;
+  if (fullW <= 0) return;
+
+  // Bar tipis & rapat (mirip equalizer), skala mengikuti thickness track
+  // aslinya biar tetap proporsional di template manapun.
+  const barW = Math.max(2, trackThickness * 0.55);
+  const gap = Math.max(1, trackThickness * 0.35);
+  const step = barW + gap;
+  const barCount = Math.max(1, Math.floor(fullW / step));
+  // Amplitudo maksimum bar (di atas & bawah garis tengah) — dibikin
+  // beberapa kali lipat tebal track biar kelihatan kayak waveform
+  // beneran, bukan cuma garis rata.
+  const ampMax = Math.max(trackThickness * 7, canvasH * 0.018);
+  const activeColor = progressLayer.color ?? "#FFFFFF";
+
+  ctx.save();
+  for (let i = 0; i < barCount; i++) {
+    const t = barCount > 1 ? i / (barCount - 1) : 0;
+    const peakIdx = Math.min(peaks.length - 1, Math.floor(t * peaks.length));
+    const value = peaks[peakIdx] ?? 0.3;
+    const barH = Math.max(trackThickness, value * ampMax);
+    const x = x1 + i * step;
+    const isPlayed = t <= ratio;
+
+    ctx.globalAlpha = isPlayed ? 1 : 0.32;
+    ctx.fillStyle = activeColor;
+    roundRectPath(ctx, x, y - barH / 2, barW, barH, barW / 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+
+
 /** Baca durasi asli file/url audio (detik), dipakai supaya panjang video
  *  bisa otomatis ikut panjang lagu yang diupload user, bukan durasi
  *  template yang di-hardcode.

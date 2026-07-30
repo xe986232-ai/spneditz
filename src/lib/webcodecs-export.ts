@@ -31,6 +31,7 @@ import {
   roundRectPath,
   drawDurationLayer,
   drawProgressFill,
+  drawWaveformProgress,
   getAudioDuration,
 } from "./render";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
@@ -184,6 +185,12 @@ export async function exportTemplateVideoWebCodecs(
   // ditempel ulang) sebelum di-encode, biar video final ikut sama
   // persis kayak yang kedengeran di preview.
   audioClips?: AudioClipExport[],
+  // Gaya tampilan progress ("bar" standar atau "waveform" equalizer) —
+  // lihat komentar sama di engine.ts. Default "bar" biar backward-compatible.
+  progressStyle: "bar" | "waveform" = "bar",
+  // Peaks/amplitude file audio asli, cuma dipakai kalau progressStyle
+  // "waveform" (lihat drawWaveformProgress di render.ts).
+  peaks?: number[],
 ): Promise<Blob> {
   if (!isWebCodecsExportSupported()) {
     throw new Error("Browser ini tidak mendukung WebCodecs API (VideoEncoder/AudioEncoder).");
@@ -501,7 +508,19 @@ export async function exportTemplateVideoWebCodecs(
       drawDurationLayer(ctx, canvasW, canvasH, template.durationLayer, currentSec, totalDurationForMux);
     }
     if (template.progressLayer) {
-      drawProgressFill(ctx, canvasW, canvasH, template.progressLayer, currentSec, totalDurationForMux);
+      if (progressStyle === "waveform" && peaks?.length) {
+        drawWaveformProgress(
+          ctx,
+          canvasW,
+          canvasH,
+          template.progressLayer,
+          currentSec,
+          totalDurationForMux,
+          peaks,
+        );
+      } else {
+        drawProgressFill(ctx, canvasW, canvasH, template.progressLayer, currentSec, totalDurationForMux);
+      }
     }
 
     const videoFrame = new VideoFrame(frameCanvas, {

@@ -12,6 +12,7 @@ import {
   drawTextLayers,
   drawDurationLayer,
   drawProgressFill,
+  drawWaveformProgress,
   getAudioDuration,
 } from "./render";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
@@ -124,6 +125,11 @@ export async function compositeLayers(
     progressLayer?: TemplateProgressLayer;
     currentSec: number;
     totalSec: number;
+    // Gaya tampilan progress ("bar" standar / "waveform" equalizer) +
+    // data peaks-nya — opsional, default ke drawProgressFill kalau tidak
+    // diisi (backward-compatible, reusable untuk template manapun).
+    progressStyle?: "bar" | "waveform";
+    peaks?: number[];
   },
 ): Promise<Blob> {
   const canvas = document.createElement("canvas");
@@ -175,14 +181,26 @@ export async function compositeLayers(
     );
   }
   if (durationOverride?.progressLayer) {
-    drawProgressFill(
-      ctx,
-      canvasW,
-      canvasH,
-      durationOverride.progressLayer,
-      durationOverride.currentSec,
-      durationOverride.totalSec,
-    );
+    if (durationOverride.progressStyle === "waveform" && durationOverride.peaks?.length) {
+      drawWaveformProgress(
+        ctx,
+        canvasW,
+        canvasH,
+        durationOverride.progressLayer,
+        durationOverride.currentSec,
+        durationOverride.totalSec,
+        durationOverride.peaks,
+      );
+    } else {
+      drawProgressFill(
+        ctx,
+        canvasW,
+        canvasH,
+        durationOverride.progressLayer,
+        durationOverride.currentSec,
+        durationOverride.totalSec,
+      );
+    }
   }
 
   return canvasToBlob(canvas, opaque ? "image/jpeg" : "image/png", opaque ? 0.92 : undefined);
@@ -258,6 +276,10 @@ export async function exportTemplateVideo(
   // Hasil potong/geser/trim klip audio dari track "Musik latar" di
   // editor — lihat komentar sama di webcodecs-export.ts.
   audioClips?: AudioClipExport[],
+  // Gaya tampilan progress ("bar" standar / "waveform" equalizer) + peaks
+  // file audio asli — lihat komentar sama di engine.ts. Default "bar".
+  progressStyle: "bar" | "waveform" = "bar",
+  peaks?: number[],
 ): Promise<Blob> {
   // Sumber buat di-load sebagai <img> (preview compositing) — butuh URL.
   const backgroundImageSrc = customBackground?.url ?? template.baseAssetSrc;
@@ -701,6 +723,8 @@ export async function exportTemplateVideo(
               progressLayer: template.progressLayer,
               currentSec: tickCurrentSec,
               totalSec: totalDurationForMux,
+              progressStyle,
+              peaks,
             },
           );
           await ffmpeg.writeFile(tickFileName, await fetchFile(tickBlob));

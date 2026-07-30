@@ -36,6 +36,7 @@ import {
   drawTextLayers,
   drawDurationLayer,
   drawProgressFill,
+  drawWaveformProgress,
   ImageCache,
 } from "../lib/render";
 import type { SlotMediaEntry } from "../lib/render";
@@ -195,6 +196,14 @@ export default function Editor({
   // ---- Analisis audio asli: durasi & waveform (bukan durasi template
   // yang di-hardcode) ----
   const [audioInfo, setAudioInfo] = useState<AudioAnalysis | null>(null);
+  // ---- Gaya tampilan progress lagu — "bar" (garis isian polos, standar)
+  // atau "waveform" (bar equalizer ngikutin bentuk lagu asli, "berjalan"
+  // sesuai posisi playhead). Ini pilihan LEVEL PROJECT, bukan properti
+  // template — jadi berlaku buat template MANAPUN yang punya
+  // progressLayer, bukan cuma satu template tertentu. ----
+  const [progressStyle, setProgressStyle] = useState<"bar" | "waveform">(
+    "bar",
+  );
   // ---- Klip-klip di track audio (hasil potong/geser/trim user). Mulai
   // dari satu klip yang membentang penuh file audio, direset tiap kali
   // audio-nya diganti (lihat effect analisis audio di bawah). ----
@@ -531,14 +540,26 @@ export default function Editor({
     // Isian putih progress bar — juga selalu otomatis dari playhead,
     // digambar setelah durationLayer (urutan nggak penting, posisinya beda).
     if (template.progressLayer) {
-      drawProgressFill(
-        ctx,
-        canvasW,
-        canvasH,
-        template.progressLayer,
-        currentSec,
-        DURATION,
-      );
+      if (progressStyle === "waveform") {
+        drawWaveformProgress(
+          ctx,
+          canvasW,
+          canvasH,
+          template.progressLayer,
+          currentSec,
+          DURATION,
+          audioInfo?.peaks?.length ? audioInfo.peaks : FALLBACK_PEAKS,
+        );
+      } else {
+        drawProgressFill(
+          ctx,
+          canvasW,
+          canvasH,
+          template.progressLayer,
+          currentSec,
+          DURATION,
+        );
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -554,6 +575,8 @@ export default function Editor({
     backgroundBlur,
     textValues,
     DURATION,
+    progressStyle,
+    audioInfo,
   ]);
 
   // Drag playhead: geser langsung ke posisi jari/kursor, pause dulu selama digeser
@@ -849,6 +872,8 @@ export default function Editor({
           trimEnd,
           offset,
         })),
+        progressStyle,
+        audioInfo?.peaks?.length ? audioInfo.peaks : FALLBACK_PEAKS,
       );
       setExportResultUrl(URL.createObjectURL(blob));
       setExportEngineUsed(engine);
@@ -1129,6 +1154,44 @@ export default function Editor({
                  buat SELECT (bukan langsung buka file picker) — ganti
                  media dilakukan lewat tombol "Ganti" di toolbar bawah. */
               <div style={{ width: TRACK_WIDTH }} className="flex flex-col gap-1 pb-1">
+                {/* Pilihan tampilan progress lagu — muncul untuk TEMPLATE
+                    MANAPUN yang punya progressLayer (bukan cuma satu
+                    template tertentu), jadi fitur ini reusable. Pilihan
+                    disimpan per-project (state lokal editor), bukan
+                    di-hardcode ke template. */}
+                {template.progressLayer && (
+                  <div
+                    style={{ width: Math.max(TRACK_WIDTH, 200) }}
+                    className="flex items-center gap-2 rounded-md border border-mute/10 bg-black/20 px-2 py-1.5"
+                  >
+                    <span className="shrink-0 text-[9px] font-medium text-mute">
+                      Tampilan progress
+                    </span>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setProgressStyle("bar")}
+                        className={`rounded-full px-2.5 py-0.5 text-[9px] font-medium transition active:scale-95 ${
+                          progressStyle === "bar"
+                            ? "bg-paper text-graphite"
+                            : "bg-graphite text-mute hover:text-paper"
+                        }`}
+                      >
+                        Standar
+                      </button>
+                      <button
+                        onClick={() => setProgressStyle("waveform")}
+                        className={`rounded-full px-2.5 py-0.5 text-[9px] font-medium transition active:scale-95 ${
+                          progressStyle === "waveform"
+                            ? "bg-paper text-graphite"
+                            : "bg-graphite text-mute hover:text-paper"
+                        }`}
+                      >
+                        Waveform berjalan
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Track "Background" — cuma muncul kalau user udah transfer
                     sampul jadi background. Klik buat munculin slider
                     opacity & blur di toolbar bawah. */}

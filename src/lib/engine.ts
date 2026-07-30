@@ -40,6 +40,13 @@ export async function exportTemplateVideoAuto(
   // Hasil potong/geser/trim klip audio dari track "Musik latar" —
   // diteruskan ke kedua engine biar hasil export konsisten sama preview.
   audioClips?: AudioClipExport[],
+  // Gaya tampilan progress lagu ("bar" standar atau "waveform" equalizer
+  // ngikutin bentuk lagu) — pilihan user di editor, berlaku untuk
+  // TEMPLATE MANAPUN yang punya progressLayer (bukan hardcode 1 template).
+  progressStyle: "bar" | "waveform" = "bar",
+  // Data amplitude/peaks file audio asli, cuma dipakai kalau
+  // progressStyle === "waveform" (lihat drawWaveformProgress di render.ts).
+  peaks?: number[],
 ): Promise<ExportResult> {
   if (isWebCodecsExportSupported()) {
     // eslint-disable-next-line no-console
@@ -56,6 +63,8 @@ export async function exportTemplateVideoAuto(
         textValues,
         signal,
         audioClips,
+        progressStyle,
+        peaks,
       );
       // eslint-disable-next-line no-console
       console.info("[export] ✅ Berhasil pakai engine WebCodecs (VideoEncoder/AudioEncoder + mp4-muxer).");
@@ -88,6 +97,8 @@ export async function exportTemplateVideoAuto(
     textValues,
     signal,
     audioClips,
+    progressStyle,
+    peaks,
   );
   // eslint-disable-next-line no-console
   console.info("[export] ✅ Berhasil pakai engine FFmpeg.wasm.");
