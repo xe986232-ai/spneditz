@@ -25,6 +25,8 @@ import {
   AudioWaveform,
   SkipBack,
   SkipForward,
+  Bookmark,
+  Save,
 } from "lucide-react";
 import { getDominantColor } from "../lib/color";
 import type { Template, TemplateSlot, SlotType } from "../types";
@@ -46,6 +48,14 @@ import {
 import type { SlotMediaEntry } from "../lib/render";
 import { exportTemplateVideoAuto, ExportCancelledError, type ExportProgress, type ExportEngine } from "../lib/engine";
 import { analyzeAudio, type AudioAnalysis } from "../lib/waveform";
+import {
+  savePreset,
+  listPresets,
+  getPreset,
+  deletePreset,
+  storedMediaToEntry,
+  type PresetSummary,
+} from "../lib/presets";
 
 type Tool = {
   id: string;
@@ -246,6 +256,18 @@ export default function Editor({
   // lewat track "Background" di timeline bawah.
   const [showBgLabel, setShowBgLabel] = useState(false);
 
+  // Panel "Preset" — simpan/muat jepretan pengaturan (opacity, blur, gaya
+  // progress, teks, & foto/background) biar gak perlu ngatur ulang dari nol
+  // tiap buka project baru.
+  const [showPresetPanel, setShowPresetPanel] = useState(false);
+  const [presets, setPresets] = useState<PresetSummary[]>([]);
+  const [presetsLoading, setPresetsLoading] = useState(false);
+  const [presetName, setPresetName] = useState("");
+  const [presetBusyId, setPresetBusyId] = useState<string | null>(null);
+  const [isSavingPreset, setIsSavingPreset] = useState(false);
+  const [presetError, setPresetError] = useState<string | null>(null);
+  const [presetNotice, setPresetNotice] = useState<string | null>(null);
+
   const audioSlotDef = template.slots.find((s) => s.type === "audio");
   const audioMedia = audioSlotDef ? slotMedia[audioSlotDef.id] : undefined;
   // Slot media pertama (foto/video, bukan audio) — dipakai tombol "Media"
@@ -335,6 +357,32 @@ export default function Editor({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioMedia?.url]);
+
+  // Muat daftar preset tiap kali panel-nya dibuka.
+  useEffect(() => {
+    if (!showPresetPanel) return;
+    let cancelled = false;
+    setPresetsLoading(true);
+    setPresetError(null);
+    listPresets()
+      .then((list) => {
+        if (!cancelled) setPresets(list);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setPresetError(
+            e instanceof Error ? e.message : "Gagal memuat daftar preset.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPresetsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showPresetPanel]);
+
 
   const templateDurationSec = Math.max(
     0.1,
@@ -856,6 +904,128 @@ export default function Editor({
       ),
   );
 
+  async function handleSavePreset() {
+    const name = presetName.trim();
+    if (!name || isSavingPreset) return;
+    setIsSavingPreset(true);
+    setPresetError(null);
+    setPresetNotice(null);
+    try {
+      const record = await savePreset({
+        name,
+        template,
+        layerOpacity,
+        backgroundOpacity,
+        backgroundBlur,
+        progressStyle,
+        textValues,
+        slotMedia,
+        customBackground,
+      });
+      setPresets((prev) =>
+        [
+          {
+            id: record.id,
+            name: record.name,
+            createdAt: record.createdAt,
+            templateId: record.templateId,
+            templateName: record.templateName,
+            hasMedia:
+              Object.keys(record.slotMedia).length > 0 || !!record.customBackground,
+          },
+          ...prev,
+        ].sort((a, b) => b.createdAt - a.createdAt),
+      );
+      setPresetName("");
+      setPresetNotice(`Preset "${record.name}" tersimpan.`);
+    } catch (e) {
+      setPresetError(
+        e instanceof Error ? e.message : "Gagal menyimpan preset.",
+      );
+    } finally {
+      setIsSavingPreset(false);
+    }
+  }
+
+  async function handleLoadPreset(id: string) {
+    if (presetBusyId) return;
+    setPresetBusyId(id);
+    setPresetError(null);
+    setPresetNotice(null);
+    try {
+      const record = await getPreset(id);
+      if (!record) {
+        setPresetError("Preset tidak ditemukan (mungkin sudah dihapus).");
+        return;
+      }
+
+      // Slot media: cuma slot yang ADA di template SEKARANG yang diisi;
+      // slot yang tidak kesimpan di preset (dulu masih "sample") dibiarkan
+      // balik ke default sample template ini.
+      const nextSlotMedia = initialSlotMedia(template);
+      for (const slot of template.slots) {
+        const stored = record.slotMedia[slot.id];
+        if (stored) {
+          nextSlotMedia[slot.id] = storedMediaToEntry(stored, `${slot.id}-preset`);
+        }
+      }
+      setSlotMedia(nextSlotMedia);
+
+      setCustomBackground(
+        record.customBackground
+          ? storedMediaToEntry(record.customBackground, "background-preset")
+          : null,
+      );
+
+      // Opacity layer: cuma timpa layer yang beneran ada di template ini,
+      // sisanya (kalau preset dibuat dari template lain) diabaikan.
+      setLayerOpacity((prev) => {
+        const next = { ...prev };
+        for (const key of Object.keys(next)) {
+          if (record.layerOpacity[key] !== undefined) {
+            next[key] = record.layerOpacity[key];
+          }
+        }
+        return next;
+      });
+      setBackgroundOpacity(record.backgroundOpacity);
+      setBackgroundBlur(record.backgroundBlur);
+      setProgressStyle(record.progressStyle);
+
+      setTextValues((prev) => {
+        const next = { ...prev };
+        for (const key of Object.keys(next)) {
+          if (record.textValues[key] !== undefined) {
+            next[key] = record.textValues[key];
+          }
+        }
+        return next;
+      });
+
+      setPresetNotice(`Preset "${record.name}" dimuat.`);
+      setShowPresetPanel(false);
+    } catch (e) {
+      setPresetError(e instanceof Error ? e.message : "Gagal memuat preset.");
+    } finally {
+      setPresetBusyId(null);
+    }
+  }
+
+  async function handleDeletePreset(id: string, name: string) {
+    if (presetBusyId) return;
+    if (!window.confirm(`Hapus preset "${name}"? Tidak bisa dibatalkan.`)) return;
+    setPresetBusyId(id);
+    setPresetError(null);
+    try {
+      await deletePreset(id);
+      setPresets((prev) => prev.filter((p) => p.id !== id));
+    } catch (e) {
+      setPresetError(e instanceof Error ? e.message : "Gagal menghapus preset.");
+    } finally {
+      setPresetBusyId(null);
+    }
+  }
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     const slotId = pendingSlotRef.current;
@@ -983,6 +1153,13 @@ export default function Editor({
         </span>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowPresetPanel(true)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
+            title="Preset"
+          >
+            <Bookmark size={18} />
+          </button>
           <button
             className="flex h-9 w-9 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
             title="Urungkan"
@@ -1809,6 +1986,121 @@ export default function Editor({
         </div>
       )}
 
+
+      {/* Modal Preset — simpan pengaturan sekarang jadi preset baru, atau
+          muat/hapus preset yang sudah ada. */}
+      {showPresetPanel && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center sm:p-6">
+          <div className="flex max-h-[85dvh] w-full max-w-sm flex-col rounded-t-2xl bg-panel shadow-xl sm:rounded-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-mute/10 px-4 py-3">
+              <h2 className="text-sm font-semibold text-paper">Preset</h2>
+              <button
+                onClick={() => setShowPresetPanel(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="shrink-0 border-b border-mute/10 p-4">
+              <label className="mb-1.5 block text-[11px] font-medium text-mute">
+                Simpan pengaturan sekarang sebagai preset baru
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={presetName}
+                  onChange={(e) => setPresetName(e.target.value)}
+                  placeholder="Nama preset…"
+                  maxLength={60}
+                  className="min-w-0 flex-1 rounded-lg border border-mute/20 bg-graphite px-3 py-2 text-xs text-paper placeholder:text-mute/60 focus:border-mute/40 focus:outline-none"
+                />
+                <button
+                  onClick={handleSavePreset}
+                  disabled={!presetName.trim() || isSavingPreset}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg bg-paper px-3 text-xs font-semibold text-graphite transition active:scale-95 disabled:opacity-50"
+                >
+                  {isSavingPreset ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Save size={14} />
+                  )}
+                  Simpan
+                </button>
+              </div>
+              {presetError && (
+                <p className="mt-2 text-[11px] text-rec">{presetError}</p>
+              )}
+              {presetNotice && !presetError && (
+                <p className="mt-2 text-[11px] text-mute">{presetNotice}</p>
+              )}
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <p className="mb-2 text-[11px] font-medium text-mute">
+                Preset tersimpan
+              </p>
+              {presetsLoading ? (
+                <div className="flex items-center justify-center py-8 text-mute">
+                  <Loader2 size={18} className="animate-spin" />
+                </div>
+              ) : presets.length === 0 ? (
+                <p className="py-6 text-center text-xs text-mute">
+                  Belum ada preset. Atur project ini dulu, terus simpan di atas.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {presets.map((p) => {
+                    const isBusy = presetBusyId === p.id;
+                    const isOtherTemplate = p.templateId !== template.id;
+                    return (
+                      <div
+                        key={p.id}
+                        className="flex items-center gap-2 rounded-xl border border-mute/10 bg-graphite/60 p-2.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-medium text-paper">
+                            {p.name}
+                          </p>
+                          <p className="truncate text-[10px] text-mute">
+                            {p.templateName}
+                            {isOtherTemplate && " · template beda"}
+                            {" · "}
+                            {new Date(p.createdAt).toLocaleDateString("id-ID", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleLoadPreset(p.id)}
+                          disabled={isBusy}
+                          className="flex h-8 shrink-0 items-center justify-center rounded-lg bg-paper px-3 text-[11px] font-semibold text-graphite transition active:scale-95 disabled:opacity-50"
+                        >
+                          {isBusy ? (
+                            <Loader2 size={13} className="animate-spin" />
+                          ) : (
+                            "Muat"
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleDeletePreset(p.id, p.name)}
+                          disabled={isBusy}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-mute transition hover:bg-rec/10 hover:text-rec active:scale-95 disabled:opacity-50"
+                          title="Hapus preset"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal progress / hasil export */}
       {(isExporting || exportResultUrl || exportError) && (
