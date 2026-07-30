@@ -48,7 +48,6 @@ import {
 import type { SlotMediaEntry } from "../lib/render";
 import { exportTemplateVideoAuto, ExportCancelledError, type ExportProgress, type ExportEngine } from "../lib/engine";
 import { analyzeAudio, type AudioAnalysis } from "../lib/waveform";
-import { logExportEvent } from "../lib/exportLog";
 import {
   savePreset,
   listPresets,
@@ -1107,7 +1106,6 @@ export default function Editor({
       );
       setExportResultUrl(URL.createObjectURL(blob));
       setExportEngineUsed(engine);
-      logExportEvent(template.id);
     } catch (err) {
       if (err instanceof ExportCancelledError) {
         // User yang batalin sendiri — nggak usah dianggap error, tutup aja diam-diam.
