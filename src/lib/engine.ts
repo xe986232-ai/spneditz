@@ -12,6 +12,7 @@ import type { Template } from "../types";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
 import { exportTemplateVideo, ExportCancelledError, type ExportProgress } from "./export";
 import { exportTemplateVideoWebCodecs, isWebCodecsExportSupported } from "./webcodecs-export";
+import type { AudioClipExport } from "./audioClips";
 
 export type { ExportProgress } from "./export";
 export { ExportCancelledError } from "./export";
@@ -36,6 +37,9 @@ export async function exportTemplateVideoAuto(
   backgroundBlur: number = 0,
   textValues: TextValueState = {},
   signal?: AbortSignal,
+  // Hasil potong/geser/trim klip audio dari track "Musik latar" —
+  // diteruskan ke kedua engine biar hasil export konsisten sama preview.
+  audioClips?: AudioClipExport[],
 ): Promise<ExportResult> {
   if (isWebCodecsExportSupported()) {
     // eslint-disable-next-line no-console
@@ -51,6 +55,7 @@ export async function exportTemplateVideoAuto(
         backgroundBlur,
         textValues,
         signal,
+        audioClips,
       );
       // eslint-disable-next-line no-console
       console.info("[export] ✅ Berhasil pakai engine WebCodecs (VideoEncoder/AudioEncoder + mp4-muxer).");
@@ -82,6 +87,7 @@ export async function exportTemplateVideoAuto(
     backgroundBlur,
     textValues,
     signal,
+    audioClips,
   );
   // eslint-disable-next-line no-console
   console.info("[export] ✅ Berhasil pakai engine FFmpeg.wasm.");

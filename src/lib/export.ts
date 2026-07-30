@@ -15,6 +15,8 @@ import {
   getAudioDuration,
 } from "./render";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
+import { buildRemappedAudioBuffer, clipsAreTrivial, audioBufferToWavBlob } from "./audioClips";
+import type { AudioClipExport } from "./audioClips";
 
 export function loadImageEl(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -253,6 +255,9 @@ export async function exportTemplateVideo(
   // — dipakai buat gambar teks ke overlay export, konsisten sama preview.
   textValues: TextValueState = {},
   signal?: AbortSignal,
+  // Hasil potong/geser/trim klip audio dari track "Musik latar" di
+  // editor — lihat komentar sama di webcodecs-export.ts.
+  audioClips?: AudioClipExport[],
 ): Promise<Blob> {
   // Sumber buat di-load sebagai <img> (preview compositing) — butuh URL.
   const backgroundImageSrc = customBackground?.url ?? template.baseAssetSrc;
@@ -417,6 +422,10 @@ export async function exportTemplateVideo(
   const referenceDuration = Math.max(0.1, parseDurationSec(template.duration));
   let totalDurationForMux = referenceDuration;
   let timeScale = 1;
+  // Kalau ada, dan user udah motong/geser/trim track audio-nya di editor,
+  // ini bakal diisi Blob WAV hasil remap (silence + potongan yang
+  // ditempel ulang) — dipakai GANTI file audio asli pas muxing di bawah.
+  let remappedAudioBlob: Blob | null = null;
   if (audioMedia) {
     try {
       const audioDuration = await getAudioDuration(audioMedia.file ?? audioMedia.url);
@@ -425,6 +434,29 @@ export async function exportTemplateVideo(
     } catch {
       // Gagal baca durasi audio (mis. browser lama) -> tetap pakai durasi
       // template sebagai fallback, export tetap jalan.
+    }
+
+    if (audioClips && !clipsAreTrivial(audioClips, totalDurationForMux)) {
+      try {
+        const audioCtx = new AudioContext();
+        const source = audioMedia.file ?? audioMedia.url;
+        const arrayBuffer =
+          source instanceof File
+            ? await source.arrayBuffer()
+            : await (await fetch(source)).arrayBuffer();
+        const decoded = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+        const remapped = buildRemappedAudioBuffer(audioCtx, decoded, audioClips);
+        remappedAudioBlob = audioBufferToWavBlob(remapped);
+        totalDurationForMux = remapped.duration;
+        timeScale = remapped.duration / referenceDuration;
+        await audioCtx.close();
+      } catch (e) {
+        // Gagal decode/remap (mis. browser aneh) -> lanjut pakai audio
+        // ASLI utuh (tanpa potongan) daripada export gagal total.
+        // eslint-disable-next-line no-console
+        console.warn("[export] gagal remap audio hasil potong, pakai audio asli.", e);
+        remappedAudioBlob = null;
+      }
     }
   }
 
@@ -773,9 +805,9 @@ export async function exportTemplateVideo(
       percent: 90,
       label: "Menambahkan musik latar…",
     });
-    const ext = guessAudioExt(audioMedia.file, audioMedia.url);
+    const ext = remappedAudioBlob ? "wav" : guessAudioExt(audioMedia.file, audioMedia.url);
     const audioName = `audio.${ext}`;
-    const source = audioMedia.file ?? audioMedia.url;
+    const source: File | string | Blob = remappedAudioBlob ?? audioMedia.file ?? audioMedia.url;
     try {
       await ffmpeg.writeFile(audioName, await fetchFile(source));
 

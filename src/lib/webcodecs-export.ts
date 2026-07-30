@@ -36,6 +36,8 @@ import {
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
 import { loadImageEl, compositeLayers, ExportCancelledError } from "./export";
 import type { ExportProgress } from "./export";
+import { buildRemappedAudioBuffer, clipsAreTrivial } from "./audioClips";
+import type { AudioClipExport } from "./audioClips";
 
 const TARGET_FPS = 25;
 
@@ -176,6 +178,12 @@ export async function exportTemplateVideoWebCodecs(
   backgroundBlur: number = 0,
   textValues: TextValueState = {},
   signal?: AbortSignal,
+  // Hasil potong/geser/trim klip audio dari track "Musik latar" di
+  // editor (lihat Editor.tsx) — kalau ada & bukan klip "utuh" (belum
+  // diapa-apain), audio asli di-remap dulu (silence + potongan yang
+  // ditempel ulang) sebelum di-encode, biar video final ikut sama
+  // persis kayak yang kedengeran di preview.
+  audioClips?: AudioClipExport[],
 ): Promise<Blob> {
   if (!isWebCodecsExportSupported()) {
     throw new Error("Browser ini tidak mendukung WebCodecs API (VideoEncoder/AudioEncoder).");
@@ -277,6 +285,17 @@ export async function exportTemplateVideoWebCodecs(
       decodedAudioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
       totalDurationForMux = decodedAudioBuffer.duration;
       timeScale = totalDurationForMux / referenceDuration;
+      // Kalau user udah motong/geser/trim track audio-nya di editor
+      // (audioClips bukan "utuh"), susun ulang isi buffer sesuai posisi
+      // klip-klip itu SEBELUM di-encode — durasi total tetap sama, cuma
+      // isinya yang berubah (ada jeda senyap di bagian yang kepotong).
+      if (audioClips && !clipsAreTrivial(audioClips, totalDurationForMux)) {
+        decodedAudioBuffer = buildRemappedAudioBuffer(
+          audioCtx,
+          decodedAudioBuffer,
+          audioClips,
+        );
+      }
       await audioCtx.close();
     } catch {
       // Fallback: tetap pakai durasi template kalau audio gagal dibaca/decode.

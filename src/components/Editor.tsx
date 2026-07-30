@@ -87,6 +87,28 @@ const WAVEFORM_BAR_COUNT = 120;
 // Waveform datar sementara, ditampilin pas file audio baru diupload dan
 // masih dianalisis (belum ada data amplitude asli).
 const FALLBACK_PEAKS = Array.from({ length: WAVEFORM_BAR_COUNT }, () => 0.22);
+// Durasi minimum satu potongan klip audio (detik) — dijaga biar nggak
+// bisa ditrim/dipotong sampai lebih pendek dari ini (biar nggak "hilang").
+const MIN_CLIP_DURATION = 0.3;
+
+// Satu potongan klip di track audio: menyimpan rentang mana dari file
+// audio ASLI yang dipakai (trimStart..trimEnd, dalam detik source asli)
+// dan di detik berapa klip ini "ditempel" di timeline utama (offset).
+// Semua klip berasal dari file audio yang sama (audioMedia) — motong
+// (Potong/gunting) bikin satu klip jadi dua, geser cuma ubah offset,
+// drag tepi kiri/kanan cuma ubah trimStart/trimEnd.
+type AudioClip = {
+  id: string;
+  trimStart: number;
+  trimEnd: number;
+  offset: number;
+};
+
+let clipIdCounter = 0;
+function makeClipId() {
+  clipIdCounter += 1;
+  return `clip-${Date.now()}-${clipIdCounter}`;
+}
 
 function generateTimeMarks(duration: number): number[] {
   const step = duration <= 20 ? 5 : 10;
@@ -172,9 +194,24 @@ export default function Editor({
   // ---- Analisis audio asli: durasi & waveform (bukan durasi template
   // yang di-hardcode) ----
   const [audioInfo, setAudioInfo] = useState<AudioAnalysis | null>(null);
+  // ---- Klip-klip di track audio (hasil potong/geser/trim user). Mulai
+  // dari satu klip yang membentang penuh file audio, direset tiap kali
+  // audio-nya diganti (lihat effect analisis audio di bawah). ----
+  const [audioClips, setAudioClips] = useState<AudioClip[]>([]);
+  // Klip audio yang lagi diketuk/terseleksi di timeline — beda dari
+  // selectedSlotId (itu buat toolbar "Ganti Audio"), ini khusus nentuin
+  // klip mana yang nampilin handle trim kiri/kanan & bisa digeser/dipotong.
+  const [selectedAudioClipId, setSelectedAudioClipId] = useState<string | null>(
+    null,
+  );
   // ---- Lebar area timeline yang kelihatan, dipakai biar track selalu
   // mepet ke kanan layar baik durasinya panjang maupun pendek ----
   const [viewportWidth, setViewportWidth] = useState(340);
+  // Label "Background kustom" di pojok kiri atas preview — cuma nongol
+  // 3 detik tiap kali background kustom baru dipasang, abis itu fade out
+  // sendiri (biar nggak nutupin preview terus-terusan). Klik masih bisa
+  // lewat track "Background" di timeline bawah.
+  const [showBgLabel, setShowBgLabel] = useState(false);
 
   const audioSlotDef = template.slots.find((s) => s.type === "audio");
   const audioMedia = audioSlotDef ? slotMedia[audioSlotDef.id] : undefined;
@@ -193,15 +230,37 @@ export default function Editor({
     return () => ro.disconnect();
   }, []);
 
+  // Munculin label "Background kustom" tiap kali background kustom baru
+  // dipasang, lalu otomatis fade-out sendiri setelah 3 detik.
+  useEffect(() => {
+    if (!customBackground) {
+      setShowBgLabel(false);
+      return;
+    }
+    setShowBgLabel(true);
+    const timer = setTimeout(() => setShowBgLabel(false), 3000);
+    return () => clearTimeout(timer);
+  }, [customBackground]);
+
   // Baca durasi asli + waveform tiap kali audio diganti user
   useEffect(() => {
     let cancelled = false;
     setAudioInfo(null);
+    // Audio ganti (upload baru/dihapus) — mulai lagi dari nol: satu klip
+    // utuh nanti dibuat begitu durasi asli diketahui (lihat .then di bawah).
+    setAudioClips([]);
+    setSelectedAudioClipId(null);
     if (!audioMedia) return;
     const source = audioMedia.file ?? audioMedia.url;
     analyzeAudio(source, WAVEFORM_BAR_COUNT)
       .then((info) => {
-        if (!cancelled) setAudioInfo(info);
+        if (cancelled) return;
+        setAudioInfo(info);
+        // Klip default: satu klip yang membentang dari 0 sampai akhir file,
+        // ditempel dari detik 0 di timeline.
+        setAudioClips([
+          { id: makeClipId(), trimStart: 0, trimEnd: info.duration, offset: 0 },
+        ]);
       })
       .catch(() => {
         if (!cancelled) setAudioInfo(null);
@@ -311,19 +370,37 @@ export default function Editor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying]);
 
-  // Sinkronin audio latar sama playhead
+  // Klip audio yang aktif di detik playhead sekarang ini (kalau ada) —
+  // dipakai buat nentuin posisi file asli mana yang harus disuarakan.
+  // Karena hasil potong bisa bikin gap (klip nggak nutupin seluruh
+  // timeline), currentSec bisa nggak ke-cover klip manapun (jeda senyap).
+  const activeAudioClip = audioClips.find(
+    (c) => currentSec >= c.offset && currentSec < c.offset + (c.trimEnd - c.trimStart),
+  );
+
+  // Sinkronin audio latar sama playhead — ikutin klip yang lagi aktif
+  // (hasil potong/geser), bukan langsung 1:1 sama waktu di timeline.
   useEffect(() => {
     const el = audioElRef.current;
     if (!el || !audioMedia) return;
-    if (Math.abs(el.currentTime - currentSec) > 0.35) {
-      el.currentTime = currentSec;
+    if (!activeAudioClip) {
+      // Nggak ada klip di posisi playhead sekarang (habis dipotong &
+      // digeser jadi ada jeda) — diamkan audio-nya.
+      el.pause();
+      return;
+    }
+    const sourceTime =
+      activeAudioClip.trimStart + (currentSec - activeAudioClip.offset);
+    if (Math.abs(el.currentTime - sourceTime) > 0.35) {
+      el.currentTime = sourceTime;
     }
     if (isPlaying) {
       el.play().catch(() => {});
     } else {
       el.pause();
     }
-  }, [isPlaying, currentSec, audioMedia]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, currentSec, audioMedia, activeAudioClip?.id]);
 
   // ---- Render loop: gambar baseAssetSrc + slot yang aktif di detik ini ----
   const backgroundSrc = customBackground?.url ?? template.baseAssetSrc;
@@ -532,6 +609,142 @@ export default function Editor({
     setSelectedLayerId((id) => (id === BACKGROUND_LAYER_ID ? null : id));
   }
 
+  function clampNum(v: number, min: number, max: number) {
+    return Math.min(max, Math.max(min, v));
+  }
+
+  // Geser satu klip audio ke kiri/kanan di sepanjang timeline (posisi
+  // "nempel"-nya doang yang berubah, isi trim-nya tetap sama).
+  function handleAudioClipDragStart(e: React.PointerEvent, clip: AudioClip) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (audioSlotDef) setSelectedSlotId(audioSlotDef.id);
+    setSelectedLayerId(null);
+    setSelectedAudioClipId(clip.id);
+
+    const startX = e.clientX;
+    const originalOffset = clip.offset;
+    const duration = clip.trimEnd - clip.trimStart;
+    const maxOffset = Math.max(0, DURATION - duration);
+
+    const handleMove = (ev: PointerEvent) => {
+      const dSec = (ev.clientX - startX) / effectivePxPerSec;
+      const newOffset = clampNum(originalOffset + dSec, 0, maxOffset);
+      setAudioClips((prev) =>
+        prev.map((c) => (c.id === clip.id ? { ...c, offset: newOffset } : c)),
+      );
+    };
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  }
+
+  // Drag handle di tepi kiri/kanan klip audio buat trim — tepi kiri
+  // ubah trimStart (+ offset ikut geser), tepi kanan ubah trimEnd.
+  function handleAudioClipTrimStart(
+    e: React.PointerEvent,
+    clip: AudioClip,
+    edge: "left" | "right",
+  ) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (audioSlotDef) setSelectedSlotId(audioSlotDef.id);
+    setSelectedLayerId(null);
+    setSelectedAudioClipId(clip.id);
+
+    const startX = e.clientX;
+    const sourceDuration = audioInfo?.duration ?? clip.trimEnd;
+    const { trimStart, trimEnd, offset } = clip;
+
+    const handleMove = (ev: PointerEvent) => {
+      const dSec = (ev.clientX - startX) / effectivePxPerSec;
+      if (edge === "left") {
+        const lowerBound = Math.max(-trimStart, -offset);
+        const upperBound = trimEnd - MIN_CLIP_DURATION - trimStart;
+        const clamped = clampNum(dSec, lowerBound, upperBound);
+        const newTrimStart = trimStart + clamped;
+        const newOffset = offset + clamped;
+        setAudioClips((prev) =>
+          prev.map((c) =>
+            c.id === clip.id
+              ? { ...c, trimStart: newTrimStart, offset: newOffset }
+              : c,
+          ),
+        );
+      } else {
+        const maxTrimEnd = Math.min(
+          sourceDuration,
+          trimStart + (DURATION - offset),
+        );
+        const newTrimEnd = clampNum(
+          trimEnd + dSec,
+          trimStart + MIN_CLIP_DURATION,
+          maxTrimEnd,
+        );
+        setAudioClips((prev) =>
+          prev.map((c) => (c.id === clip.id ? { ...c, trimEnd: newTrimEnd } : c)),
+        );
+      }
+    };
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  }
+
+  // Tombol gunting "Potong" di toolbar bawah — motong klip audio yang lagi
+  // "dilewatin" playhead jadi dua klip terpisah (masing-masing bisa
+  // digeser/ditrim sendiri-sendiri).
+  function handleCutAudio() {
+    const clip = audioClips.find(
+      (c) =>
+        currentSec > c.offset && currentSec < c.offset + (c.trimEnd - c.trimStart),
+    );
+    if (!clip) return;
+    const splitSourceTime = clip.trimStart + (currentSec - clip.offset);
+    const leftDuration = splitSourceTime - clip.trimStart;
+    const rightDuration = clip.trimEnd - splitSourceTime;
+    if (leftDuration < MIN_CLIP_DURATION || rightDuration < MIN_CLIP_DURATION) return;
+
+    const leftClip: AudioClip = {
+      id: makeClipId(),
+      trimStart: clip.trimStart,
+      trimEnd: splitSourceTime,
+      offset: clip.offset,
+    };
+    const rightClip: AudioClip = {
+      id: makeClipId(),
+      trimStart: splitSourceTime,
+      trimEnd: clip.trimEnd,
+      offset: currentSec,
+    };
+    setAudioClips((prev) => {
+      const idx = prev.findIndex((c) => c.id === clip.id);
+      if (idx === -1) return prev;
+      const next = [...prev];
+      next.splice(idx, 1, leftClip, rightClip);
+      return next;
+    });
+    setSelectedAudioClipId(rightClip.id);
+  }
+
+  // Boleh motong cuma kalau track audio lagi keseleksi & playhead lagi
+  // ada di TENGAH salah satu klip (bukan di tepi/di luar klip manapun).
+  const canCutAudio = Boolean(
+    audioSlotDef &&
+      selectedSlotId === audioSlotDef.id &&
+      audioClips.some(
+        (c) =>
+          currentSec > c.offset &&
+          currentSec < c.offset + (c.trimEnd - c.trimStart),
+      ),
+  );
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     const slotId = pendingSlotRef.current;
@@ -600,6 +813,11 @@ export default function Editor({
         backgroundBlur,
         textValues,
         controller.signal,
+        audioClips.map(({ trimStart, trimEnd, offset }) => ({
+          trimStart,
+          trimEnd,
+          offset,
+        })),
       );
       setExportResultUrl(URL.createObjectURL(blob));
       setExportEngineUsed(engine);
@@ -706,8 +924,11 @@ export default function Editor({
               onClick={() => {
                 setSelectedSlotId(null);
                 setSelectedLayerId(BACKGROUND_LAYER_ID);
+                setShowBgLabel(true);
               }}
-              className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-medium text-paper backdrop-blur-sm transition active:scale-95"
+              className={`absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-medium text-paper backdrop-blur-sm transition-opacity duration-700 ease-out active:scale-95 ${
+                showBgLabel ? "opacity-100" : "pointer-events-none opacity-0"
+              }`}
               title="Atur opacity & blur background"
             >
               <Layers size={11} className="text-sky-300" />
@@ -721,8 +942,18 @@ export default function Editor({
       {/* Playback controls */}
       <div className="grid shrink-0 grid-cols-3 items-center border-t border-mute/10 bg-panel px-4 py-1.5">
         <button
-          className="justify-self-start flex h-8 w-8 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
-          title="Potong"
+          onClick={handleCutAudio}
+          disabled={!canCutAudio}
+          className={`justify-self-start flex h-8 w-8 items-center justify-center rounded-lg transition active:scale-95 ${
+            canCutAudio
+              ? "text-paper hover:bg-graphite"
+              : "cursor-not-allowed text-mute/40"
+          }`}
+          title={
+            canCutAudio
+              ? "Potong audio di posisi playhead"
+              : "Pilih track audio & posisikan playhead di tengah klip buat motong"
+          }
         >
           <Scissors size={17} />
         </button>
@@ -882,21 +1113,146 @@ export default function Editor({
                 )}
 
                 {visibleSlots.map((slot) => {
-                  const start = slot.startSec ?? 0;
-                  const end = slot.endSec ?? DURATION;
-                  const filled = Boolean(slotMedia[slot.id]);
                   const isAudio = slot.type === "audio";
+                  const filled = Boolean(slotMedia[slot.id]);
                   const isSelected = selectedSlotId === slot.id;
                   const Icon = SLOT_ICON[slot.type];
+
+                  // ---- Track audio: dirender sebagai kumpulan KLIP
+                  // terpisah (bukan satu blok statis) — tiap klip bisa
+                  // digeser (drag badan klip) & ditrim/dipotong (drag
+                  // handle di tepi kiri/kanan-nya begitu klip diseleksi).
+                  if (isAudio) {
+                    if (!filled) return null;
+                    const sourceDuration = audioInfo?.duration ?? DURATION;
+                    return (
+                      <div
+                        key={slot.id}
+                        onClick={() => {
+                          setSelectedLayerId(null);
+                          setSelectedSlotId(slot.id);
+                        }}
+                        className={`relative h-9 rounded-md border bg-black/20 transition ${
+                          isSelected ? "border-paper/40" : "border-mute/10"
+                        }`}
+                      >
+                        {audioClips.map((clip) => {
+                          const clipDuration = clip.trimEnd - clip.trimStart;
+                          const clipLeft = clip.offset * effectivePxPerSec + 2;
+                          const clipWidth = Math.max(
+                            22,
+                            clipDuration * effectivePxPerSec - 4,
+                          );
+                          const isClipSelected = selectedAudioClipId === clip.id;
+
+                          let clipPeaks: number[];
+                          if (audioInfo?.peaks?.length) {
+                            const total = audioInfo.peaks.length;
+                            const startIdx = clampNum(
+                              Math.floor((clip.trimStart / sourceDuration) * total),
+                              0,
+                              total - 1,
+                            );
+                            const endIdx = clampNum(
+                              Math.ceil((clip.trimEnd / sourceDuration) * total),
+                              startIdx + 1,
+                              total,
+                            );
+                            clipPeaks = audioInfo.peaks.slice(startIdx, endIdx);
+                          } else {
+                            const barCount = Math.max(
+                              4,
+                              Math.round(
+                                (clipDuration / Math.max(sourceDuration, 0.001)) *
+                                  WAVEFORM_BAR_COUNT,
+                              ),
+                            );
+                            clipPeaks = FALLBACK_PEAKS.slice(0, barCount);
+                          }
+
+                          return (
+                            <div
+                              key={clip.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedLayerId(null);
+                                setSelectedSlotId(slot.id);
+                                setSelectedAudioClipId(clip.id);
+                              }}
+                              onPointerDown={(e) =>
+                                handleAudioClipDragStart(e, clip)
+                              }
+                              className={`absolute inset-y-0.5 touch-none overflow-hidden rounded border transition ${
+                                isClipSelected
+                                  ? "cursor-grabbing border-paper ring-2 ring-paper bg-emerald-500/25"
+                                  : "cursor-grab border-emerald-500/40 bg-emerald-500/15 active:cursor-grabbing"
+                              }`}
+                              style={{ left: clipLeft, width: clipWidth }}
+                              title="Musik latar — tahan & geser buat pindah posisi"
+                            >
+                              {/* Waveform beneran, ngikutin amplitude/frekuensi
+                                  asli potongan file audio klip ini. */}
+                              <div className="pointer-events-none absolute inset-0 flex items-center gap-[2px] px-1.5">
+                                {clipPeaks.map((p, i) => (
+                                  <span
+                                    key={i}
+                                    className="w-[2px] shrink-0 rounded-full bg-emerald-300/80"
+                                    style={{
+                                      height: `${Math.max(8, Math.min(100, p * 100))}%`,
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                              <div className="pointer-events-none absolute left-1 top-0.5 flex items-center gap-1 rounded bg-black/55 px-1 py-[1px]">
+                                <Music size={9} className="shrink-0 text-emerald-300" />
+                                <span className="max-w-[90px] truncate text-[8px] font-medium text-paper">
+                                  Musik latar
+                                </span>
+                              </div>
+
+                              {/* Handle trim — cuma nongol pas klip ini
+                                  terseleksi, biar nggak numpuk-numpuk
+                                  keliatannya pas klip masih kecil/banyak. */}
+                              {isClipSelected && (
+                                <>
+                                  <div
+                                    onPointerDown={(e) => {
+                                      e.stopPropagation();
+                                      handleAudioClipTrimStart(e, clip, "left");
+                                    }}
+                                    className="absolute inset-y-0 left-0 z-20 w-3 cursor-ew-resize touch-none bg-paper/90"
+                                    title="Geser buat trim awal klip"
+                                  >
+                                    <div className="absolute left-1/2 top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-graphite" />
+                                  </div>
+                                  <div
+                                    onPointerDown={(e) => {
+                                      e.stopPropagation();
+                                      handleAudioClipTrimStart(e, clip, "right");
+                                    }}
+                                    className="absolute inset-y-0 right-0 z-20 w-3 cursor-ew-resize touch-none bg-paper/90"
+                                    title="Geser buat trim akhir klip"
+                                  >
+                                    <div className="absolute left-1/2 top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-graphite" />
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  }
+
+                  // ---- Track slot lain (foto/video) — tetap seperti
+                  // semula, satu blok statis sepanjang startSec..endSec. ----
+                  const start = slot.startSec ?? 0;
+                  const end = slot.endSec ?? DURATION;
                   const clipLeft = start * effectivePxPerSec + 2;
                   const clipWidth = Math.max(
                     28,
                     (end - start) * effectivePxPerSec - 4,
                   );
-                  const peaks =
-                    isAudio && filled
-                      ? audioInfo?.peaks ?? FALLBACK_PEAKS
-                      : null;
                   return (
                     <div
                       key={slot.id}
@@ -911,57 +1267,25 @@ export default function Editor({
                           isSelected
                             ? "border-paper ring-2 ring-paper"
                             : filled
-                              ? isAudio
-                                ? "border-emerald-500/40 bg-emerald-500/15"
-                                : "border-sky-400/40 bg-sky-400/20"
+                              ? "border-sky-400/40 bg-sky-400/20"
                               : "border-dashed border-mute/40 bg-transparent"
-                        } ${isSelected && filled ? (isAudio ? "bg-emerald-500/15" : "bg-sky-400/20") : ""}`}
+                        } ${isSelected && filled ? "bg-sky-400/20" : ""}`}
                         style={{ left: clipLeft, width: clipWidth }}
                         title={slot.label}
                       >
-                        {peaks ? (
-                          <>
-                            {/* Waveform beneran, ngikutin amplitude/frekuensi
-                                asli file audio-nya (bukan dekorasi statis) */}
-                            <div className="absolute inset-0 flex items-center gap-[2px] px-1.5">
-                              {peaks.map((p, i) => (
-                                <span
-                                  key={i}
-                                  className="w-[2px] shrink-0 rounded-full bg-emerald-300/80"
-                                  style={{
-                                    height: `${Math.max(8, Math.min(100, p * 100))}%`,
-                                  }}
-                                />
-                              ))}
-                            </div>
-                            <div className="pointer-events-none absolute left-1 top-0.5 flex items-center gap-1 rounded bg-black/55 px-1 py-[1px]">
-                              <Icon size={9} className="shrink-0 text-emerald-300" />
-                              <span className="max-w-[90px] truncate text-[8px] font-medium text-paper">
-                                {slot.label}
-                              </span>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="flex h-full items-center gap-1 px-1.5">
-                            <Icon
-                              size={11}
-                              className={`shrink-0 ${
-                                filled
-                                  ? isAudio
-                                    ? "text-emerald-300"
-                                    : "text-sky-200"
-                                  : "text-mute"
-                              }`}
-                            />
-                            <span
-                              className={`truncate text-[9px] font-medium ${
-                                filled ? "text-paper" : "text-mute"
-                              }`}
-                            >
-                              {slot.label}
-                            </span>
-                          </div>
-                        )}
+                        <div className="flex h-full items-center gap-1 px-1.5">
+                          <Icon
+                            size={11}
+                            className={`shrink-0 ${filled ? "text-sky-200" : "text-mute"}`}
+                          />
+                          <span
+                            className={`truncate text-[9px] font-medium ${
+                              filled ? "text-paper" : "text-mute"
+                            }`}
+                          >
+                            {slot.label}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1116,7 +1440,10 @@ export default function Editor({
       ) : selectedSlot ? (
         <div className="flex shrink-0 items-center gap-2 border-t border-mute/10 bg-panel px-3 py-2">
           <button
-            onClick={() => setSelectedSlotId(null)}
+            onClick={() => {
+              setSelectedSlotId(null);
+              setSelectedAudioClipId(null);
+            }}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
             title="Batal"
           >
@@ -1202,6 +1529,7 @@ export default function Editor({
                       setIsTextMode(false);
                       setSelectedTextLayerId(null);
                       setSelectedLayerId(null);
+                      setSelectedAudioClipId(null);
                       if (mediaSlotDef) setSelectedSlotId(mediaSlotDef.id);
                     }
                     // Tombol "Audio" cuma nampilin tombol kecil "Tambah
@@ -1212,12 +1540,14 @@ export default function Editor({
                       setSelectedTextLayerId(null);
                       setSelectedSlotId(null);
                       setSelectedLayerId(null);
+                      setSelectedAudioClipId(null);
                     }
                     // Tombol "Teks" ganti timeline jadi nampilin track teks
                     // aja (hide track lain) — bukan file picker.
                     if (id === "text") {
                       setSelectedSlotId(null);
                       setSelectedLayerId(null);
+                      setSelectedAudioClipId(null);
                       setIsTextMode(true);
                     }
                   }}
