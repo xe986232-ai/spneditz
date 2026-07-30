@@ -21,6 +21,7 @@ import {
   SlidersHorizontal,
   Layers,
   RotateCcw,
+  Trash2,
 } from "lucide-react";
 import type { Template, TemplateSlot, SlotType } from "../types";
 import {
@@ -733,6 +734,36 @@ export default function Editor({
     setSelectedAudioClipId(rightClip.id);
   }
 
+  // Tombol tong sampah di sebelah gunting — hapus klip audio yang lagi
+  // dipilih (biasanya hasil potongan yang gak kepake). Dipakai "ripple
+  // delete": klip-klip LAIN yang posisinya (offset) ada SETELAH klip yang
+  // dihapus otomatis digeser maju sepanjang durasi klip yang kehapus, jadi
+  // gak nyisain jeda senyap — klip berikutnya langsung mulai persis di
+  // titik itu (bukan tetap di posisi asalnya kayak masih ada bolongnya).
+  function handleDeleteAudioClip() {
+    const clip = audioClips.find((c) => c.id === selectedAudioClipId);
+    if (!clip) return;
+    const removedDuration = clip.trimEnd - clip.trimStart;
+    const gapStart = clip.offset;
+
+    setAudioClips((prev) =>
+      prev
+        .filter((c) => c.id !== clip.id)
+        .map((c) =>
+          c.offset >= gapStart
+            ? { ...c, offset: Math.max(0, c.offset - removedDuration) }
+            : c,
+        ),
+    );
+    setSelectedAudioClipId(null);
+  }
+
+  // Boleh hapus cuma kalau ada klip audio yang lagi keseleksi.
+  const canDeleteAudioClip = Boolean(
+    selectedAudioClipId &&
+      audioClips.some((c) => c.id === selectedAudioClipId),
+  );
+
   // Boleh motong cuma kalau track audio lagi keseleksi & playhead lagi
   // ada di TENGAH salah satu klip (bukan di tepi/di luar klip manapun).
   const canCutAudio = Boolean(
@@ -941,22 +972,40 @@ export default function Editor({
 
       {/* Playback controls */}
       <div className="grid shrink-0 grid-cols-3 items-center border-t border-mute/10 bg-panel px-4 py-1.5">
-        <button
-          onClick={handleCutAudio}
-          disabled={!canCutAudio}
-          className={`justify-self-start flex h-8 w-8 items-center justify-center rounded-lg transition active:scale-95 ${
-            canCutAudio
-              ? "text-paper hover:bg-graphite"
-              : "cursor-not-allowed text-mute/40"
-          }`}
-          title={
-            canCutAudio
-              ? "Potong audio di posisi playhead"
-              : "Pilih track audio & posisikan playhead di tengah klip buat motong"
-          }
-        >
-          <Scissors size={17} />
-        </button>
+        <div className="justify-self-start flex items-center gap-1">
+          <button
+            onClick={handleCutAudio}
+            disabled={!canCutAudio}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition active:scale-95 ${
+              canCutAudio
+                ? "text-paper hover:bg-graphite"
+                : "cursor-not-allowed text-mute/40"
+            }`}
+            title={
+              canCutAudio
+                ? "Potong audio di posisi playhead"
+                : "Pilih track audio & posisikan playhead di tengah klip buat motong"
+            }
+          >
+            <Scissors size={17} />
+          </button>
+          <button
+            onClick={handleDeleteAudioClip}
+            disabled={!canDeleteAudioClip}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition active:scale-95 ${
+              canDeleteAudioClip
+                ? "text-rec hover:bg-graphite"
+                : "cursor-not-allowed text-mute/40"
+            }`}
+            title={
+              canDeleteAudioClip
+                ? "Hapus bagian audio yang dipilih"
+                : "Pilih dulu bagian audio (klip) yang mau dihapus"
+            }
+          >
+            <Trash2 size={17} />
+          </button>
+        </div>
 
         <button
           onClick={() => setIsPlaying((p) => !p)}
