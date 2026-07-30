@@ -27,6 +27,7 @@ import {
   SkipForward,
   Bookmark,
   Save,
+  Lock,
 } from "lucide-react";
 import { getDominantColor } from "../lib/color";
 import type { Template, TemplateSlot, SlotType } from "../types";
@@ -49,6 +50,7 @@ import type { SlotMediaEntry } from "../lib/render";
 import { exportTemplateVideoAuto, ExportCancelledError, type ExportProgress, type ExportEngine } from "../lib/engine";
 import { analyzeAudio, type AudioAnalysis } from "../lib/waveform";
 import { logExportEvent } from "../lib/exportLog";
+import { subscribeWaveformEnabled } from "../lib/premiumFlags";
 import {
   savePreset,
   listPresets,
@@ -239,6 +241,26 @@ export default function Editor({
   const [progressStyle, setProgressStyle] = useState<"bar" | "waveform">(
     "bar",
   );
+  // ---- Status fitur premium "Waveform berjalan" — dengerin real-time
+  // dari Firebase Realtime Database (config/waveformEnabled). Selama belum
+  // kebaca (null), anggap terkunci dulu (fail-safe) biar nggak sempat
+  // kebuka keliru sebelum datanya sampai. ----
+  const [waveformEnabled, setWaveformEnabled] = useState<boolean | null>(
+    null,
+  );
+  useEffect(() => {
+    const unsubscribe = subscribeWaveformEnabled(setWaveformEnabled);
+    return unsubscribe;
+  }, []);
+  // Kalau lagi jalan pas fiturnya masih terkunci, tapi ternyata kepilih
+  // "waveform" dari preset lama (lihat Save/Load Preset) sebelum fiturnya
+  // resmi aktif, otomatis balikin ke "bar" biar nggak nyangkut pakai gaya
+  // yang harusnya belum boleh dipakai.
+  useEffect(() => {
+    if (waveformEnabled === false && progressStyle === "waveform") {
+      setProgressStyle("bar");
+    }
+  }, [waveformEnabled, progressStyle]);
   // ---- Klip-klip di track audio (hasil potong/geser/trim user). Mulai
   // dari satu klip yang membentang penuh file audio, direset tiap kali
   // audio-nya diganti (lihat effect analisis audio di bawah). ----
@@ -1898,13 +1920,28 @@ export default function Editor({
                 </span>
               </button>
               <button
-                onClick={() => setProgressStyle("waveform")}
-                className={`flex flex-col items-center gap-1.5 rounded-xl border px-3.5 py-2.5 transition active:scale-95 ${
+                onClick={() => {
+                  if (!waveformEnabled) return; // masih terkunci, abaikan klik
+                  setProgressStyle("waveform");
+                }}
+                aria-disabled={!waveformEnabled}
+                className={`relative flex flex-col items-center gap-1.5 rounded-xl border px-3.5 py-2.5 transition ${
+                  waveformEnabled ? "active:scale-95" : "opacity-60"
+                } ${
                   progressStyle === "waveform"
                     ? "border-paper bg-paper/10"
                     : "border-mute/15 bg-graphite/40"
                 }`}
               >
+                {/* Badge "Premium" — muncul selama config/waveformEnabled
+                    di Firebase belum di-set true. Ilang otomatis (real-time)
+                    begitu diaktifkan lewat Firebase Console. */}
+                {!waveformEnabled && (
+                  <span className="absolute -top-2 right-1 flex items-center gap-0.5 rounded-full bg-amber-400 px-1.5 py-0.5 text-[8px] font-bold text-graphite shadow-sm">
+                    <Lock size={8} strokeWidth={3} />
+                    Premium
+                  </span>
+                )}
                 <div className="flex h-6 w-24 items-end justify-center gap-[2px] rounded-full bg-black/50 px-1.5 py-1">
                   {[5, 10, 7, 14, 8, 12, 6, 5, 9, 5, 7, 4].map((h, i) => (
                     <div

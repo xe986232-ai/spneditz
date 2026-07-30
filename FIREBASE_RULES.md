@@ -29,6 +29,13 @@ Realtime Database → Rules** ke:
         }
       }
     },
+    "config": {
+      "waveformEnabled": {
+        ".read": true,
+        ".write": false,
+        ".validate": "newData.isBoolean()"
+      }
+    },
     ".read": false,
     ".write": false
   }
@@ -45,6 +52,13 @@ Kenapa gini:
   yang dipakai buat nampilin badge "X kali digunakan" di halaman pilih
   template. Nggak masalah dibuka karena isinya cuma angka pemakaian, bukan
   data sensitif.
+- `config/waveformEnabled` → **publik boleh baca** (dipakai aplikasi buat
+  nentuin gaya progress "Waveform berjalan" di editor terkunci/kebuka),
+  tapi `.write: false` → **cuma bisa diubah manual lewat Firebase Console**
+  (owner project bypass rules), nggak ada jalan buat browser nulis ke sini.
+  Kalau path ini belum pernah diisi sama sekali, `snapshot.val()` bakal
+  `null`, dan aplikasi menganggapnya `false` (terkunci) — jadi defaultnya
+  aman (terkunci) sampai kamu aktifkan manual.
 - `.validate: "newData.isNumber()"` → mencegah orang iseng nulis nilai aneh
   (string, object, dll) ke path itu lewat DevTools/network tab.
 - Root `.read/.write: false` → path lain di luar `exports` tertutup total.
