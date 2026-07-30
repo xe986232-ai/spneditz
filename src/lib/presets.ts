@@ -14,6 +14,22 @@ const DB_NAME = "spneditz-presets";
 const DB_VERSION = 1;
 const STORE_NAME = "presets";
 
+// Minta browser JANGAN otomatis hapus storage situs ini pas low-storage
+// (Chrome suka "evict" IndexedDB/localStorage situs yang jarang dibuka /
+// belum "persistent" kalau HP kehabisan ruang). Ini best-effort — browser
+// boleh nolak, tapi kalau dikabulin, resiko preset "ilang sendiri" jauh
+// berkurang. Dipanggil sekali tiap kali modul ini dipakai.
+export async function ensurePersistentStorage(): Promise<boolean> {
+  try {
+    if (!navigator.storage?.persist) return false;
+    const already = await navigator.storage.persisted?.();
+    if (already) return true;
+    return await navigator.storage.persist();
+  } catch {
+    return false;
+  }
+}
+
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === "undefined") {
@@ -167,6 +183,20 @@ export async function savePreset(params: {
   };
 
   await withStore("readwrite", (store) => store.put(record));
+
+  // Verifikasi beneran ke-simpen (baca ulang), bukan cuma asumsi put()
+  // gak nge-throw — biar kalau ada eviction/quota issue senyap, ketauan
+  // di sini juga (lempar error) daripada baru ketauan pas refresh.
+  const check = await withStore<PresetRecord | undefined>("readonly", (store) =>
+    store.get(record.id),
+  );
+  if (!check) {
+    throw new Error(
+      "Preset kelihatannya tersimpan tapi tidak ketemu lagi pas dicek ulang " +
+        "(kemungkinan storage browser penuh / dibatasi oleh sistem).",
+    );
+  }
+
   return record;
 }
 

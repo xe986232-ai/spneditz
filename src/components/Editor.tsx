@@ -54,6 +54,7 @@ import {
   getPreset,
   deletePreset,
   storedMediaToEntry,
+  ensurePersistentStorage,
   type PresetSummary,
 } from "../lib/presets";
 
@@ -364,6 +365,7 @@ export default function Editor({
     let cancelled = false;
     setPresetsLoading(true);
     setPresetError(null);
+    ensurePersistentStorage();
     listPresets()
       .then((list) => {
         if (!cancelled) setPresets(list);
@@ -2039,6 +2041,11 @@ export default function Editor({
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               <p className="mb-2 text-[11px] font-medium text-mute">
                 Preset tersimpan
+              </p>
+              <p className="mb-3 text-[10px] leading-relaxed text-mute/70">
+                Preset disimpan lokal di HP/browser ini aja (bukan di server) —
+                kalau hapus data situs / cache Chrome buat neditz.vercel.app,
+                atau pindah browser lain, preset ini bakal ikut hilang.
               </p>
               {presetsLoading ? (
                 <div className="flex items-center justify-center py-8 text-mute">
