@@ -82,14 +82,50 @@ export type PresetSummary = Pick<
   "id" | "name" | "createdAt" | "templateId" | "templateName"
 > & { hasMedia: boolean };
 
-// Blob URL (media.url) dipakai buat baca isi file — BUKAN media.file
-// langsung — karena object File dari input picker suka jadi stale di Chrome
-// Android (FileReader gagal baca, lihat juga catatan yang sama di
-// src/lib/export.ts). fetch() ke blob URL jauh lebih stabil.
+// Blob URL (media.url) dicoba duluan buat baca isi file — biasanya lebih
+// stabil daripada baca object File langsung (lihat catatan sama di
+// src/lib/export.ts soal bug File jadi stale di Chrome Android). TAPI kalau
+// fetch ke blob URL itu sendiri yang gagal (misal "Failed to fetch" — bisa
+// kejadian juga di beberapa WebView/Android build), fallback ke baca
+// File-nya langsung sebelum benar-benar nyerah.
 async function readEntryAsBlob(entry: SlotMediaEntry): Promise<StoredMedia> {
-  const res = await fetch(entry.url);
-  const blob = await res.blob();
-  return { blob, mimeType: entry.file?.type || blob.type || "application/octet-stream" };
+  let blob: Blob | null = null;
+  let lastErr: unknown;
+
+  // Coba fetch blob URL sampai 3x (kadang gagal sesaat doang, misal proses
+  // network internal Chrome lagi restart — umum kejadian intermiten di
+  // Android) sebelum nyerah & fallback ke File langsung.
+  for (let i = 0; i < 3 && !blob; i++) {
+    try {
+      const res = await fetch(entry.url);
+      if (!res.ok) throw new Error(`fetch blob URL gagal (status ${res.status})`);
+      blob = await res.blob();
+    } catch (e) {
+      lastErr = e;
+      if (i < 2) await new Promise((r) => setTimeout(r, 200 * (i + 1)));
+    }
+  }
+
+  if (!blob && entry.file) {
+    try {
+      blob = entry.file;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+
+  if (!blob) {
+    throw new Error(
+      `Gagal membaca file untuk disimpan ke preset. (${
+        lastErr instanceof Error ? lastErr.message : String(lastErr)
+      })`,
+    );
+  }
+
+  return {
+    blob,
+    mimeType: entry.file?.type || blob.type || "application/octet-stream",
+  };
 }
 
 export async function savePreset(params: {
