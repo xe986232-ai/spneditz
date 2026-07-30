@@ -296,11 +296,11 @@ export function drawWaveformProgress(
   // *dan* ke BAWAH dari titik itu, jadi ujung bawahnya nabrak
   // durationLayer (label waktu) yang emang sengaja ditaruh tepat di
   // bawah track tipis itu. Makanya di mode waveform, titik tengahnya
-  // digeser NAIK sejumlah setengah amplitudo maksimum — hasilnya bar
-  // cuma nyembul ke ATAS dari garis track aslinya, ujung bawahnya rata
-  // di posisi track standar (nggak pernah turun melewatinya), jadi aman
-  // dari label waktu di bawah tanpa perlu ubah posisi track di template.
-  const y = (progressLayer.y / 100) * canvasH - ampMax / 2;
+  // digeser NAIK dikit (bukan penuh setengah amplitudo — itu kegedean,
+  // jadi ketinggian & nabrak sampul) — cukup buat kasih jarak aman dari
+  // durationLayer di bawahnya, sisanya biar tetap "di sela-sela" antara
+  // sampul & label waktu, bukan nempel ke salah satunya.
+  const y = (progressLayer.y / 100) * canvasH - ampMax * 0.35;
   const activeColor = progressLayer.color ?? "#FFFFFF";
 
   // Titik "sekarang" di dalam array peaks (peaks dianggap terbentang
@@ -320,12 +320,20 @@ export function drawWaveformProgress(
     // yang bikin banyak bar tetangga kebagian nilai identik/patah2 kalau
     // datanya lebih jarang dari jumlah bar visual). Sekarang tiap bar
     // sample RENTANG-nya sendiri lewat sampleWaveformValue di bawah.
+    //
+    // PENTING: rentang di-CLAMP ke batas array (bukan di-skip ke nilai
+    // flat 0.05 kayak sebelumnya) — soalnya pas lagu baru mulai/mau abis
+    // (currentSec deket 0 atau deket totalSec), separuh jendela otomatis
+    // "nunjuk" ke luar array. Kalau nunjuk ke luar dipaksa flat 0.05,
+    // separuh bar jadi rata/pendek semua (kayak gaya "Standar") sementara
+    // separuhnya lagi masih waveform beneran — keliatan kayak GABUNGAN 2
+    // gaya (dobel). Dengan di-clamp ke ujung array terdekat, semua bar
+    // tetap konsisten satu gaya waveform dari awal sampai akhir lagu.
     const idxStart = centerIdx - idxSpanVisible / 2 + i * idxStep;
     const idxEnd = idxStart + idxStep;
-    const value =
-      idxEnd > 0 && idxStart < peaks.length
-        ? sampleWaveformValue(peaks, idxStart, idxEnd)
-        : 0.05;
+    const clampedStart = Math.max(0, Math.min(peaks.length - 1, idxStart));
+    const clampedEnd = Math.max(clampedStart + 0.001, Math.min(peaks.length, idxEnd));
+    const value = sampleWaveformValue(peaks, clampedStart, clampedEnd);
     const barH = Math.max(trackThickness, value * ampMax);
     const x = x1 + i * step;
     const isPlayed = barTimeOffset <= 0;

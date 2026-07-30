@@ -22,6 +22,7 @@ import {
   Layers,
   RotateCcw,
   Trash2,
+  AudioWaveform,
 } from "lucide-react";
 import type { Template, TemplateSlot, SlotType } from "../types";
 import {
@@ -54,6 +55,16 @@ const TOOLS: Tool[] = [
   { id: "audio", label: "Audio", icon: Music },
   { id: "text", label: "Teks", icon: Type },
 ];
+
+// Tab tambahan khusus pemilihan GAYA progress bar (Standar / Waveform
+// berjalan) — cuma ditampilkan kalau template-nya emang punya
+// progressLayer (bukan semua template punya elemen ini), makanya
+// dipisah dari TOOLS di atas dan digabung belakangan lewat visibleTools.
+const PROGRESS_STYLE_TOOL: Tool = {
+  id: "progress",
+  label: "Gaya",
+  icon: AudioWaveform,
+};
 
 const SLOT_ICON: Record<SlotType, LucideIcon> = {
   image: ImageIcon,
@@ -229,6 +240,12 @@ export default function Editor({
   // di toolbar bawah buat langsung menuju slot itu (sama seperti nge-tap
   // slot-nya langsung di timeline), tanpa buka file picker duluan.
   const mediaSlotDef = template.slots.find((s) => s.type !== "audio");
+  // Tab "Gaya" (pilihan progress bar) cuma relevan buat template yang
+  // punya progressLayer — biar reusable ke template lain yang gak punya
+  // elemen ini tanpa nampilin tab kosong/gak guna.
+  const visibleTools = template.progressLayer
+    ? [...TOOLS, PROGRESS_STYLE_TOOL]
+    : TOOLS;
 
   useEffect(() => {
     const el = timelineScrollRef.current;
@@ -1588,42 +1605,63 @@ export default function Editor({
               </button>
             </div>
           )}
-          {/* Pilihan tampilan progress lagu — muncul untuk TEMPLATE
-              MANAPUN yang punya progressLayer (bukan cuma satu template
-              tertentu), jadi fitur ini reusable. Ditaruh di sini (toolbar
-              bawah, konteks tab "Audio") biar deket sama pengaturan audio
-              lainnya, bukan nyempil di daftar layer timeline. */}
-          {activeTool === "audio" && template.progressLayer && (
-            <div className="flex items-center justify-center gap-2 border-b border-mute/10 px-3 py-2">
-              <span className="shrink-0 text-[9px] font-medium text-mute">
-                Tampilan progress
-              </span>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setProgressStyle("bar")}
-                  className={`rounded-full px-2.5 py-0.5 text-[9px] font-medium transition active:scale-95 ${
-                    progressStyle === "bar"
-                      ? "bg-paper text-graphite"
-                      : "bg-graphite text-mute hover:text-paper"
+          {/* Tab "Gaya" — preview visual tiap opsi progress bar SEBELUM
+              dipilih (bukan cuma teks label doang), biar user kebayang
+              hasilnya bakal kayak gimana. Preview-nya CSS ringan aja
+              (bukan render canvas asli) biar responsif & gak berat. */}
+          {activeTool === "progress" && template.progressLayer && (
+            <div className="flex items-center justify-center gap-3 border-b border-mute/10 px-3 py-3">
+              <button
+                onClick={() => setProgressStyle("bar")}
+                className={`flex flex-col items-center gap-1.5 rounded-xl border px-3.5 py-2.5 transition active:scale-95 ${
+                  progressStyle === "bar"
+                    ? "border-paper bg-paper/10"
+                    : "border-mute/15 bg-graphite/40"
+                }`}
+              >
+                <div className="flex h-6 w-24 items-center rounded-full bg-black/50 px-1">
+                  <div className="h-1.5 w-1/2 rounded-full bg-white" />
+                </div>
+                <span
+                  className={`text-[10px] font-medium ${
+                    progressStyle === "bar" ? "text-paper" : "text-mute"
                   }`}
                 >
                   Standar
-                </button>
-                <button
-                  onClick={() => setProgressStyle("waveform")}
-                  className={`rounded-full px-2.5 py-0.5 text-[9px] font-medium transition active:scale-95 ${
-                    progressStyle === "waveform"
-                      ? "bg-paper text-graphite"
-                      : "bg-graphite text-mute hover:text-paper"
+                </span>
+              </button>
+              <button
+                onClick={() => setProgressStyle("waveform")}
+                className={`flex flex-col items-center gap-1.5 rounded-xl border px-3.5 py-2.5 transition active:scale-95 ${
+                  progressStyle === "waveform"
+                    ? "border-paper bg-paper/10"
+                    : "border-mute/15 bg-graphite/40"
+                }`}
+              >
+                <div className="flex h-6 w-24 items-end justify-center gap-[2px] rounded-full bg-black/50 px-1.5 py-1">
+                  {[5, 10, 7, 14, 8, 12, 6, 5, 9, 5, 7, 4].map((h, i) => (
+                    <div
+                      key={i}
+                      className="w-[2px] rounded-full bg-white"
+                      style={{ height: h, opacity: i < 6 ? 1 : 0.32 }}
+                    />
+                  ))}
+                </div>
+                <span
+                  className={`text-[10px] font-medium ${
+                    progressStyle === "waveform" ? "text-paper" : "text-mute"
                   }`}
                 >
                   Waveform berjalan
-                </button>
-              </div>
+                </span>
+              </button>
             </div>
           )}
-          <div className="grid grid-cols-3 px-1 py-1.5">
-            {TOOLS.map(({ id, label, icon: Icon }) => {
+          <div
+            className="grid px-1 py-1.5"
+            style={{ gridTemplateColumns: `repeat(${visibleTools.length}, minmax(0, 1fr))` }}
+          >
+            {visibleTools.map(({ id, label, icon: Icon }) => {
               const active = activeTool === id;
               return (
                 <button
@@ -1657,6 +1695,17 @@ export default function Editor({
                       setSelectedLayerId(null);
                       setSelectedAudioClipId(null);
                       setIsTextMode(true);
+                    }
+                    // Tombol "Gaya" cuma nampilin preview-picker progress
+                    // bar (lihat blok di atas) — bukan file picker ataupun
+                    // mode teks, jadi clear semua seleksi biar timeline
+                    // balik netral kayak awal.
+                    if (id === "progress") {
+                      setIsTextMode(false);
+                      setSelectedTextLayerId(null);
+                      setSelectedSlotId(null);
+                      setSelectedLayerId(null);
+                      setSelectedAudioClipId(null);
                     }
                   }}
                   className={`flex flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 transition ${
