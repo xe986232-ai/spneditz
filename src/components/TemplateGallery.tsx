@@ -1,22 +1,8 @@
 import { useEffect, useState } from "react";
-import { Image as ImageIcon, Video, Music, Search } from "lucide-react";
+import { Image as ImageIcon, Search } from "lucide-react";
 import { TEMPLATES } from "../data/templates";
-import type { Template, SlotType } from "../types";
+import type { Template } from "../types";
 import { subscribeTemplateUsage } from "../lib/exportLog";
-
-function slotCounts(template: Template) {
-  const counts: Partial<Record<SlotType, number>> = {};
-  for (const slot of template.slots) {
-    counts[slot.type] = (counts[slot.type] ?? 0) + 1;
-  }
-  return counts;
-}
-
-const SLOT_ICON: Record<SlotType, typeof ImageIcon> = {
-  image: ImageIcon,
-  video: Video,
-  audio: Music,
-};
 
 function TemplateCard({
   template,
@@ -25,8 +11,6 @@ function TemplateCard({
   template: Template;
   onSelect: (t: Template) => void;
 }) {
-  const counts = slotCounts(template);
-
   // Jumlah "X kali digunakan" — dengerin real-time dari Firebase Realtime
   // Database, di-update otomatis tiap ada export baru (nggak perlu refresh).
   const [usageCount, setUsageCount] = useState<number | null>(null);
@@ -61,29 +45,14 @@ function TemplateCard({
           <p className="truncate text-[13px] font-semibold text-paper">
             {template.name}
           </p>
-          <div className="mt-1 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              {(Object.keys(counts) as SlotType[]).map((type) => {
-                const Icon = SLOT_ICON[type];
-                return (
-                  <span
-                    key={type}
-                    className="flex items-center gap-0.5 text-[10px] text-paper/75"
-                  >
-                    <Icon size={11} strokeWidth={2} />
-                    {counts[type]}
-                  </span>
-                );
-              })}
-            </div>
 
-            {/* "X kali digunakan" — sejajar row ikon slot foto/audio */}
-            {usageCount !== null && (
-              <span className="text-[10px] text-paper/60">
-                {usageCount.toLocaleString("id-ID")} kali digunakan
-              </span>
-            )}
-          </div>
+          {/* ikon foto + "X kali digunakan", rata kiri */}
+          {usageCount !== null && (
+            <div className="mt-1 flex items-center gap-1 text-[10px] text-paper/75">
+              <ImageIcon size={11} strokeWidth={2} />
+              <span>{usageCount.toLocaleString("id-ID")} kali digunakan</span>
+            </div>
+          )}
         </div>
       </div>
 
