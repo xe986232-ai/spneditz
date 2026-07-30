@@ -277,7 +277,6 @@ export function drawWaveformProgress(
 
   const x1 = (progressLayer.x1 / 100) * canvasW;
   const x2 = (progressLayer.x2 / 100) * canvasW;
-  const y = (progressLayer.y / 100) * canvasH;
   const trackThickness = progressLayer.thickness;
   const fullW = x2 - x1;
   if (fullW <= 0) return;
@@ -292,6 +291,16 @@ export function drawWaveformProgress(
   // beberapa kali lipat tebal track biar kelihatan kayak waveform
   // beneran, bukan cuma garis rata.
   const ampMax = Math.max(trackThickness * 7, canvasH * 0.018);
+  // progressLayer.y itu posisi track TIPIS standar (mode "Standar") —
+  // kalau dipakai apa adanya buat waveform, bar-nya jadi nyembul ke ATAS
+  // *dan* ke BAWAH dari titik itu, jadi ujung bawahnya nabrak
+  // durationLayer (label waktu) yang emang sengaja ditaruh tepat di
+  // bawah track tipis itu. Makanya di mode waveform, titik tengahnya
+  // digeser NAIK sejumlah setengah amplitudo maksimum — hasilnya bar
+  // cuma nyembul ke ATAS dari garis track aslinya, ujung bawahnya rata
+  // di posisi track standar (nggak pernah turun melewatinya), jadi aman
+  // dari label waktu di bawah tanpa perlu ubah posisi track di template.
+  const y = (progressLayer.y / 100) * canvasH - ampMax / 2;
   const activeColor = progressLayer.color ?? "#FFFFFF";
 
   // Titik "sekarang" di dalam array peaks (peaks dianggap terbentang

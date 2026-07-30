@@ -1151,44 +1151,9 @@ export default function Editor({
                  buat SELECT (bukan langsung buka file picker) — ganti
                  media dilakukan lewat tombol "Ganti" di toolbar bawah. */
               <div style={{ width: TRACK_WIDTH }} className="flex flex-col gap-1 pb-1">
-                {/* Pilihan tampilan progress lagu — muncul untuk TEMPLATE
-                    MANAPUN yang punya progressLayer (bukan cuma satu
-                    template tertentu), jadi fitur ini reusable. Pilihan
-                    disimpan per-project (state lokal editor), bukan
-                    di-hardcode ke template. */}
-                {template.progressLayer && (
-                  <div
-                    style={{ width: Math.max(TRACK_WIDTH, 200) }}
-                    className="flex items-center gap-2 rounded-md border border-mute/10 bg-black/20 px-2 py-1.5"
-                  >
-                    <span className="shrink-0 text-[9px] font-medium text-mute">
-                      Tampilan progress
-                    </span>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => setProgressStyle("bar")}
-                        className={`rounded-full px-2.5 py-0.5 text-[9px] font-medium transition active:scale-95 ${
-                          progressStyle === "bar"
-                            ? "bg-paper text-graphite"
-                            : "bg-graphite text-mute hover:text-paper"
-                        }`}
-                      >
-                        Standar
-                      </button>
-                      <button
-                        onClick={() => setProgressStyle("waveform")}
-                        className={`rounded-full px-2.5 py-0.5 text-[9px] font-medium transition active:scale-95 ${
-                          progressStyle === "waveform"
-                            ? "bg-paper text-graphite"
-                            : "bg-graphite text-mute hover:text-paper"
-                        }`}
-                      >
-                        Waveform berjalan
-                      </button>
-                    </div>
-                  </div>
-                )}
-
+                {/* Pilihan tampilan progress lagu dipindah ke toolbar
+                    bawah (muncul pas tab "Audio" aktif) — lihat
+                    activeTool === "audio" di bagian toolbar. */}
                 {/* Track "Background" — cuma muncul kalau user udah transfer
                     sampul jadi background. Klik buat munculin slider
                     opacity & blur di toolbar bawah. */}
@@ -1621,6 +1586,40 @@ export default function Editor({
                 <Plus size={13} />
                 Tambah Audio
               </button>
+            </div>
+          )}
+          {/* Pilihan tampilan progress lagu — muncul untuk TEMPLATE
+              MANAPUN yang punya progressLayer (bukan cuma satu template
+              tertentu), jadi fitur ini reusable. Ditaruh di sini (toolbar
+              bawah, konteks tab "Audio") biar deket sama pengaturan audio
+              lainnya, bukan nyempil di daftar layer timeline. */}
+          {activeTool === "audio" && template.progressLayer && (
+            <div className="flex items-center justify-center gap-2 border-b border-mute/10 px-3 py-2">
+              <span className="shrink-0 text-[9px] font-medium text-mute">
+                Tampilan progress
+              </span>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setProgressStyle("bar")}
+                  className={`rounded-full px-2.5 py-0.5 text-[9px] font-medium transition active:scale-95 ${
+                    progressStyle === "bar"
+                      ? "bg-paper text-graphite"
+                      : "bg-graphite text-mute hover:text-paper"
+                  }`}
+                >
+                  Standar
+                </button>
+                <button
+                  onClick={() => setProgressStyle("waveform")}
+                  className={`rounded-full px-2.5 py-0.5 text-[9px] font-medium transition active:scale-95 ${
+                    progressStyle === "waveform"
+                      ? "bg-paper text-graphite"
+                      : "bg-graphite text-mute hover:text-paper"
+                  }`}
+                >
+                  Waveform berjalan
+                </button>
+              </div>
             </div>
           )}
           <div className="grid grid-cols-3 px-1 py-1.5">
