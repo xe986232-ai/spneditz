@@ -1,76 +1,9 @@
 import type { Template } from "../types";
 
-// Placeholder — nanti diganti video hasil render asli tiap template.
-// (Big Buck Bunny, CC-BY, cuma buat contoh video preview-nya jalan)
-const PLACEHOLDER_PREVIEW =
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
-
+// Hanya satu template yang aktif untuk sekarang: iPhone Music Player.
+// Template lain (Reels Ceria, Minimal Duo, dst) dilepas dulu dari galeri
+// sampai asset & mesin render masing-masing beneran siap.
 export const TEMPLATES: Template[] = [
-  {
-    id: "ceria-3foto",
-    name: "Reels Ceria",
-    duration: "0:15",
-    gradientFrom: "#FF9A5A",
-    gradientTo: "#E14C4C",
-    previewSrc: PLACEHOLDER_PREVIEW,
-    // Template AKTIF dengan asset & mesin render beneran — sisanya di
-    // bawah masih placeholder gradient (belum dikerjain, giliran berikut).
-    canvasWidth: 1080,
-    canvasHeight: 1920,
-    // Background dasar template: foto asli (bukan gradient kode), diambil
-    // dari internet (Picsum -> sumber foto Unsplash). Nanti gampang
-    // diganti ke asset desain sendiri, tinggal ganti string URL ini.
-    baseAssetSrc: "https://picsum.photos/id/1043/1080/1920",
-    baseAssetType: "image",
-    slots: [
-      {
-        id: "img1",
-        type: "image",
-        label: "Foto 1",
-        x: 7.4,
-        y: 7.3,
-        width: 85.2,
-        height: 29.2,
-        startSec: 0,
-        endSec: 5,
-        radius: 24,
-        sampleSrc: "https://picsum.photos/id/1015/920/560",
-      },
-      {
-        id: "img2",
-        type: "image",
-        label: "Foto 2",
-        x: 7.4,
-        y: 38.5,
-        width: 85.2,
-        height: 29.2,
-        startSec: 5,
-        endSec: 10,
-        radius: 24,
-        sampleSrc: "https://picsum.photos/id/1016/920/560",
-      },
-      {
-        id: "img3",
-        type: "image",
-        label: "Foto 3",
-        x: 7.4,
-        y: 69.8,
-        width: 85.2,
-        height: 24.0,
-        startSec: 10,
-        endSec: 15,
-        radius: 24,
-        sampleSrc: "https://picsum.photos/id/1018/920/460",
-      },
-      {
-        id: "audio1",
-        type: "audio",
-        label: "Musik latar",
-        startSec: 0,
-        endSec: 15,
-      },
-    ],
-  },
   {
     id: "iphone-music-player",
     name: "iPhone Music Player",
@@ -79,7 +12,7 @@ export const TEMPLATES: Template[] = [
     duration: "0:15",
     gradientFrom: "#2C2C2E",
     gradientTo: "#0A0A0C",
-    previewSrc: PLACEHOLDER_PREVIEW,
+    previewImage: "/templates/iphone-music-player/preview.jpg",
     canvasWidth: 1080,
     canvasHeight: 1920,
     // Background polos gelap doang — dekorasinya (card, ikon, progress
@@ -219,84 +152,5 @@ export const TEMPLATES: Template[] = [
       thickness: 10,
       color: "#FFFFFF",
     },
-  },
-  {
-    id: "minimal-2foto",
-    name: "Minimal Duo",
-    duration: "0:10",
-    gradientFrom: "#8E9AAF", 
-    gradientTo: "#3A3F4B",
-    previewSrc: PLACEHOLDER_PREVIEW,
-    slots: [
-      { id: "img1", type: "image", label: "Foto 1" },
-      { id: "img2", type: "image", label: "Foto 2" },
-      { id: "audio1", type: "audio", label: "Musik latar" },
-    ],
-  },
-  {
-    id: "produk-4foto",
-    name: "Katalog Produk",
-    duration: "0:20",
-    gradientFrom: "#5AC8A8",
-    gradientTo: "#1E6E5C",
-    previewSrc: PLACEHOLDER_PREVIEW,
-    slots: [
-      { id: "img1", type: "image", label: "Foto produk 1" },
-      { id: "img2", type: "image", label: "Foto produk 2" },
-      { id: "img3", type: "image", label: "Foto produk 3" },
-      { id: "img4", type: "image", label: "Foto produk 4" },
-      { id: "audio1", type: "audio", label: "Musik latar" },
-    ],
-  },
-  {
-    id: "vlog-video",
-    name: "Vlog Harian",
-    duration: "0:30",
-    gradientFrom: "#F2C14E",
-    gradientTo: "#B8860B",
-    previewSrc: PLACEHOLDER_PREVIEW,
-    slots: [
-      { id: "vid1", type: "video", label: "Klip video" },
-      { id: "img1", type: "image", label: "Foto penutup" },
-      { id: "audio1", type: "audio", label: "Musik latar" },
-    ],
-  },
-  {
-    id: "quotes-1foto",
-    name: "Kutipan Harian",
-    duration: "0:08",
-    gradientFrom: "#B08CE0",
-    gradientTo: "#5C3D91",
-    previewSrc: PLACEHOLDER_PREVIEW,
-    slots: [
-      { id: "img1", type: "image", label: "Foto latar" },
-      { id: "audio1", type: "audio", label: "Musik latar" },
-    ],
-  },
-  {
-    id: "before-after",
-    name: "Before / After",
-    duration: "0:12",
-    gradientFrom: "#4EA1F2",
-    gradientTo: "#1A4E8A",
-    previewSrc: PLACEHOLDER_PREVIEW,
-    slots: [
-      { id: "img1", type: "image", label: "Foto sebelum" },
-      { id: "img2", type: "image", label: "Foto sesudah" },
-      { id: "audio1", type: "audio", label: "Musik latar" },
-    ],
-  },
-  {
-    id: "giveaway-seru",
-    name: "Giveaway Seru",
-    duration: "0:12",
-    gradientFrom: "#F26DA8",
-    gradientTo: "#7C3AAD",
-    previewSrc: PLACEHOLDER_PREVIEW,
-    slots: [
-      { id: "img1", type: "image", label: "Foto hadiah" },
-      { id: "img2", type: "image", label: "Foto brand/logo" },
-      { id: "audio1", type: "audio", label: "Musik latar" },
-    ],
   },
 ];

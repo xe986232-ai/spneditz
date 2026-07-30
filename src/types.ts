@@ -116,9 +116,13 @@ export interface Template {
   /** Warna gradasi thumbnail preview (bukan warna UI/chrome) */
   gradientFrom: string;
   gradientTo: string;
-  /** Video contoh hasil jadi, diputar saat tombol play di gallery ditekan.
-   *  Placeholder dulu — ganti per template dengan video hasil render asli. */
+  /** Video contoh hasil jadi (sudah tidak dipakai di gallery — kartu template
+   *  sekarang selalu tampilkan gambar statis lewat previewImage). Dibiarkan
+   *  ada di tipe biar kompatibel kalau video preview mau diaktifkan lagi. */
   previewSrc?: string;
+  /** Gambar preview statis (hasil komposit tampilan jadi template ini),
+   *  ditampilkan langsung di kartu galeri tanpa perlu diklik/diputar. */
+  previewImage?: string;
   slots: TemplateSlot[];
 
   /** Asset dasar template (background/frame/dekorasi) — gambar ASLI,
