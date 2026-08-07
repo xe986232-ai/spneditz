@@ -18,6 +18,7 @@ import {
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
 import { buildRemappedAudioBuffer, clipsAreTrivial, audioBufferToWavBlob } from "./audioClips";
 import type { AudioClipExport } from "./audioClips";
+import { drawLiquidGlassCard, resolveLiquidGlassRectPx } from "./liquidGlass";
 
 export function loadImageEl(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -181,9 +182,24 @@ export async function compositeLayers(
   }
 
   for (const layer of layers) {
-    const img = await loadImageEl(layer.assetSrc);
     const op = (layerOpacity[layer.id] ?? layer.opacity ?? 100) / 100;
     if (op <= 0) continue;
+    if (layer.liquidGlass) {
+      // Card kaca live: render pakai mesin yang SAMA dengan preview
+      // (liquidGlass.ts) — nembus & merefraksi background yang sudah
+      // digambar di `canvas` sejauh ini (bukan lagi drawImage PNG statis).
+      const rect = resolveLiquidGlassRectPx(layer.liquidGlass, canvasW, canvasH);
+      drawLiquidGlassCard(
+        ctx,
+        canvas,
+        rect,
+        `glass-export-${layer.id}`,
+        layer.liquidGlass.settings,
+        op,
+      );
+      continue;
+    }
+    const img = await loadImageEl(layer.assetSrc);
     ctx.save();
     ctx.globalAlpha = op;
     ctx.drawImage(img, 0, 0, canvasW, canvasH);

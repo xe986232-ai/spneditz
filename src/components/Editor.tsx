@@ -30,7 +30,7 @@ import {
   Lock,
 } from "lucide-react";
 import { getDominantColor } from "../lib/color";
-import type { Template, TemplateSlot, SlotType } from "../types";
+import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../types";
 import {
   parseDurationSec,
   initialSlotMedia,
@@ -47,6 +47,11 @@ import {
   ImageCache,
 } from "../lib/render";
 import type { SlotMediaEntry } from "../lib/render";
+import {
+  drawLiquidGlassCard,
+  resolveLiquidGlassRectPx,
+  DEFAULT_LIQUID_GLASS_SETTINGS,
+} from "../lib/liquidGlass";
 import { exportTemplateVideoAuto, ExportCancelledError, type ExportProgress, type ExportEngine } from "../lib/engine";
 import { analyzeAudio, type AudioAnalysis } from "../lib/waveform";
 import { logExportEvent } from "../lib/exportLog";
@@ -174,6 +179,13 @@ export default function Editor({
   const [layerOpacity, setLayerOpacity] = useState(() =>
     initialLayerOpacity(template),
   );
+  // Setelan efek "liquid glass" per decorLayer yang punya `liquidGlass`
+  // (misal: Card Player Glass) — cuma nyimpen field yang SUDAH diubah
+  // user lewat panel "Pengaturan Kaca"; field yang belum disentuh tetap
+  // pakai default dari data template (lihat getEffectiveGlassSettings).
+  const [glassSettings, setGlassSettings] = useState<
+    Record<string, Partial<LiquidGlassSettings>>
+  >({});
   // Isi tiap textLayer yang bisa di-custom (judul, artist, nama device),
   // mulai dari defaultText di data template, diubah user lewat panel
   // "Teks" di toolbar bawah. Label durasi TIDAK ada di sini — itu selalu
@@ -460,6 +472,14 @@ export default function Editor({
     (l) => l.adjustable,
   );
   const selectedLayer = adjustableLayers.find((l) => l.id === selectedLayerId);
+  // Setelan kaca efektif buat 1 layer: default template + override user
+  // (kalau ada) — dipakai baik di render loop maupun di panel slider.
+  const getEffectiveGlassSettings = (
+    layer: (typeof adjustableLayers)[number],
+  ): LiquidGlassSettings =>
+    layer.liquidGlass
+      ? { ...layer.liquidGlass.settings, ...glassSettings[layer.id] }
+      : DEFAULT_LIQUID_GLASS_SETTINGS;
   // Track teks (dalam isTextMode) yang lagi terseleksi — dipakai buat nentuin
   // isi toolbar bawah (input edit teks khusus layer itu).
   const selectedTextLayer = template.textLayers?.find(
@@ -572,10 +592,26 @@ export default function Editor({
     // foto/video, jadi ada di belakang foto. Full-canvas, pakai opacity
     // masing-masing (default 100 kalau belum diubah user).
     for (const layer of backDecorLayers) {
-      const img = cache.get(layer.assetSrc, () => setRenderTick((t) => t + 1));
-      if (!img) continue;
       const op = (layerOpacity[layer.id] ?? layer.opacity ?? 100) / 100;
       if (op <= 0) continue;
+      if (layer.liquidGlass) {
+        // Card kaca live: nembus & merefraksi background yang barusan
+        // digambar di atas (`canvas` itu sendiri dipakai sebagai sumber
+        // backdrop) — BUKAN lagi PNG statis. Setelan slider user
+        // (glassSettings) di-merge di atas default template.
+        const rect = resolveLiquidGlassRectPx(layer.liquidGlass, canvasW, canvasH);
+        drawLiquidGlassCard(
+          ctx,
+          canvas,
+          rect,
+          `glass-preview-${layer.id}`,
+          getEffectiveGlassSettings(layer),
+          op,
+        );
+        continue;
+      }
+      const img = cache.get(layer.assetSrc, () => setRenderTick((t) => t + 1));
+      if (!img) continue;
       ctx.save();
       ctx.globalAlpha = op;
       drawImageCover(ctx, img, 0, 0, canvasW, canvasH);
@@ -690,6 +726,7 @@ export default function Editor({
     renderTick,
     timeScale,
     layerOpacity,
+    glassSettings,
     backgroundSrc,
     customBackground,
     backgroundOpacity,
@@ -1109,8 +1146,30 @@ export default function Editor({
       setExportSnapshot(null);
     }
     try {
+      // Setelan kaca hasil slider user (glassSettings) belum tentu utuh
+      // (cuma nyimpen field yang disentuh) — merge di atas default
+      // template dulu jadi 1 objek Template baru, biar export (ffmpeg
+      // ATAU webcodecs, dua-duanya) render kaca PERSIS sama seperti yang
+      // kelihatan di preview, bukan balik ke default template.
+      const exportTemplate: Template = {
+        ...template,
+        decorLayers: template.decorLayers?.map((layer) =>
+          layer.liquidGlass
+            ? {
+                ...layer,
+                liquidGlass: {
+                  ...layer.liquidGlass,
+                  settings: {
+                    ...layer.liquidGlass.settings,
+                    ...glassSettings[layer.id],
+                  },
+                },
+              }
+            : layer,
+        ),
+      };
       const { blob, engine } = await exportTemplateVideoAuto(
-        template,
+        exportTemplate,
         slotMedia,
         layerOpacity,
         (p) => setExportProgress(p),
@@ -1783,6 +1842,226 @@ export default function Editor({
             Kembalikan background asli
           </button>
         </div>
+      ) : selectedLayer?.liquidGlass ? (
+        (() => {
+          const layer = selectedLayer;
+          const glass = layer.liquidGlass!;
+          const effective = getEffectiveGlassSettings(layer);
+          const updateGlass = (patch: Partial<LiquidGlassSettings>) =>
+            setGlassSettings((prev) => ({
+              ...prev,
+              [layer.id]: { ...prev[layer.id], ...patch },
+            }));
+          const modeOptions: { value: LiquidGlassSettings["mode"]; label: string }[] = [
+            { value: "standard", label: "Standard" },
+            { value: "polar", label: "Polar" },
+            { value: "prominent", label: "Prominent" },
+            { value: "shader", label: "Shader" },
+          ];
+          return (
+            <div className="flex max-h-[60vh] shrink-0 flex-col border-t border-mute/10 bg-panel">
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <button
+                  onClick={() => setSelectedLayerId(null)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
+                  title="Selesai"
+                >
+                  <X size={18} />
+                </button>
+                <span className="flex-1 text-xs font-semibold text-paper">
+                  Pengaturan Kaca — {layer.label}
+                </span>
+                <button
+                  onClick={() =>
+                    setGlassSettings((prev) => ({ ...prev, [layer.id]: {} }))
+                  }
+                  className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-mute transition hover:text-paper"
+                  title="Kembalikan default"
+                >
+                  <RotateCcw size={12} />
+                  Reset
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-4 overflow-y-auto px-3 pb-4">
+                {/* Opacity layer (sama seperti layer biasa) */}
+                <div className="flex items-center gap-3">
+                  <span className="w-24 shrink-0 text-xs font-medium text-paper">
+                    Opacity
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={layerOpacity[layer.id] ?? layer.opacity ?? 100}
+                    onChange={(e) =>
+                      setLayerOpacity((prev) => ({
+                        ...prev,
+                        [layer.id]: Number(e.target.value),
+                      }))
+                    }
+                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
+                    style={{ accentColor: "#ECEAE4" }}
+                  />
+                  <span className="w-10 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
+                    {Math.round(layerOpacity[layer.id] ?? layer.opacity ?? 100)}%
+                  </span>
+                </div>
+
+                {/* Refraction Mode */}
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium text-paper">
+                    Refraction Mode
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {modeOptions.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => updateGlass({ mode: opt.value })}
+                        className={`rounded-full border px-3 py-1.5 text-[11px] font-medium transition active:scale-95 ${
+                          effective.mode === opt.value
+                            ? "border-paper bg-paper text-ink"
+                            : "border-mute/25 text-mute hover:text-paper"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {effective.mode === "shader" && (
+                    <span className="text-[10px] text-mute">
+                      Mode Shader (Experimental) — dihitung dari nol tiap ukuran
+                      card, bisa sedikit lebih berat.
+                    </span>
+                  )}
+                </div>
+
+                {/* Displacement Scale */}
+                <div className="flex items-center gap-3">
+                  <span className="w-24 shrink-0 text-xs font-medium text-paper">
+                    Displacement
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={200}
+                    step={1}
+                    value={effective.displacementScale}
+                    onChange={(e) =>
+                      updateGlass({ displacementScale: Number(e.target.value) })
+                    }
+                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
+                    style={{ accentColor: "#ECEAE4" }}
+                  />
+                  <span className="w-10 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
+                    {Math.round(effective.displacementScale)}
+                  </span>
+                </div>
+
+                {/* Blur Amount */}
+                <div className="flex items-center gap-3">
+                  <span className="w-24 shrink-0 text-xs font-medium text-paper">
+                    Blur
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={effective.blurAmount}
+                    onChange={(e) =>
+                      updateGlass({ blurAmount: Number(e.target.value) })
+                    }
+                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
+                    style={{ accentColor: "#ECEAE4" }}
+                  />
+                  <span className="w-10 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
+                    {effective.blurAmount.toFixed(2)}
+                  </span>
+                </div>
+
+                {/* Saturation */}
+                <div className="flex items-center gap-3">
+                  <span className="w-24 shrink-0 text-xs font-medium text-paper">
+                    Saturation
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={300}
+                    step={1}
+                    value={effective.saturation}
+                    onChange={(e) =>
+                      updateGlass({ saturation: Number(e.target.value) })
+                    }
+                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
+                    style={{ accentColor: "#ECEAE4" }}
+                  />
+                  <span className="w-10 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
+                    {Math.round(effective.saturation)}%
+                  </span>
+                </div>
+
+                {/* Chromatic Aberration */}
+                <div className="flex items-center gap-3">
+                  <span className="w-24 shrink-0 text-xs font-medium text-paper">
+                    Aberration
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={10}
+                    step={0.1}
+                    value={effective.aberrationIntensity}
+                    onChange={(e) =>
+                      updateGlass({ aberrationIntensity: Number(e.target.value) })
+                    }
+                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
+                    style={{ accentColor: "#ECEAE4" }}
+                  />
+                  <span className="w-10 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
+                    {effective.aberrationIntensity.toFixed(1)}
+                  </span>
+                </div>
+
+                {/* Corner Radius */}
+                <div className="flex items-center gap-3">
+                  <span className="w-24 shrink-0 text-xs font-medium text-paper">
+                    Radius Sudut
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={200}
+                    step={1}
+                    value={glass.cornerRadius}
+                    disabled
+                    className="h-1.5 flex-1 cursor-not-allowed appearance-none rounded-full bg-graphite opacity-40 accent-paper"
+                    style={{ accentColor: "#ECEAE4" }}
+                    title="Radius sudut kartu mengikuti layout template (biar posisi elemen lain tetap pas)"
+                  />
+                  <span className="w-10 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
+                    {Math.round(glass.cornerRadius)}px
+                  </span>
+                </div>
+
+                {/* Over Light */}
+                <label className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={effective.overLight}
+                    onChange={(e) => updateGlass({ overLight: e.target.checked })}
+                    className="h-4 w-4 shrink-0 accent-paper"
+                  />
+                  <span className="flex-1 text-xs font-medium text-paper">
+                    Over Light — tint kaca gelap (buat background terang)
+                  </span>
+                </label>
+              </div>
+            </div>
+          );
+        })()
       ) : selectedLayer ? (
         <div className="flex shrink-0 items-center gap-3 border-t border-mute/10 bg-panel px-3 py-2.5">
           <button

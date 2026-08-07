@@ -50,6 +50,49 @@ export interface TemplateDecorLayer {
    *  jadi track statis ini harus di-skip biar nggak dobel sama bar
    *  waveform yang baru. */
   hideInWaveformMode?: boolean;
+  /** Kalau diisi, layer ini TIDAK digambar dari assetSrc (PNG statis) —
+   *  melainkan dirender live sebagai kaca "liquid glass" beneran: nembus
+   *  & merefraksi apa pun yang ada di baseAssetSrc/background di
+   *  belakangnya (persis kayak library rdev/liquid-glass-react), plus
+   *  blur/saturasi/chromatic-aberration/corner-radius bisa di-custom user
+   *  lewat panel pengaturan. assetSrc tetap harus diisi (dipakai sebagai
+   *  fallback kalau browser user nggak dukung SVG filter di canvas). */
+  liquidGlass?: TemplateLiquidGlassConfig;
+}
+
+/** Kotak area kaca (dalam PERSEN dari canvasWidth/canvasHeight, sama
+ *  seperti TemplateSlot) + setelan efek default-nya. User bisa ubah
+ *  settingnya lewat panel "Pengaturan Kaca" pas layer ini diseleksi;
+ *  rect (x/y/width/height/cornerRadius) tetap tidak berubah. */
+export interface TemplateLiquidGlassConfig {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Radius sudut dalam px, skala canvasWidth/canvasHeight asli. */
+  cornerRadius: number;
+  settings: LiquidGlassSettings;
+}
+
+export type LiquidGlassMode = "standard" | "polar" | "prominent" | "shader";
+
+/** Setelan efek kaca — namanya & default-nya sengaja disamakan persis
+ *  dengan props komponen <LiquidGlass> di rdev/liquid-glass-react, biar
+ *  hasilnya konsisten sama library aslinya. */
+export interface LiquidGlassSettings {
+  mode: LiquidGlassMode;
+  /** Seberapa kuat refraksi/bengkokan tepi kaca. Default 70. */
+  displacementScale: number;
+  /** Kekuatan blur backdrop. Default 0.5 (skala sama kayak library asli:
+   *  px akhir = (overLight ? 12 : 4) + blurAmount * 32). */
+  blurAmount: number;
+  /** Saturasi warna backdrop yang nembus, dalam %. Default 140. */
+  saturation: number;
+  /** Intensitas efek chromatic aberration di tepian kaca. Default 2. */
+  aberrationIntensity: number;
+  /** Kalau true, kaca ditintkan gelap (dipakai kalau card ada di atas
+   *  background yang terang, biar tetap kebaca). Default false. */
+  overLight: boolean;
 }
 
 /** Layer teks yang bisa di-custom user (judul, artist, nama device, dsb).

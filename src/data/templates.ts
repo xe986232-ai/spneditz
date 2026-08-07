@@ -174,13 +174,35 @@ export const TEMPLATES: Template[] = [
       {
         id: "card",
         label: "Card Player (Glass)",
-        // Sama persis ukuran & posisinya dengan card.png original (bbox &
-        // radius sudut identik) — cuma isinya diganti kaca translucent
-        // dengan highlight/refleksi ala "liquid glass", bukan solid hitam.
+        // assetSrc di sini cuma FALLBACK (dipakai kalau browser user
+        // nggak dukung filter SVG di canvas — lihat liquidGlass.ts). Yang
+        // dipakai normalnya adalah `liquidGlass` di bawah: card ini
+        // dirender LIVE tiap frame, nembus & merefraksi apa pun yang ada
+        // di background (bukan lagi PNG kaca yang diam/statis kayak
+        // sebelumnya), pakai mesin yang sama persis dengan library
+        // rdev/liquid-glass-react (lihat src/lib/liquidGlass.ts).
         assetSrc: "/templates/iphone-music-player-glass/card.png",
         order: "back",
         opacity: 100,
         adjustable: true,
+        liquidGlass: {
+          // Bbox & radius sudut identik dengan card.png original (biar
+          // posisi cover/kontrol tetep pas), tapi sekarang ini beneran
+          // kaca hidup, bukan gambar mati.
+          x: 8.33,
+          y: 11.875,
+          width: 83.24,
+          height: 76.15,
+          cornerRadius: 72,
+          settings: {
+            mode: "standard",
+            displacementScale: 70,
+            blurAmount: 0.5,
+            saturation: 140,
+            aberrationIntensity: 2,
+            overLight: false,
+          },
+        },
       },
       {
         id: "icon",
