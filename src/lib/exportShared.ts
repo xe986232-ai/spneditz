@@ -19,14 +19,37 @@ import {
 import type { LayerOpacityState, TextValueState } from "./render";
 import { drawLiquidGlassCard, resolveLiquidGlassRectPx } from "./liquidGlass";
 
-export function loadImageEl(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Gagal memuat asset layer: ${src}`));
-    img.src = src;
-  });
+// Baca gambar dari src (biasanya blob: URL) jadi <img> siap pakai, dengan
+// retry — jaga-jaga kalau load-nya sesekali gagal karena hiccup sesaat
+// (mis. tekanan memori di browser mobile/in-app browser pas ngakses blob
+// URL), daripada langsung bikin export gagal total padahal biasanya kalau
+// dicoba ulang langsung berhasil.
+export function loadImageEl(src: string, attempts = 3): Promise<HTMLImageElement> {
+  const attemptOnce = (): Promise<HTMLImageElement> =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error(`Gagal memuat asset layer: ${src}`));
+      img.src = src;
+    });
+
+  const run = async (): Promise<HTMLImageElement> => {
+    let lastErr: unknown;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await attemptOnce();
+      } catch (e) {
+        lastErr = e;
+        if (i < attempts - 1) {
+          await new Promise((r) => setTimeout(r, 200 * (i + 1)));
+        }
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  };
+
+  return run();
 }
 
 function canvasToBlob(
