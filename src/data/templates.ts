@@ -1,6 +1,8 @@
 import type { Template } from "../types";
 
-// Hanya satu template yang aktif untuk sekarang: iPhone Music Player.
+// Dua template aktif untuk sekarang: iPhone Music Player (card solid
+// hitam) & duplikatnya "iPhone Music Player Glass" (card kaca/liquid
+// glass translucent, posisi & ukuran semua elemen identik dengan aslinya).
 // Template lain (Reels Ceria, Minimal Duo, dst) dilepas dulu dari galeri
 // sampai asset & mesin render masing-masing beneran siap.
 export const TEMPLATES: Template[] = [
@@ -149,6 +151,130 @@ export const TEMPLATES: Template[] = [
       x1: 13.8, // ≈149/1080, sejajar ujung kiri progressbar.png
       x2: 86.02, // ≈929/1080, sejajar ujung kanan progressbar.png
       y: 67.29, // ≈1292/1920, tengah track progressbar.png
+      thickness: 10,
+      color: "#FFFFFF",
+    },
+  },
+  {
+    // Duplikat "iPhone Music Player" — SEMUA posisi/ukuran slot, teks,
+    // progress, dsb PERSIS SAMA. Satu-satunya beda: card.png diganti versi
+    // "liquid glass" (translucent/frosted, bukan solid hitam), jadi kartu
+    // player terlihat kaca tembus pandang alih-alih blok hitam pekat.
+    id: "iphone-music-player-glass",
+    name: "iPhone Music Player Glass",
+    duration: "0:15",
+    gradientFrom: "#3A3A3E",
+    gradientTo: "#0A0A0C",
+    previewImage: "/templates/iphone-music-player-glass/preview.jpg",
+    canvasWidth: 1080,
+    canvasHeight: 1920,
+    baseAssetSrc: "/templates/iphone-music-player-glass/bg.jpg",
+    baseAssetType: "image",
+    decorLayers: [
+      {
+        id: "card",
+        label: "Card Player (Glass)",
+        // Sama persis ukuran & posisinya dengan card.png original (bbox &
+        // radius sudut identik) — cuma isinya diganti kaca translucent
+        // dengan highlight/refleksi ala "liquid glass", bukan solid hitam.
+        assetSrc: "/templates/iphone-music-player-glass/card.png",
+        order: "back",
+        opacity: 100,
+        adjustable: true,
+      },
+      {
+        id: "icon",
+        label: "Ikon AirPlay",
+        assetSrc: "/templates/iphone-music-player-glass/icon.png",
+        order: "front",
+      },
+      {
+        id: "progressbar",
+        label: "Progress bar",
+        assetSrc: "/templates/iphone-music-player-glass/progressbar.png",
+        order: "front",
+        hideInWaveformMode: true,
+      },
+      {
+        id: "musicplayer",
+        label: "Kontrol",
+        assetSrc: "/templates/iphone-music-player-glass/musicplayer.png",
+        order: "front",
+      },
+    ],
+    slots: [
+      {
+        id: "sampul",
+        type: "image",
+        label: "Foto sampul",
+        x: 13.89,
+        y: 15,
+        width: 72.22,
+        height: 40.57,
+        startSec: 0,
+        endSec: 15,
+        radius: 36,
+        sampleSrc: "/templates/iphone-music-player-glass/sample-cover.jpg",
+      },
+      {
+        id: "audio1",
+        type: "audio",
+        label: "Musik latar",
+        startSec: 0,
+        endSec: 15,
+      },
+    ],
+    textLayers: [
+      {
+        id: "device",
+        label: "Nama device",
+        defaultText: "iPhone",
+        x: 13.8,
+        y: 59.4,
+        fontSize: 30,
+        fontWeight: 500,
+        color: "rgba(255,255,255,0.65)",
+        align: "left",
+        maxLength: 24,
+      },
+      {
+        id: "title",
+        label: "Judul",
+        defaultText: "PLERRR",
+        x: 13.8,
+        y: 61.6,
+        fontSize: 48,
+        fontWeight: 800,
+        color: "#FFFFFF",
+        align: "left",
+        maxLength: 30,
+      },
+      {
+        id: "artist",
+        label: "Artist",
+        defaultText: "@artist",
+        x: 13.8,
+        y: 63.6,
+        fontSize: 28,
+        fontWeight: 500,
+        color: "rgba(255,255,255,0.65)",
+        align: "left",
+        maxLength: 30,
+      },
+    ],
+    durationLayer: {
+      currentX: 13.8,
+      currentY: 69.3,
+      totalX: 86.0,
+      totalY: 69.3,
+      fontSize: 32,
+      fontWeight: 500,
+      color: "rgba(255,255,255,0.7)",
+    },
+    progressLayer: {
+      x1: 13.8,
+      x2: 86.02,
+      y: 67.29,
       thickness: 10,
       color: "#FFFFFF",
     },
