@@ -37,7 +37,7 @@ import {
   getAudioDuration,
 } from "./render";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
-import { compositeLayers, loadDrawableSource, ExportCancelledError } from "./exportShared";
+import { compositeLayers, loadDrawableSource, createImageBitmapWithRetry, ExportCancelledError } from "./exportShared";
 import type { ExportProgress } from "./exportShared";
 import { buildRemappedAudioBuffer, clipsAreTrivial } from "./audioClips";
 import type { AudioClipExport } from "./audioClips";
@@ -242,7 +242,7 @@ export async function exportTemplateVideoWebCodecs(
         undefined,
         customBackground?.file ?? null,
       );
-      staticBgBitmap = await createImageBitmap(bgBlob);
+      staticBgBitmap = await createImageBitmapWithRetry(bgBlob);
     } else {
       const bgImg = await loadDrawableSource(customBackground?.file ?? null, backgroundImageSrc);
       try {
@@ -252,7 +252,7 @@ export async function exportTemplateVideoWebCodecs(
         const cctx = c.getContext("2d");
         if (!cctx) throw new Error("Gagal membuat canvas background");
         drawImageCover(cctx, bgImg, 0, 0, canvasW, canvasH);
-        staticBgBitmap = await createImageBitmap(c);
+        staticBgBitmap = await createImageBitmapWithRetry(c);
       } finally {
         if (bgImg instanceof ImageBitmap) bgImg.close();
       }
@@ -278,7 +278,7 @@ export async function exportTemplateVideoWebCodecs(
         template.textLayers,
         textValues,
       );
-      staticFrontBitmap = await createImageBitmap(frontBlob);
+      staticFrontBitmap = await createImageBitmapWithRetry(frontBlob);
     } catch (e) {
       throw new Error(
         `Gagal menyiapkan layer depan/teks. (${e instanceof Error ? e.message : String(e)})`,
@@ -379,7 +379,7 @@ export async function exportTemplateVideoWebCodecs(
             const cctx = c.getContext("2d");
             if (!cctx) throw new Error("Gagal membuat canvas slot");
             drawImageCover(cctx, img, 0, 0, c.width, c.height);
-            resolved.imgBitmap = await createImageBitmap(c);
+            resolved.imgBitmap = await createImageBitmapWithRetry(c);
           } finally {
             if (img instanceof ImageBitmap) img.close();
           }

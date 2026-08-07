@@ -20,14 +20,15 @@ import type { LayerOpacityState, TextValueState } from "./render";
 import { drawLiquidGlassCard, resolveLiquidGlassRectPx } from "./liquidGlass";
 import type { DrawableImageSource } from "./render";
 
-/** Decode Blob/File LANGSUNG jadi ImageBitmap tanpa lewat blob: URL +
- *  <img>. Dipakai kalau kita punya File asli (media.file) — jalur ini
- *  jauh lebih stabil dibanding createObjectURL()+<img> di browser
- *  mobile/in-app browser (WebView Chrome/Edge Android kadang gagal
- *  sesaat "decode" gambar dari blob: URL pas memori lagi ketat, apalagi
- *  kalau blob URL-nya baru dibikin). Tetap dikasih retry buat jaga-jaga
- *  hiccup sesaat yang sama sekalipun jalurnya sudah lebih pendek. */
-async function decodeImageBitmapWithRetry(source: Blob, attempts = 3): Promise<ImageBitmap> {
+/** Wrapper createImageBitmap dengan retry+backoff — dipakai di SEMUA titik
+ *  createImageBitmap (baik dari File/Blob upload user, blob hasil
+ *  compositeLayers, maupun snapshot canvas internal) supaya hiccup decode
+ *  sesaat (tekanan memori di browser mobile) nggak langsung bikin export
+ *  gagal total di titik manapun. */
+export async function createImageBitmapWithRetry(
+  source: ImageBitmapSource,
+  attempts = 3,
+): Promise<ImageBitmap> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
@@ -64,7 +65,7 @@ export async function loadDrawableSource(
   if (!file) return loadImageEl(url);
 
   try {
-    return await decodeImageBitmapWithRetry(file);
+    return await createImageBitmapWithRetry(file);
   } catch (bitmapErr) {
     // eslint-disable-next-line no-console
     console.warn(
