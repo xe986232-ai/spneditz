@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { ref, onValue, off, update } from "firebase/database";
 import { Lock, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { db } from "../lib/firebase";
+import { TEMPLATES } from "../data/templates";
+import { subscribeTemplateEnabled, setTemplateEnabled } from "../lib/templateFlags";
 
 // Password ringan buat buka dashboard ini — BUKAN pengaman kelas berat
 // (nggak pakai Firebase Auth), cuma penghalang tambahan di atas nama
@@ -26,6 +28,15 @@ export default function AdminDashboard() {
     null,
   );
   const [savingFlag, setSavingFlag] = useState(false);
+
+  // Status aktif/nonaktif tiap template, key-nya template.id. null = masih
+  // dimuat. Dipakai buat toggle di panel "Kelola Template" di bawah.
+  const [templateEnabledMap, setTemplateEnabledMap] = useState<
+    Record<string, boolean | null>
+  >({});
+  const [savingTemplateId, setSavingTemplateId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!unlocked) return;
@@ -52,6 +63,20 @@ export default function AdminDashboard() {
     };
   }, [unlocked]);
 
+  useEffect(() => {
+    if (!unlocked) return;
+
+    // Satu listener per template — dengerin real-time biar kalau diubah
+    // dari device/tab lain, dashboard ini ikut update juga.
+    const unsubs = TEMPLATES.map((t) =>
+      subscribeTemplateEnabled(t.id, (enabled) => {
+        setTemplateEnabledMap((prev) => ({ ...prev, [t.id]: enabled }));
+      }),
+    );
+
+    return () => unsubs.forEach((unsub) => unsub());
+  }, [unlocked]);
+
   function handleUnlock(e: React.FormEvent) {
     e.preventDefault();
     if (passwordInput === DASHBOARD_PASSWORD) {
@@ -71,6 +96,17 @@ export default function AdminDashboard() {
       });
     } finally {
       setSavingFlag(false);
+    }
+  }
+
+  async function toggleTemplateEnabled(templateId: string) {
+    const current = templateEnabledMap[templateId];
+    if (current === null || current === undefined) return;
+    setSavingTemplateId(templateId);
+    try {
+      await setTemplateEnabled(templateId, !current);
+    } finally {
+      setSavingTemplateId(null);
     }
   }
 
@@ -169,6 +205,53 @@ export default function AdminDashboard() {
                 }`}
               />
             </button>
+          </div>
+        </div>
+
+        {/* Kelola Template — nyala/matiin tiap template satu-satu */}
+        <div className="mb-4 rounded-2xl border border-mute/15 bg-panel p-5">
+          <p className="mb-1 text-sm font-semibold">Kelola Template</p>
+          <p className="mb-3 text-xs text-mute">
+            Template yang dinonaktifkan tetap muncul di galeri, tapi tombol
+            "Gunakan" bakal munculin alert (nggak lanjut ke editor).
+          </p>
+          <div className="flex flex-col gap-3">
+            {TEMPLATES.map((t) => {
+              const enabled = templateEnabledMap[t.id];
+              const saving = savingTemplateId === t.id;
+              return (
+                <div
+                  key={t.id}
+                  className="flex items-center justify-between gap-3 border-t border-mute/10 pt-3 first:border-t-0 first:pt-0"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{t.name}</p>
+                    <p className="mt-0.5 text-xs text-mute">
+                      {enabled === undefined || enabled === null
+                        ? "Memuat status…"
+                        : enabled
+                          ? "Aktif — bisa dipakai di galeri."
+                          : "Nonaktif — tombol \"Gunakan\" munculin alert."}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toggleTemplateEnabled(t.id)}
+                    disabled={
+                      enabled === undefined || enabled === null || saving
+                    }
+                    className={`relative h-7 w-12 shrink-0 rounded-full transition ${
+                      enabled ? "bg-emerald-500" : "bg-mute/30"
+                    } ${saving ? "opacity-50" : ""}`}
+                  >
+                    <span
+                      className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                        enabled ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
 

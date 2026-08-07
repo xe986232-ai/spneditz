@@ -34,6 +34,15 @@ Realtime Database → Rules** ke:
         ".read": true,
         ".write": true,
         ".validate": "newData.isBoolean()"
+      },
+      "templates": {
+        "$templateId": {
+          "enabled": {
+            ".read": true,
+            ".write": true,
+            ".validate": "newData.isBoolean()"
+          }
+        }
       }
     },
     ".read": false,
@@ -65,6 +74,15 @@ Kenapa gini:
   fungsinya cuma "penghalang casual" (security by obscurity), BUKAN
   proteksi yang kuat. Kalau nanti butuh beneran aman, perlu ditambah
   Firebase Authentication + rule `auth != null` (bisa dibantu kalau mau).
+- `config/templates/$templateId/enabled` sama kayak `waveformEnabled` di
+  atas (`.write: true`, batas keamanannya sama juga) — dipakai buat
+  nyala/matiin tiap template satu-satu lewat panel "Kelola Template" di
+  dashboard admin. Kalau `enabled` di-set `false`, template itu tetap
+  muncul di galeri (biar nggak bikin bingung "kok hilang") tapi tombol
+  "Gunakan"-nya munculin alert, bukan lanjut ke editor. Kalau path ini
+  belum pernah di-set sama sekali (belum pernah disentuh dari dashboard),
+  aplikasi nganggep template itu AKTIF (fail-open) — jadi template baru
+  otomatis kepake tanpa perlu di-toggle manual dulu.
 - `.validate: "newData.isNumber()"` → mencegah orang iseng nulis nilai aneh
   (string, object, dll) ke path itu lewat DevTools/network tab.
 - Root `.read/.write: false` → path lain di luar `exports`/`config` tertutup
@@ -80,6 +98,10 @@ kamu). Di situ kamu bisa:
 - Lihat total export & breakdown per hari/template.
 - Toggle badge Premium buat gaya "Waveform berjalan" (nyalain =
   `config/waveformEnabled` jadi `true`, semua orang boleh pakai).
+- Nyala/matiin tiap template lewat panel "Kelola Template" — kalau
+  dimatiin, template tetap kelihatan di galeri (ditandai badge "Nonaktif" +
+  gambar jadi grayscale) tapi tombol "Gunakan" munculin alert modal,
+  bukan lanjut buka editor.
 
 Baca catatan soal batas keamanan pendekatan ini di bagian atas file ini.
 
