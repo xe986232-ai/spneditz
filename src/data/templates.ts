@@ -301,4 +301,121 @@ export const TEMPLATES: Template[] = [
       color: "#FFFFFF",
     },
   },
+  {
+    // Template ketiga — "iPhone Music Player Cover". Beda struktur dari
+    // dua template di atas: foto sampul jauh lebih besar/dominan (hampir
+    // penuh lebar card), TANPA baris "nama device" (langsung judul+artist
+    // di bawah sampul), ada ikon spectrum/equalizer kecil statis di kanan
+    // baris judul, dan kontrol (rewind/pause/ff + volume) ditaruh
+    // lebih ke bawah, terpisah jauh dari sampul. Semua posisi diukur dari
+    // referensi screenshot user (video preview 1080x1920 penuh).
+    id: "iphone-music-player-cover",
+    name: "iPhone Music Player Cover",
+    duration: "0:15",
+    gradientFrom: "#2A2A2E",
+    gradientTo: "#050506",
+    previewImage: "/templates/iphone-music-player-cover/preview.jpg",
+    canvasWidth: 1080,
+    canvasHeight: 1920,
+    baseAssetSrc: "/templates/iphone-music-player-cover/bg.jpg",
+    baseAssetType: "image",
+    decorLayers: [
+      {
+        id: "card",
+        label: "Card Player",
+        assetSrc: "/templates/iphone-music-player-cover/card.png",
+        order: "back",
+        opacity: 92,
+        adjustable: true,
+      },
+      {
+        id: "icon",
+        label: "Ikon AirPlay",
+        assetSrc: "/templates/iphone-music-player-cover/icon.png",
+        order: "front",
+      },
+      {
+        id: "progressbar",
+        label: "Progress bar",
+        assetSrc: "/templates/iphone-music-player-cover/progressbar.png",
+        order: "front",
+        hideInWaveformMode: true,
+      },
+      {
+        id: "musicplayer",
+        label: "Kontrol",
+        // Rewind/pause/ff + volume slider + ikon spectrum kecil di kanan
+        // baris judul — semua statis, teks (judul/artist) dipisah jadi
+        // textLayers biar bisa di-custom user.
+        assetSrc: "/templates/iphone-music-player-cover/musicplayer.png",
+        order: "front",
+      },
+    ],
+    slots: [
+      {
+        id: "sampul",
+        type: "image",
+        label: "Foto sampul",
+        x: 15.28,
+        y: 12.5,
+        width: 68.98,
+        height: 37.76,
+        startSec: 0,
+        endSec: 15,
+        radius: 48,
+        sampleSrc: "/templates/iphone-music-player-cover/sample-cover.jpg",
+      },
+      {
+        id: "audio1",
+        type: "audio",
+        label: "Musik latar",
+        startSec: 0,
+        endSec: 15,
+      },
+    ],
+    // Cuma judul & artist — TIDAK ada layer "device" di template ini
+    // (sesuai referensi: langsung judul, tanpa baris nama perangkat).
+    textLayers: [
+      {
+        id: "title",
+        label: "Judul",
+        defaultText: "PLERRR",
+        x: 15.28,
+        y: 55.44,
+        fontSize: 44,
+        fontWeight: 800,
+        color: "#FFFFFF",
+        align: "left",
+        maxLength: 40,
+      },
+      {
+        id: "artist",
+        label: "Artist",
+        defaultText: "@artist",
+        x: 15.28,
+        y: 58.0,
+        fontSize: 28,
+        fontWeight: 500,
+        color: "rgba(255,255,255,0.65)",
+        align: "left",
+        maxLength: 40,
+      },
+    ],
+    durationLayer: {
+      currentX: 15.28,
+      currentY: 63.96,
+      totalX: 84.26,
+      totalY: 63.96,
+      fontSize: 30,
+      fontWeight: 500,
+      color: "rgba(255,255,255,0.7)",
+    },
+    progressLayer: {
+      x1: 15.28,
+      x2: 84.26,
+      y: 61.95,
+      thickness: 10,
+      color: "#FFFFFF",
+    },
+  },
 ];
