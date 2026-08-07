@@ -1,7 +1,9 @@
-// Engine render/export "utama": VideoEncoder + AudioEncoder (WebCodecs API)
-// dikawinkan sama Canvas, muxing ke .mp4 pakai pustaka murni JS `mp4-muxer`.
+// Engine render/export SATU-SATUNYA: VideoEncoder + AudioEncoder (WebCodecs
+// API) dikawinkan sama Canvas, muxing ke .mp4 pakai pustaka murni JS
+// `mp4-muxer`. (Engine FFmpeg.wasm yang dulu ada sebagai fallback sudah
+// dihapus — lihat engine.ts untuk alasannya.)
 //
-// Kenapa ini lebih baik dibanding engine FFmpeg.wasm (lihat export.ts):
+// Kelebihannya:
 // - Render per-frame beneran (bukan "tick" PNG yang di-loop) -> label
 //   durasi & progress bar jalan MULUS, tidak pernah loncat/patah.
 // - VideoEncoder pakai hardware acceleration browser kalau tersedia ->
@@ -12,14 +14,14 @@
 //   lambat/stuck seperti bug lama di FFmpeg engine.
 //
 // Timeline model: slot foto/video BUKAN layer yang tumpang-tindih
-// berdasarkan waktu, tapi SEGMEN berurutan (persis seperti FFmpeg engine
-// yang meng-concat seg_0.mp4, seg_1.mp4, dst) — jadi frame loop di bawah
-// cukup jalan lurus dari segmen ke segmen, currentSec global terus naik.
+// berdasarkan waktu, tapi SEGMEN berurutan — frame loop di bawah jalan
+// lurus dari segmen ke segmen, currentSec global terus naik.
 //
 // Kalau browser tidak dukung WebCodecs (VideoEncoder/AudioEncoder) atau
-// config yang dibutuhkan tidak didukung, fungsi ini melempar error —
-// pemanggil (lihat engine.ts) WAJIB menangkap dan fallback ke FFmpeg
-// engine yang lama.
+// config yang dibutuhkan tidak didukung, fungsi ini melempar error.
+// Pemanggil (lihat engine.ts) TIDAK fallback ke engine lain lagi — error
+// dilempar apa adanya ke UI supaya user tahu jelas & bisa coba lagi/pakai
+// browser lain, daripada diam-diam pindah ke engine yang lebih lambat.
 
 import type {
   Template,
@@ -35,16 +37,16 @@ import {
   getAudioDuration,
 } from "./render";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
-import { loadImageEl, compositeLayers, ExportCancelledError } from "./export";
-import type { ExportProgress } from "./export";
+import { loadImageEl, compositeLayers, ExportCancelledError } from "./exportShared";
+import type { ExportProgress } from "./exportShared";
 import { buildRemappedAudioBuffer, clipsAreTrivial } from "./audioClips";
 import type { AudioClipExport } from "./audioClips";
 
 const TARGET_FPS = 25;
 
 /** Cek dukungan browser buat jalur WebCodecs. Dipanggil oleh engine.ts
- *  SEBELUM nyoba exportTemplateVideoWebCodecs — kalau false, langsung
- *  pakai FFmpeg engine tanpa buang waktu nyoba WebCodecs dulu. */
+ *  SEBELUM nyoba exportTemplateVideoWebCodecs — kalau false, export
+ *  langsung gagal dengan pesan jelas (tidak ada engine fallback lagi). */
 export function isWebCodecsExportSupported(): boolean {
   return (
     typeof window !== "undefined" &&

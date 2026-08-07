@@ -1148,9 +1148,9 @@ export default function Editor({
     try {
       // Setelan kaca hasil slider user (glassSettings) belum tentu utuh
       // (cuma nyimpen field yang disentuh) — merge di atas default
-      // template dulu jadi 1 objek Template baru, biar export (ffmpeg
-      // ATAU webcodecs, dua-duanya) render kaca PERSIS sama seperti yang
-      // kelihatan di preview, bukan balik ke default template.
+      // template dulu jadi 1 objek Template baru, biar export (WebCodecs)
+      // render kaca PERSIS sama seperti yang kelihatan di preview, bukan
+      // balik ke default template.
       const exportTemplate: Template = {
         ...template,
         decorLayers: template.decorLayers?.map((layer) =>
@@ -2481,18 +2481,10 @@ export default function Editor({
                   <p className="text-sm font-medium text-paper">Video siap 🎉</p>
                   {exportEngineUsed && (
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        exportEngineUsed === "webcodecs"
-                          ? "bg-emerald-500/20 text-emerald-400"
-                          : "bg-amber-500/20 text-amber-400"
-                      }`}
-                      title={
-                        exportEngineUsed === "webcodecs"
-                          ? "Dirender pakai WebCodecs API (VideoEncoder/AudioEncoder) — hardware-accelerated"
-                          : "Dirender pakai FFmpeg.wasm (fallback) — WebCodecs tidak didukung/gagal di browser ini"
-                      }
+                      className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-400"
+                      title="Dirender pakai WebCodecs API (VideoEncoder/AudioEncoder) — hardware-accelerated"
                     >
-                      {exportEngineUsed === "webcodecs" ? "⚡ WebCodecs" : "🐢 FFmpeg (fallback)"}
+                      ⚡ WebCodecs
                     </span>
                   )}
                 </div>

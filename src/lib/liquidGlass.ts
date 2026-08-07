@@ -1,7 +1,7 @@
 // Mesin render "liquid glass" buat canvas 2D — dipakai bareng sama Editor
-// (preview live) & export (ffmpeg + WebCodecs), jadi SATU implementasi
-// yang sama dipakai di mana-mana (nggak ada logic kaca yang kepisah/beda
-// antara preview & hasil export).
+// (preview live) & export (WebCodecs), jadi SATU implementasi yang sama
+// dipakai di mana-mana (nggak ada logic kaca yang kepisah/beda antara
+// preview & hasil export).
 //
 // Filter graph (feDisplacementMap + chromatic aberration per-channel)
 // di bawah ini di-copy PERSIS dari komponen <GlassFilter> di
