@@ -74,17 +74,30 @@ export function roundRectPath(
   ctx.closePath();
 }
 
+/** Sumber gambar yang bisa digambar ke canvas. ImageBitmap didukung selain
+ *  HTMLImageElement supaya foto/video yang berasal dari File user bisa
+ *  di-decode LANGSUNG (createImageBitmap(file)) tanpa lewat blob: URL +
+ *  <img> — jalur itu kadang gagal sesaat di browser mobile/in-app browser
+ *  (lihat loadDrawableSource di webcodecs-export.ts). */
+export type DrawableImageSource = HTMLImageElement | ImageBitmap;
+
+function drawableSize(img: DrawableImageSource): { w: number; h: number } {
+  if (img instanceof HTMLImageElement) {
+    return { w: img.naturalWidth || img.width, h: img.naturalHeight || img.height };
+  }
+  return { w: img.width, h: img.height };
+}
+
 /** Gambar image "cover" (isi penuh kotak tujuan, crop kelebihannya) */
 export function drawImageCover(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  img: DrawableImageSource,
   dx: number,
   dy: number,
   dw: number,
   dh: number,
 ) {
-  const iw = img.naturalWidth || img.width;
-  const ih = img.naturalHeight || img.height;
+  const { w: iw, h: ih } = drawableSize(img);
   if (!iw || !ih) return;
   const scale = Math.max(dw / iw, dh / ih);
   const sw = dw / scale;
@@ -105,7 +118,7 @@ export function drawImageCover(
  *  konten foto asli. */
 export function drawImageCoverZoomed(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  img: DrawableImageSource,
   dx: number,
   dy: number,
   dw: number,

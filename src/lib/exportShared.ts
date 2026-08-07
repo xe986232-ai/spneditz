@@ -18,6 +18,47 @@ import {
 } from "./render";
 import type { LayerOpacityState, TextValueState } from "./render";
 import { drawLiquidGlassCard, resolveLiquidGlassRectPx } from "./liquidGlass";
+import type { DrawableImageSource } from "./render";
+
+/** Decode Blob/File LANGSUNG jadi ImageBitmap tanpa lewat blob: URL +
+ *  <img>. Dipakai kalau kita punya File asli (media.file) — jalur ini
+ *  jauh lebih stabil dibanding createObjectURL()+<img> di browser
+ *  mobile/in-app browser (WebView Chrome/Edge Android kadang gagal
+ *  sesaat "decode" gambar dari blob: URL pas memori lagi ketat, apalagi
+ *  kalau blob URL-nya baru dibikin). Tetap dikasih retry buat jaga-jaga
+ *  hiccup sesaat yang sama sekalipun jalurnya sudah lebih pendek. */
+async function decodeImageBitmapWithRetry(source: Blob, attempts = 3): Promise<ImageBitmap> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await createImageBitmap(source);
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, 200 * (i + 1)));
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+/** Siapin sumber gambar buat digambar ke canvas, dari File (upload user)
+ *  ATAU dari url (sample/template asset dari network). Prioritas: kalau
+ *  `file` ada, decode LANGSUNG dari situ (lihat decodeImageBitmapWithRetry)
+ *  — TIDAK bikin blob: URL sama sekali, jadi lebih kebal dari hiccup
+ *  blob: URL di browser mobile. `url` cuma dipakai sebagai fallback kalau
+ *  memang tidak ada File (mis. foto contoh dari template).
+ *  PENTING: kalau hasilnya ImageBitmap, pemanggil WAJIB `.close()` sesudah
+ *  dipakai supaya memorinya dilepas. */
+export async function loadDrawableSource(
+  file: File | undefined | null,
+  url: string,
+): Promise<DrawableImageSource> {
+  if (file) {
+    return decodeImageBitmapWithRetry(file);
+  }
+  return loadImageEl(url);
+}
 
 // Baca gambar dari src (biasanya blob: URL) jadi <img> siap pakai, dengan
 // retry — jaga-jaga kalau load-nya sesekali gagal karena hiccup sesaat
@@ -102,6 +143,10 @@ export async function compositeLayers(
     progressStyle?: "bar" | "waveform";
     peaks?: number[];
   },
+  // File asli background (kalau baseSrc berasal dari upload user) — kalau
+  // diisi, dipakai buat decode LANGSUNG (lebih stabil di mobile) daripada
+  // loadImageEl(baseSrc) yang lewat blob: URL.
+  baseFile?: File | null,
 ): Promise<Blob> {
   const canvas = document.createElement("canvas");
   canvas.width = canvasW;
@@ -110,22 +155,26 @@ export async function compositeLayers(
   if (!ctx) throw new Error("Gagal bikin canvas compositing");
 
   if (baseSrc) {
-    const bgImg = await loadImageEl(baseSrc);
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, Math.min(100, baseOpacity)) / 100;
-    let overscan = 0;
-    if (baseBlur > 0) {
-      ctx.filter = `blur(${baseBlur}px)`;
-      overscan = baseBlur * BACKGROUND_BLUR_OVERSCAN_FACTOR;
-    } else {
-      ctx.filter = "none";
+    const bgImg = await loadDrawableSource(baseFile, baseSrc);
+    try {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(100, baseOpacity)) / 100;
+      let overscan = 0;
+      if (baseBlur > 0) {
+        ctx.filter = `blur(${baseBlur}px)`;
+        overscan = baseBlur * BACKGROUND_BLUR_OVERSCAN_FACTOR;
+      } else {
+        ctx.filter = "none";
+      }
+      // drawImageCoverZoomed (bukan drawImage stretch polos) supaya: (1)
+      // foto sampul yang rasio-nya beda dari canvas tetap di-crop proporsional
+      // kayak preview, bukan gepeng/stretch, dan (2) kalau ada blur, tepiannya
+      // di-zoom dikit dulu biar nggak ada gradasi hitam pas di-blur.
+      drawImageCoverZoomed(ctx, bgImg, 0, 0, canvasW, canvasH, overscan);
+      ctx.restore();
+    } finally {
+      if (bgImg instanceof ImageBitmap) bgImg.close();
     }
-    // drawImageCoverZoomed (bukan drawImage stretch polos) supaya: (1)
-    // foto sampul yang rasio-nya beda dari canvas tetap di-crop proporsional
-    // kayak preview, bukan gepeng/stretch, dan (2) kalau ada blur, tepiannya
-    // di-zoom dikit dulu biar nggak ada gradasi hitam pas di-blur.
-    drawImageCoverZoomed(ctx, bgImg, 0, 0, canvasW, canvasH, overscan);
-    ctx.restore();
   }
 
   for (const layer of layers) {

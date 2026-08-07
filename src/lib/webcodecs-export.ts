@@ -37,7 +37,7 @@ import {
   getAudioDuration,
 } from "./render";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
-import { loadImageEl, compositeLayers, ExportCancelledError } from "./exportShared";
+import { compositeLayers, loadDrawableSource, ExportCancelledError } from "./exportShared";
 import type { ExportProgress } from "./exportShared";
 import { buildRemappedAudioBuffer, clipsAreTrivial } from "./audioClips";
 import type { AudioClipExport } from "./audioClips";
@@ -237,17 +237,25 @@ export async function exportTemplateVideoWebCodecs(
         true,
         backgroundOpacity,
         backgroundBlur,
+        undefined,
+        undefined,
+        undefined,
+        customBackground?.file ?? null,
       );
       staticBgBitmap = await createImageBitmap(bgBlob);
     } else {
-      const bgImg = await loadImageEl(backgroundImageSrc);
-      const c = document.createElement("canvas");
-      c.width = canvasW;
-      c.height = canvasH;
-      const cctx = c.getContext("2d");
-      if (!cctx) throw new Error("Gagal membuat canvas background");
-      drawImageCover(cctx, bgImg, 0, 0, canvasW, canvasH);
-      staticBgBitmap = await createImageBitmap(c);
+      const bgImg = await loadDrawableSource(customBackground?.file ?? null, backgroundImageSrc);
+      try {
+        const c = document.createElement("canvas");
+        c.width = canvasW;
+        c.height = canvasH;
+        const cctx = c.getContext("2d");
+        if (!cctx) throw new Error("Gagal membuat canvas background");
+        drawImageCover(cctx, bgImg, 0, 0, canvasW, canvasH);
+        staticBgBitmap = await createImageBitmap(c);
+      } finally {
+        if (bgImg instanceof ImageBitmap) bgImg.close();
+      }
     }
   } catch (e) {
     throw new Error(
@@ -359,16 +367,22 @@ export async function exportTemplateVideoWebCodecs(
         if (resolved.isVideo) {
           resolved.videoEl = await loadVideoEl(media.file ?? media.url);
         } else {
-          const src = media.file ? URL.createObjectURL(media.file) : media.url;
-          if (media.file) objectUrlsToRevoke.push(src);
-          const img = await loadImageEl(src);
-          const c = document.createElement("canvas");
-          c.width = Math.max(1, Math.round(resolved.width));
-          c.height = Math.max(1, Math.round(resolved.height));
-          const cctx = c.getContext("2d");
-          if (!cctx) throw new Error("Gagal membuat canvas slot");
-          drawImageCover(cctx, img, 0, 0, c.width, c.height);
-          resolved.imgBitmap = await createImageBitmap(c);
+          // Decode LANGSUNG dari File (kalau ada) — tanpa bikin blob: URL
+          // baru & tanpa lewat <img>, jalur yang paling sering hiccup di
+          // browser mobile/in-app browser pas load foto slot ("Foto
+          // sampul", dst). Lihat loadDrawableSource di exportShared.ts.
+          const img = await loadDrawableSource(media.file, media.url);
+          try {
+            const c = document.createElement("canvas");
+            c.width = Math.max(1, Math.round(resolved.width));
+            c.height = Math.max(1, Math.round(resolved.height));
+            const cctx = c.getContext("2d");
+            if (!cctx) throw new Error("Gagal membuat canvas slot");
+            drawImageCover(cctx, img, 0, 0, c.width, c.height);
+            resolved.imgBitmap = await createImageBitmap(c);
+          } finally {
+            if (img instanceof ImageBitmap) img.close();
+          }
         }
       } catch (e) {
         throw new Error(
