@@ -43,21 +43,45 @@ async function decodeImageBitmapWithRetry(source: Blob, attempts = 3): Promise<I
 }
 
 /** Siapin sumber gambar buat digambar ke canvas, dari File (upload user)
- *  ATAU dari url (sample/template asset dari network). Prioritas: kalau
- *  `file` ada, decode LANGSUNG dari situ (lihat decodeImageBitmapWithRetry)
- *  — TIDAK bikin blob: URL sama sekali, jadi lebih kebal dari hiccup
- *  blob: URL di browser mobile. `url` cuma dipakai sebagai fallback kalau
- *  memang tidak ada File (mis. foto contoh dari template).
+ *  ATAU dari url (sample/template asset dari network).
+ *
+ *  Strategi 2 lapis:
+ *  1. Coba decode LANGSUNG dari File pakai createImageBitmap (skip blob:
+ *     URL + <img> sama sekali) — ini yang paling stabil buat kasus hiccup
+ *     blob: URL di browser mobile.
+ *  2. Kalau createImageBitmap gagal decode (ada JPEG/foto tertentu, mis.
+ *     hasil kamera HP dengan encoding aneh, yang bikin createImageBitmap
+ *     lempar "source image could not be decoded" padahal fotonya valid),
+ *     fallback ke jalur lama: blob: URL + <img> — decoder <img> di
+ *     browser lebih toleran/permisif buat kasus begini.
+ *  Kalau dua-duanya gagal, baru beneran dianggap gagal.
  *  PENTING: kalau hasilnya ImageBitmap, pemanggil WAJIB `.close()` sesudah
  *  dipakai supaya memorinya dilepas. */
 export async function loadDrawableSource(
   file: File | undefined | null,
   url: string,
 ): Promise<DrawableImageSource> {
-  if (file) {
-    return decodeImageBitmapWithRetry(file);
+  if (!file) return loadImageEl(url);
+
+  try {
+    return await decodeImageBitmapWithRetry(file);
+  } catch (bitmapErr) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[export] createImageBitmap gagal decode file langsung, fallback ke <img>+blob URL…",
+      bitmapErr instanceof Error ? bitmapErr.message : bitmapErr,
+    );
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      return await loadImageEl(objectUrl);
+    } catch (imgErr) {
+      URL.revokeObjectURL(objectUrl);
+      throw imgErr;
+    }
+    // Sengaja TIDAK revoke di jalur sukses — pemanggil cuma pegang
+    // <img> (bukan url-nya), jadi biarin browser yang bebersih objectUrl
+    // ini sendiri (memori kecil, 1 elemen <img>, bukan masalah).
   }
-  return loadImageEl(url);
 }
 
 // Baca gambar dari src (biasanya blob: URL) jadi <img> siap pakai, dengan
