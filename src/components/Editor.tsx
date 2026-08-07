@@ -228,6 +228,62 @@ export default function Editor({
   const pendingSlotRef = useRef<string | null>(null);
   const exportAbortRef = useRef<AbortController | null>(null);
 
+  // ---- Bottom sheet buat panel "banyak kontrol" (Background & Liquid
+  // Glass) — sengaja dipisah dari toolbar bawah biasa dan dirender sebagai
+  // overlay `position:absolute`, BUKAN elemen flex biasa yang ikut dorong
+  // layout. Efeknya: canvas preview di atas selalu dapat tinggi penuh
+  // (nggak nyusut lagi tiap kali user buka panel custom), dan user bisa
+  // drag handle-nya buat ngatur berapa banyak canvas yang mau keliatan
+  // sambil ngatur slider (mirip bottom sheet CapCut/InShot). Tinggi
+  // disimpan dalam px & di-clamp tiap drag biar nggak nutupin top bar
+  // atau ilang ke luar layar.
+  const [sheetHeight, setSheetHeight] = useState(() =>
+    typeof window !== "undefined" ? Math.round(window.innerHeight * 0.46) : 320,
+  );
+  const sheetDragRef = useRef<{ startY: number; startHeight: number } | null>(
+    null,
+  );
+
+  function clampSheetHeight(h: number) {
+    const viewportH = typeof window !== "undefined" ? window.innerHeight : 800;
+    return Math.min(viewportH * 0.82, Math.max(180, h));
+  }
+
+  function handleSheetDragStart(e: React.PointerEvent<HTMLDivElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    sheetDragRef.current = { startY: e.clientY, startHeight: sheetHeight };
+  }
+
+  function handleSheetDragMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!sheetDragRef.current) return;
+    const delta = e.clientY - sheetDragRef.current.startY;
+    setSheetHeight(clampSheetHeight(sheetDragRef.current.startHeight - delta));
+  }
+
+  function handleSheetDragEnd(e: React.PointerEvent<HTMLDivElement>) {
+    if (sheetDragRef.current && e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    sheetDragRef.current = null;
+  }
+
+  // Drag handle dipakai di dua panel (Background & Glass) — komponen
+  // kecil biar nggak duplikasi markup.
+  function SheetDragHandle() {
+    return (
+      <div
+        onPointerDown={handleSheetDragStart}
+        onPointerMove={handleSheetDragMove}
+        onPointerUp={handleSheetDragEnd}
+        onPointerCancel={handleSheetDragEnd}
+        className="flex shrink-0 cursor-grab touch-none items-center justify-center py-2 active:cursor-grabbing"
+        title="Geser buat atur tinggi panel"
+      >
+        <div className="h-1 w-10 rounded-full bg-mute/30" />
+      </div>
+    );
+  }
+
   // ---- Export state ----
   const [isExporting, setIsExporting] = useState(false);
   const [exportSnapshot, setExportSnapshot] = useState<string | null>(null);
@@ -1222,7 +1278,7 @@ export default function Editor({
   }
 
   return (
-    <div className="flex h-[100dvh] w-screen flex-col overflow-hidden bg-graphite font-sans">
+    <div className="relative flex h-[100dvh] w-screen flex-col overflow-hidden bg-graphite font-sans">
       {/* Top bar */}
       <div className="flex shrink-0 items-center justify-between border-b border-mute/10 bg-panel px-3 py-2">
         <button
@@ -1787,8 +1843,12 @@ export default function Editor({
           begitu ada slot yang diketuk/terseleksi, berubah jadi satu
           tombol besar "Ganti" buat slot itu. */}
       {isBackgroundLayerSelected ? (
-        <div className="flex shrink-0 flex-col gap-2 border-t border-mute/10 bg-panel px-3 py-2.5">
-          <div className="flex items-center gap-3">
+        <div
+          className="absolute inset-x-0 bottom-0 z-30 flex flex-col rounded-t-2xl border border-mute/10 bg-panel shadow-[0_-8px_30px_rgba(0,0,0,0.35)]"
+          style={{ height: sheetHeight }}
+        >
+          <SheetDragHandle />
+          <div className="flex shrink-0 items-center gap-3 px-3 pb-2.5">
             <button
               onClick={() => setSelectedLayerId(null)}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
@@ -1796,51 +1856,58 @@ export default function Editor({
             >
               <X size={18} />
             </button>
-            <span className="w-11 shrink-0 text-xs font-medium text-paper">
-              Opacity
+            <span className="flex-1 text-xs font-semibold text-paper">
+              Pengaturan Background
             </span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={backgroundOpacity}
-              onChange={(e) => setBackgroundOpacity(Number(e.target.value))}
-              className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
-              style={{ accentColor: "#ECEAE4" }}
-              title="Opacity background"
-            />
-            <span className="w-9 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
-              {Math.round(backgroundOpacity)}%
-            </span>
+            <button
+              onClick={handleResetBackground}
+              className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-mute transition hover:text-paper"
+              title="Kembalikan background asli"
+            >
+              <RotateCcw size={12} />
+              Reset
+            </button>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="w-9 shrink-0" />
-            <span className="w-11 shrink-0 text-xs font-medium text-paper">
-              Blur
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={MAX_BACKGROUND_BLUR}
-              step={1}
-              value={backgroundBlur}
-              onChange={(e) => setBackgroundBlur(Number(e.target.value))}
-              className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
-              style={{ accentColor: "#ECEAE4" }}
-              title="Blur background"
-            />
-            <span className="w-9 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
-              {Math.round(backgroundBlur)}px
-            </span>
+          <div className="flex flex-col gap-4 overflow-y-auto px-3 pb-4">
+            <div className="flex items-center gap-3">
+              <span className="w-14 shrink-0 text-xs font-medium text-paper">
+                Opacity
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={backgroundOpacity}
+                onChange={(e) => setBackgroundOpacity(Number(e.target.value))}
+                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
+                style={{ accentColor: "#ECEAE4" }}
+                title="Opacity background"
+              />
+              <span className="w-9 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
+                {Math.round(backgroundOpacity)}%
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="w-14 shrink-0 text-xs font-medium text-paper">
+                Blur
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={MAX_BACKGROUND_BLUR}
+                step={1}
+                value={backgroundBlur}
+                onChange={(e) => setBackgroundBlur(Number(e.target.value))}
+                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
+                style={{ accentColor: "#ECEAE4" }}
+                title="Blur background"
+              />
+              <span className="w-9 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
+                {Math.round(backgroundBlur)}px
+              </span>
+            </div>
           </div>
-          <button
-            onClick={handleResetBackground}
-            className="ml-12 flex w-fit items-center gap-1.5 text-[11px] font-medium text-mute transition hover:text-paper"
-          >
-            <RotateCcw size={12} />
-            Kembalikan background asli
-          </button>
         </div>
       ) : selectedLayer?.liquidGlass ? (
         (() => {
@@ -1859,8 +1926,12 @@ export default function Editor({
             { value: "shader", label: "Shader" },
           ];
           return (
-            <div className="flex max-h-[60vh] shrink-0 flex-col border-t border-mute/10 bg-panel">
-              <div className="flex items-center gap-3 px-3 py-2.5">
+            <div
+              className="absolute inset-x-0 bottom-0 z-30 flex flex-col rounded-t-2xl border border-mute/10 bg-panel shadow-[0_-8px_30px_rgba(0,0,0,0.35)]"
+              style={{ height: sheetHeight }}
+            >
+              <SheetDragHandle />
+              <div className="flex shrink-0 items-center gap-3 px-3 pb-2.5">
                 <button
                   onClick={() => setSelectedLayerId(null)}
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
@@ -1868,7 +1939,7 @@ export default function Editor({
                 >
                   <X size={18} />
                 </button>
-                <span className="flex-1 text-xs font-semibold text-paper">
+                <span className="flex-1 truncate text-xs font-semibold text-paper">
                   Pengaturan Kaca — {layer.label}
                 </span>
                 <button
@@ -1883,7 +1954,7 @@ export default function Editor({
                 </button>
               </div>
 
-              <div className="flex flex-col gap-4 overflow-y-auto px-3 pb-4">
+              <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 pb-4">
                 {/* Opacity layer (sama seperti layer biasa) */}
                 <div className="flex items-center gap-3">
                   <span className="w-24 shrink-0 text-xs font-medium text-paper">
