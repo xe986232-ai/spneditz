@@ -4,6 +4,7 @@ import { TEMPLATES } from "../data/templates";
 import type { Template } from "../types";
 import { subscribeTemplateUsage } from "../lib/exportLog";
 import { subscribeTemplateEnabled } from "../lib/templateFlags";
+import TemplateThumbnail from "./TemplateThumbnail";
 
 function TemplateCard({
   template,
@@ -56,15 +57,13 @@ function TemplateCard({
             backgroundImage: `linear-gradient(160deg, ${template.gradientFrom}, ${template.gradientTo})`,
           }}
         >
-          {template.previewImage && (
-            <img
-              src={template.previewImage}
-              alt={`Preview ${template.name}`}
-              className={`absolute inset-0 h-full w-full object-cover transition duration-500 ${
-                enabled ? "group-active:scale-105" : "grayscale"
-              }`}
-            />
-          )}
+          <TemplateThumbnail
+            template={template}
+            alt={`Preview ${template.name}`}
+            className={`absolute inset-0 h-full w-full object-cover transition duration-500 ${
+              enabled ? "group-active:scale-105" : "grayscale"
+            }`}
+          />
 
           {/* vignette halus biar teks & badge kebaca di semua foto */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/10" />
