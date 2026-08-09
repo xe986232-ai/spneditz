@@ -24,7 +24,7 @@ import {
   Lock,
   Maximize2,
   Minimize2,
-  Check,
+  Download,
   ArrowLeft,
   Eye,
   EyeOff,
@@ -1492,15 +1492,16 @@ export default function Editor({
           <button
             onClick={handleExport}
             disabled={isExporting}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-paper transition active:scale-90 disabled:opacity-60"
+            className="flex h-9 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 text-paper transition active:scale-90 disabled:opacity-60"
             title={isExporting ? "Merender…" : "Ekspor video"}
             aria-label="Ekspor video"
           >
             {isExporting ? (
               <Loader2 size={17} className="animate-spin" />
             ) : (
-              <Check size={19} strokeWidth={2.4} />
+              <Download size={17} strokeWidth={2.4} />
             )}
+            <span className="text-sm font-semibold">Export</span>
           </button>
         ) : (
           <span className="h-9 w-9" />
