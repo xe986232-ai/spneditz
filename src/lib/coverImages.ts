@@ -170,6 +170,11 @@ export async function fetchCoverImagesOnce(
 ): Promise<CoverImageEntry[]> {
   const safeId = sanitizeTemplateId(templateId);
   const fallback = DEFAULT_COVER_IMAGES[templateId] ?? [];
+  // Tunggu migrasi (lihat ensureGlassCoverImagesMigrated di bawah) kelar
+  // dulu — biar gak sempat baca data Firebase yang masih versi lama
+  // (sebelum ke-timpa) & ke-cache selamanya di pemanggilnya (misalnya
+  // thumbnailCache di TemplateThumbnail.tsx).
+  await ensureGlassCoverImagesMigrated();
   try {
     const snapshot = await get(ref(db, `config/coverImages/${safeId}`));
     const val = snapshot.val() as Record<string, CoverImageEntry> | null;
@@ -191,20 +196,35 @@ export function subscribeCoverImages(
   const listRef = ref(db, `config/coverImages/${safeId}`);
   const fallback = DEFAULT_COVER_IMAGES[templateId] ?? [];
 
-  const listener = onValue(
-    listRef,
-    (snapshot) => {
-      const val = snapshot.val() as Record<string, CoverImageEntry> | null;
-      if (!val || Object.keys(val).length === 0) {
-        callback(fallback);
-        return;
-      }
-      callback(Object.entries(val).map(([id, entry]) => ({ ...entry, id })));
-    },
-    () => callback(fallback),
-  );
+  let unsubscribed = false;
+  let detachListener: (() => void) | null = null;
 
-  return () => off(listRef, "value", listener);
+  // Tunggu migrasi (lihat ensureGlassCoverImagesMigrated) kelar dulu
+  // sebelum attach listener real-time — alasan sama kayak
+  // fetchCoverImagesOnce di atas, biar snapshot pertama yang kebaca udah
+  // pasti versi yang sudah dibenerin, bukan versi lama yang masih
+  // Unsplash mati.
+  ensureGlassCoverImagesMigrated().then(() => {
+    if (unsubscribed) return;
+    const listener = onValue(
+      listRef,
+      (snapshot) => {
+        const val = snapshot.val() as Record<string, CoverImageEntry> | null;
+        if (!val || Object.keys(val).length === 0) {
+          callback(fallback);
+          return;
+        }
+        callback(Object.entries(val).map(([id, entry]) => ({ ...entry, id })));
+      },
+      () => callback(fallback),
+    );
+    detachListener = () => off(listRef, "value", listener);
+  });
+
+  return () => {
+    unsubscribed = true;
+    detachListener?.();
+  };
 }
 
 /** Sekali panggil pas app start — khusus migrasi bug foto Unsplash mati di
@@ -216,26 +236,47 @@ export function subscribeCoverImages(
  *  lewat Dashboard buat template lain tetap aman, gak disentuh), ditandai
  *  lewat flag config/coverImagesMigrations/unsplashDeadLinksFixV1 biar
  *  cuma jalan SEKALI & gak nimpa balik kalau admin udah edit ulang foto
- *  glass-nya sendiri lewat Dashboard setelah migrasi ini jalan. */
-export async function ensureGlassCoverImagesMigrated() {
-  const FLAG_PATH = "config/coverImagesMigrations/unsplashDeadLinksFixV1";
-  try {
-    const flagSnap = await get(ref(db, FLAG_PATH));
-    if (flagSnap.exists()) return;
-    const safeId = sanitizeTemplateId("iphone-music-player-glass");
-    const seed: Record<string, CoverImageEntry> = {};
-    for (const entry of DEFAULT_COVER_IMAGES["iphone-music-player-glass"]) {
-      seed[entry.id] = entry;
-    }
-    // Set (bukan update/merge) node-nya biar entry Unsplash mati yang lama
-    // beneran ilang, ganti total sama set Picsum yang baru.
-    await set(ref(db, `config/coverImages/${safeId}`), seed);
-    await set(ref(db, FLAG_PATH), true);
-  } catch {
-    // Offline / rules nolak tulis — gak fatal, coba lagi pas app dibuka
-    // lagi nanti (flag belum ke-set kalau gagal di tengah jalan).
+ *  glass-nya sendiri lewat Dashboard setelah migrasi ini jalan.
+ *
+ *  PENTING soal race condition: dipanggil juga secara EAGER di bawah
+ *  (`migrationPromise`) begitu modul ini di-import, BUKAN nunggu App.tsx
+ *  mount. Kenapa: thumbnail galeri (TemplateThumbnail -> fetchCoverImagesOnce)
+ *  dulu sempat baca Firebase LEBIH DULU daripada migrasi ini selesai nulis
+ *  data baru — hasilnya thumbnail ke-cache selamanya (module-level Map)
+ *  pakai data lama yang masih Unsplash mati, padahal Editor (yang baru
+ *  dibuka belakangan, migrasi udah kelar) udah bener. fetchCoverImagesOnce
+ *  & subscribeCoverImages di bawah sengaja NUNGGU migrationPromise ini
+ *  kelar dulu sebelum baca, biar keduanya selalu liat data yang udah fix. */
+let migrationPromise: Promise<void> | null = null;
+export function ensureGlassCoverImagesMigrated(): Promise<void> {
+  if (!migrationPromise) {
+    migrationPromise = (async () => {
+      const FLAG_PATH = "config/coverImagesMigrations/unsplashDeadLinksFixV1";
+      try {
+        const flagSnap = await get(ref(db, FLAG_PATH));
+        if (flagSnap.exists()) return;
+        const safeId = sanitizeTemplateId("iphone-music-player-glass");
+        const seed: Record<string, CoverImageEntry> = {};
+        for (const entry of DEFAULT_COVER_IMAGES["iphone-music-player-glass"]) {
+          seed[entry.id] = entry;
+        }
+        // Set (bukan update/merge) node-nya biar entry Unsplash mati yang
+        // lama beneran ilang, ganti total sama set Picsum yang baru.
+        await set(ref(db, `config/coverImages/${safeId}`), seed);
+        await set(ref(db, FLAG_PATH), true);
+      } catch {
+        // Offline / rules nolak tulis — gak fatal, coba lagi pas app
+        // dibuka lagi nanti (flag belum ke-set kalau gagal di tengah
+        // jalan, migrationPromise juga di-reset biar dicoba ulang).
+        migrationPromise = null;
+      }
+    })();
   }
+  return migrationPromise;
 }
+// Jalanin dari sekarang (begitu modul ini pertama kali di-import), JANGAN
+// nunggu komponen React mount — ini yang mempersempit jendela race di atas.
+void ensureGlassCoverImagesMigrated();
 
 /** Tambah satu foto ke daftar default satu template. Dipanggil dari
  *  Dashboard admin. */
