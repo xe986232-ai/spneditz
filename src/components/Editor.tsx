@@ -9,12 +9,8 @@ import {
   Redo2,
   Play,
   Pause,
-  ZoomOut,
-  ZoomIn,
   Plus,
   Scissors,
-  Home,
-  Download,
   Loader2,
   X,
   RefreshCcw,
@@ -23,13 +19,13 @@ import {
   RotateCcw,
   Trash2,
   AudioWaveform,
-  SkipBack,
-  SkipForward,
   Bookmark,
   Save,
   Lock,
   Maximize2,
   Minimize2,
+  Check,
+  ArrowLeft,
 } from "lucide-react";
 import { getDominantColor } from "../lib/color";
 import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../types";
@@ -131,7 +127,7 @@ const MIN_CLIP_DURATION = 0.3;
 // Berapa detik playhead digeser tiap klik tombol mundur/maju di sebelah
 // tombol play — 1 detik cukup presisi buat nyari posisi tanpa harus
 // drag manual di timeline.
-const SEEK_STEP_SEC = 1;
+// (Tombol mundur/maju dihapus di UI baru — seek dilakukan lewat drag playhead.)
 
 // Satu potongan klip di track audio: menyimpan rentang mana dari file
 // audio ASLI yang dipakai (trimStart..trimEnd, dalam detik source asli)
@@ -150,6 +146,14 @@ let clipIdCounter = 0;
 function makeClipId() {
   clipIdCounter += 1;
   return `clip-${Date.now()}-${clipIdCounter}`;
+}
+
+// Format detik jadi mm:ss buat label waktu di atas baris playback.
+function formatClock(sec: number): string {
+  const total = Math.max(0, Math.floor(sec));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 function generateTimeMarks(duration: number): number[] {
@@ -1351,89 +1355,74 @@ export default function Editor({
   }
 
   return (
-    <div className="relative flex h-[100dvh] w-screen flex-col overflow-hidden bg-graphite font-sans">
-      {/* Top bar — di-hide total pas mode fullscreen */}
+    <div className="relative flex h-[100dvh] w-screen flex-col overflow-hidden bg-editor-bg font-sans">
+      {/* Top bar minimal — back (kiri), nama template (tengah), tombol
+          check bulat (kanan) = Ekspor. Di-hide total pas fullscreen. */}
       {!isFullscreen && (
-      <div className="flex shrink-0 items-center justify-between border-b border-mute/10 bg-panel px-3 py-2">
+      <div className="relative flex shrink-0 items-center justify-between px-3 py-2.5">
         <button
           onClick={onBack}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
+          className="flex h-9 w-9 items-center justify-center rounded-xl text-paper/80 transition hover:text-paper active:scale-90"
           title="Kembali ke daftar template"
         >
-          <Home size={18} />
+          <ArrowLeft size={20} />
         </button>
 
-        <span className="truncate text-xs font-medium text-mute">
+        <span className="pointer-events-none absolute left-1/2 max-w-[55%] -translate-x-1/2 truncate text-sm font-semibold text-paper">
           {template.name}
         </span>
 
-        <div className="flex items-center gap-2">
+        {template.baseAssetSrc ? (
           <button
-            onClick={() => setShowPresetPanel(true)}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
-            title="Preset"
+            onClick={handleExport}
+            disabled={isExporting}
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-paper transition active:scale-90 disabled:opacity-60"
+            title={isExporting ? "Merender…" : "Ekspor video"}
+            aria-label="Ekspor video"
           >
-            <Bookmark size={18} />
+            {isExporting ? (
+              <Loader2 size={17} className="animate-spin" />
+            ) : (
+              <Check size={19} strokeWidth={2.4} />
+            )}
           </button>
-          <button
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
-            title="Urungkan"
-          >
-            <Undo2 size={18} />
-          </button>
-          <button
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
-            title="Ulangi"
-          >
-            <Redo2 size={18} />
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {template.baseAssetSrc && (
-            <button
-              onClick={handleExport}
-              disabled={isExporting}
-              className="flex h-9 items-center gap-1.5 rounded-full bg-paper px-3 text-xs font-semibold text-graphite transition active:scale-95 disabled:opacity-60"
-            >
-              {isExporting ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Download size={14} />
-              )}
-              {isExporting ? "Merender…" : "Ekspor"}
-            </button>
-          )}
-        </div>
+        ) : (
+          <span className="h-9 w-9" />
+        )}
       </div>
       )}
 
+
       {/* Canvas / preview area — takes remaining space, keeps 9:16 ratio */}
-      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-graphite p-3">
-        {/* Ambient glow — warnanya ngikutin warna dominan foto yang
-            diupload user (lihat coverSourceUrl/dominantColor di atas),
-            transisi halus tiap kali warnanya berubah. Diletakkan di
-            belakang canvas (persis kayak efek "Canvas" Spotify). */}
+      {/* Preview full-bleed — canvas nutup lebar penuh (cover), plus
+          gradient fade di bawah biar nyambung ke background gelap. */}
+      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-editor-bg">
+        {/* Ambient glow — warnanya ngikutin warna dominan foto user. */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 transition-[background] duration-700 ease-out"
           style={{
-            background: `radial-gradient(60% 55% at 50% 45%, rgba(${dominantColor}, 0.55), rgba(${dominantColor}, 0.18) 45%, rgba(${dominantColor}, 0) 75%)`,
+            background: `radial-gradient(60% 55% at 50% 45%, rgba(${dominantColor}, 0.45), rgba(${dominantColor}, 0.14) 45%, rgba(${dominantColor}, 0) 75%)`,
             filter: "blur(40px)",
           }}
         />
-        <div className="relative aspect-[9/16] h-full max-h-full max-w-full overflow-hidden rounded-md bg-black shadow-sm">
+        <div className="relative h-full w-full overflow-hidden bg-black">
           {template.baseAssetSrc ? (
             <canvas
               ref={canvasRef}
               onClick={handleCanvasClick}
-              className="h-full w-full cursor-pointer"
+              className="h-full w-full cursor-pointer object-cover"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
               <span className="text-xs text-paper/40">Pratinjau video</span>
             </div>
           )}
+          {/* canvas-fade — dekoratif, nggak ganggu klik canvas */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-editor-bg"
+          />
           {customBackground && (
             <button
               onClick={() => {
@@ -1441,7 +1430,7 @@ export default function Editor({
                 setSelectedLayerId(BACKGROUND_LAYER_ID);
                 setShowBgLabel(true);
               }}
-              className={`absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-medium text-paper backdrop-blur-sm transition-opacity duration-700 ease-out active:scale-95 ${
+              className={`absolute left-3 top-3 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-medium text-paper backdrop-blur-sm transition-opacity duration-700 ease-out active:scale-95 ${
                 showBgLabel ? "opacity-100" : "pointer-events-none opacity-0"
               }`}
               title="Atur opacity & blur background"
@@ -1453,120 +1442,81 @@ export default function Editor({
           <audio ref={audioElRef} src={audioMedia?.url} className="hidden" />
         </div>
 
-        {/* Tombol Fullscreen — SENGAJA di luar box kanvas 9:16 (bukan
-            nempel di atas video-nya), nempel di tepi kanan area preview,
-            di atas panel timeline (bukan di dalamnya). Icon & title
-            berubah sesuai mode: Maximize2 = masuk fullscreen, Minimize2 =
-            balik ke ukuran normal. */}
+        {/* Tombol Fullscreen — nempel di tepi kanan preview, re-style
+            biar nyatu sama preview full-bleed. */}
         <button
           onClick={() => setIsFullscreen((f) => !f)}
-          className="absolute right-3 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-paper/10 bg-black/50 text-paper backdrop-blur-sm transition active:scale-90"
+          className="absolute right-3 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/45 text-paper backdrop-blur-sm transition active:scale-90"
           title={isFullscreen ? "Keluar dari fullscreen" : "Lihat preview fullscreen"}
         >
-          {isFullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+          {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
         </button>
       </div>
 
+
       {/* Playback controls — di-hide pas fullscreen */}
       {!isFullscreen && (
-      <div className="grid shrink-0 grid-cols-3 items-center border-t border-mute/10 bg-panel px-4 py-1.5">
-        <div className="justify-self-start flex items-center gap-1">
-          <button
-            onClick={handleCutAudio}
-            disabled={!canCutAudio}
-            className={`flex h-8 w-8 items-center justify-center rounded-lg transition active:scale-95 ${
-              canCutAudio
-                ? "text-paper hover:bg-graphite"
-                : "cursor-not-allowed text-mute/40"
-            }`}
-            title={
-              canCutAudio
-                ? "Potong audio di posisi playhead"
-                : "Pilih track audio & posisikan playhead di tengah klip buat motong"
-            }
-          >
-            <Scissors size={17} />
-          </button>
-          <button
-            onClick={handleDeleteAudioClip}
-            disabled={!canDeleteAudioClip}
-            className={`flex h-8 w-8 items-center justify-center rounded-lg transition active:scale-95 ${
-              canDeleteAudioClip
-                ? "text-rec hover:bg-graphite"
-                : "cursor-not-allowed text-mute/40"
-            }`}
-            title={
-              canDeleteAudioClip
-                ? "Hapus bagian audio yang dipilih"
-                : "Pilih dulu bagian audio (klip) yang mau dihapus"
-            }
-          >
-            <Trash2 size={17} />
-          </button>
+      <div className="shrink-0 border-t border-white/5 bg-editor-panel px-5 pb-1 pt-2">
+        {/* Label waktu (current / total) di atas baris kontrol */}
+        <div className="mb-1 flex items-center justify-center gap-2 text-[11px] font-medium tabular-nums">
+          <span className="text-paper">{formatClock(currentSec)}</span>
+          <span className="text-editor-muted">{formatClock(DURATION)}</span>
         </div>
 
-        <div className="justify-self-center flex items-center gap-3">
-          <button
-            onClick={() => {
-              setIsPlaying(false);
-              setCurrentSec((s) => Math.max(0, s - SEEK_STEP_SEC));
-            }}
-            disabled={currentSec <= 0}
-            className={`flex h-8 w-8 items-center justify-center rounded-full transition active:scale-90 ${
-              currentSec <= 0
-                ? "cursor-not-allowed text-mute/30"
-                : "text-mute hover:bg-graphite hover:text-paper"
-            }`}
-            title={`Mundur ${SEEK_STEP_SEC} detik`}
-          >
-            <SkipBack size={15} fill="currentColor" />
-          </button>
+        <div className="flex items-center justify-between">
+          {/* Kiri — Potong (gunting). Tombol hapus cuma nongol pas ada
+              klip audio yang beneran keseleksi (adaptif). */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleCutAudio}
+              disabled={!canCutAudio}
+              className={`flex h-9 w-9 items-center justify-center rounded-xl transition active:scale-90 ${
+                canCutAudio ? "text-paper" : "cursor-not-allowed text-paper/25"
+              }`}
+              title={
+                canCutAudio
+                  ? "Potong audio di posisi playhead"
+                  : "Pilih track audio & posisikan playhead di tengah klip buat motong"
+              }
+            >
+              <Scissors size={18} />
+            </button>
+            {canDeleteAudioClip && (
+              <button
+                onClick={handleDeleteAudioClip}
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-rec transition active:scale-90"
+                title="Hapus bagian audio yang dipilih"
+              >
+                <Trash2 size={18} />
+              </button>
+            )}
+          </div>
 
+          {/* Tengah — Play/Pause (icon simple tanpa background) */}
           <button
             onClick={() => setIsPlaying((p) => !p)}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-paper text-graphite transition hover:bg-paper/90 active:scale-95"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-paper transition active:scale-90"
             title={isPlaying ? "Jeda" : "Putar"}
           >
             {isPlaying ? (
-              <Pause size={16} fill="#15171C" />
+              <Pause size={22} fill="currentColor" />
             ) : (
-              <Play size={16} fill="#15171C" className="ml-0.5" />
+              <Play size={22} fill="currentColor" className="ml-0.5" />
             )}
           </button>
 
+          {/* Kanan — toggle fullscreen preview */}
           <button
-            onClick={() => {
-              setIsPlaying(false);
-              setCurrentSec((s) => Math.min(DURATION, s + SEEK_STEP_SEC));
-            }}
-            disabled={currentSec >= DURATION}
-            className={`flex h-8 w-8 items-center justify-center rounded-full transition active:scale-90 ${
-              currentSec >= DURATION
-                ? "cursor-not-allowed text-mute/30"
-                : "text-mute hover:bg-graphite hover:text-paper"
-            }`}
-            title={`Maju ${SEEK_STEP_SEC} detik`}
+            onClick={() => setIsFullscreen((f) => !f)}
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-paper/70 transition hover:text-paper active:scale-90"
+            title="Lihat preview fullscreen"
           >
-            <SkipForward size={15} fill="currentColor" />
-          </button>
-        </div>
-
-        <div className="justify-self-end flex items-center gap-1">
-          <button
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
-            title="Perkecil"
-          >
-            <ZoomOut size={17} />
-          </button>
-          <button
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
-            title="Perbesar"
-          >
-            <ZoomIn size={17} />
+            <Maximize2 size={18} />
           </button>
         </div>
       </div>
       )}
+
 
       <input
         ref={fileInputRef}
@@ -1578,34 +1528,66 @@ export default function Editor({
       {/* Timeline — bisa digeser horizontal (overflow-x-auto), di-hide
           pas fullscreen */}
       {!isFullscreen && (
-      <div className="shrink-0 select-none border-t border-mute/10 bg-panel px-4 pb-1.5 pt-2">
+      <div className="shrink-0 select-none border-t border-white/5 bg-editor-panel px-4 pb-2 pt-2">
         <div ref={timelineScrollRef} className="overflow-x-auto">
           <div className="relative" style={{ width: TRACK_WIDTH }}>
-            {/* Ruler */}
-            <div className="relative mb-1.5 h-3 text-[10px] text-mute">
+            {/* Ruler gaya baru — label lebih tipis + dot ticks kecil
+                sebagai sub-mark di antara label. */}
+            <div className="relative mb-1 h-3 text-[9px] font-medium tracking-wide text-editor-muted">
               {TIME_MARKS.map((t) => (
                 <span
                   key={t}
-                  className="absolute"
+                  className="absolute top-0"
                   style={{ left: t * effectivePxPerSec }}
                 >
                   {t === 60 ? "1m" : `${t}s`}
                 </span>
               ))}
             </div>
+            <div className="relative mb-1.5 h-1">
+              {TIME_MARKS.slice(0, -1).map((t) => {
+                const next = TIME_MARKS[TIME_MARKS.indexOf(t) + 1] ?? t;
+                const mid = (t + next) / 2;
+                return (
+                  <span
+                    key={t}
+                    className="absolute top-0 h-[3px] w-[3px] rounded-full bg-white/15"
+                    style={{ left: mid * effectivePxPerSec }}
+                  />
+                );
+              })}
+            </div>
+
+            {/* Tag pill mengambang — nampilin layer teks/decor yang aktif
+                di atas klip, lengkap dengan connector bulat kiri-kanan. */}
+            {(selectedTextLayer || selectedLayer) && (
+              <div className="relative mb-1.5 h-6">
+                <div className="absolute left-0 top-0 flex items-center gap-1.5 rounded-[7px] border border-editor-accent/50 bg-editor-tag px-2 py-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-editor-accent" />
+                  {selectedTextLayer ? (
+                    <Type size={10} className="text-paper/80" />
+                  ) : (
+                    <SlidersHorizontal size={10} className="text-paper/80" />
+                  )}
+                  <span className="max-w-[140px] truncate text-[9px] font-medium text-paper">
+                    {selectedTextLayer?.label ?? selectedLayer?.label}
+                  </span>
+                  <span className="h-1.5 w-1.5 rounded-full bg-editor-accent" />
+                </div>
+              </div>
+            )}
 
             {/* Playhead — hit area digedein (w-6) biar enak digeser di HP,
-                garis & segitiga visualnya tetap tipis di tengah. top-5
-                dimulai dari bawah ruler, bottom-0 biar nembus semua layer
-                nggak peduli berapa banyak layer-nya. */}
+                garis & segitiga visualnya tetap tipis di tengah. */}
             <div
               onPointerDown={handlePlayheadPointerDown}
-              className="absolute bottom-0 top-5 z-10 w-6 -translate-x-1/2 touch-none cursor-ew-resize"
+              className="absolute bottom-0 top-4 z-10 w-6 -translate-x-1/2 touch-none cursor-ew-resize"
               style={{ left: currentSec * effectivePxPerSec }}
             >
-              <div className="pointer-events-none absolute inset-y-0 left-1/2 w-[2px] -translate-x-1/2 bg-rec" />
-              <div className="pointer-events-none absolute -top-1 left-1/2 h-0 w-0 -translate-x-1/2 border-x-[6px] border-x-transparent border-t-[8px] border-t-rec" />
+              <div className="pointer-events-none absolute inset-y-0 left-1/2 w-[1.5px] -translate-x-1/2 bg-paper" />
+              <div className="pointer-events-none absolute -top-1 left-1/2 h-0 w-0 -translate-x-1/2 border-x-[5px] border-x-transparent border-t-[7px] border-t-paper" />
             </div>
+
 
             {template.baseAssetSrc && isTextMode ? (
               /* Mode "Teks" aktif — hide semua track lain (Background, slot
@@ -1620,7 +1602,7 @@ export default function Editor({
                     return (
                       <div
                         key={layer.id}
-                        className="relative h-9 rounded-md border border-mute/10 bg-black/20"
+                        className="relative h-9 rounded-md border border-mute/10 bg-editor-track"
                       >
                         <div
                           onClick={() => {
@@ -1674,7 +1656,7 @@ export default function Editor({
                     lagi. Klik buat munculin slider opacity & blur di
                     toolbar bawah. */}
                 {customBackground && (
-                  <div className="relative h-9 rounded-md border border-mute/10 bg-black/20">
+                  <div className="relative h-9 rounded-md border border-mute/10 bg-editor-track">
                     <div
                       onClick={() => {
                         setSelectedSlotId(null);
@@ -1702,7 +1684,26 @@ export default function Editor({
                   </div>
                 )}
 
+                {/* Tombol "+" ungu di ujung kiri baris klip — shortcut
+                    nambah/ganti klip media (buka file picker yang sama). */}
+                {mediaSlotDef && (
+                  <div className="flex items-center gap-2 pb-0.5">
+                    <button
+                      onClick={() => openPicker(mediaSlotDef)}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-editor-accent text-paper transition active:scale-90"
+                      title="Tambah / ganti klip media"
+                      aria-label="Tambah klip media"
+                    >
+                      <Plus size={13} strokeWidth={2.5} />
+                    </button>
+                    <span className="text-[9px] font-medium text-editor-muted">
+                      Tambah klip
+                    </span>
+                  </div>
+                )}
+
                 {visibleSlots.map((slot) => {
+
                   const isAudio = slot.type === "audio";
                   const filled = Boolean(slotMedia[slot.id]);
                   const isSelected = selectedSlotId === slot.id;
@@ -1846,7 +1847,7 @@ export default function Editor({
                   return (
                     <div
                       key={slot.id}
-                      className="relative h-9 rounded-md border border-mute/10 bg-black/20"
+                      className="relative h-9 rounded-md border border-mute/10 bg-editor-track"
                     >
                       <div
                         onClick={() => {
@@ -1892,7 +1893,7 @@ export default function Editor({
                   return (
                     <div
                       key={layer.id}
-                      className="relative h-9 rounded-md border border-mute/10 bg-black/20"
+                      className="relative h-9 rounded-md border border-mute/10 bg-editor-track"
                     >
                       <div
                         onClick={() => {
@@ -2313,7 +2314,8 @@ export default function Editor({
           </label>
         </div>
       ) : (
-        <div className="flex shrink-0 flex-col border-t border-mute/10 bg-panel">
+        <div className="flex shrink-0 flex-col border-t border-white/5 bg-editor-panel">
+
           {/* Muncul cuma pas tombol "Audio" lagi aktif — tombol kecil buat
               beneran buka file picker. Sengaja dipisah dari tombol "Audio"
               di bawah biar klik "Audio" nggak langsung lompat ke pemilihan
@@ -2393,10 +2395,10 @@ export default function Editor({
               </button>
             </div>
           )}
-          <div
-            className="grid px-1 py-1.5"
-            style={{ gridTemplateColumns: `repeat(${visibleTools.length}, minmax(0, 1fr))` }}
-          >
+          {/* Toolbar bawah gaya baru: 1 baris ikon-only (tanpa label),
+              compact mirip CapCut/VN. Undo/Redo/Preset dipindah ke sini
+              dari top bar biar top bar tetap bersih. */}
+          <div className="flex items-center justify-between gap-1 px-3 pb-3 pt-2">
             {visibleTools.map(({ id, label, icon: Icon }) => {
               const active = activeTool === id;
               return (
@@ -2404,9 +2406,6 @@ export default function Editor({
                   key={id}
                   onClick={() => {
                     setActiveTool(id);
-                    // Tombol "Media" langsung menuju slot media (foto/video)
-                    // pertama di template — sama efeknya kayak nge-tap slot
-                    // itu langsung di timeline (munculin toolbar "Ganti").
                     if (id === "media") {
                       setIsTextMode(false);
                       setSelectedTextLayerId(null);
@@ -2414,9 +2413,6 @@ export default function Editor({
                       setSelectedAudioClipId(null);
                       if (mediaSlotDef) setSelectedSlotId(mediaSlotDef.id);
                     }
-                    // Tombol "Audio" cuma nampilin tombol kecil "Tambah
-                    // Audio" di atas (lihat blok di atas) — file picker
-                    // baru kebuka begitu tombol kecil itu yang diklik.
                     if (id === "audio") {
                       setIsTextMode(false);
                       setSelectedTextLayerId(null);
@@ -2424,18 +2420,12 @@ export default function Editor({
                       setSelectedLayerId(null);
                       setSelectedAudioClipId(null);
                     }
-                    // Tombol "Teks" ganti timeline jadi nampilin track teks
-                    // aja (hide track lain) — bukan file picker.
                     if (id === "text") {
                       setSelectedSlotId(null);
                       setSelectedLayerId(null);
                       setSelectedAudioClipId(null);
                       setIsTextMode(true);
                     }
-                    // Tombol "Gaya" cuma nampilin preview-picker progress
-                    // bar (lihat blok di atas) — bukan file picker ataupun
-                    // mode teks, jadi clear semua seleksi biar timeline
-                    // balik netral kayak awal.
                     if (id === "progress") {
                       setIsTextMode(false);
                       setSelectedTextLayerId(null);
@@ -2444,17 +2434,41 @@ export default function Editor({
                       setSelectedAudioClipId(null);
                     }
                   }}
-                  className={`flex flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 transition ${
-                    active ? "text-rec" : "text-mute hover:text-paper"
+                  className={`flex h-10 w-10 items-center justify-center rounded-xl transition active:scale-90 ${
+                    active
+                      ? "bg-editor-accent/20 text-editor-accent"
+                      : "text-paper/55 hover:text-paper"
                   }`}
+                  title={label}
+                  aria-label={label}
                 >
-                  <Icon size={19} strokeWidth={active ? 2.2 : 1.8} />
-                  <span className="text-[9.5px] font-medium leading-none">
-                    {label}
-                  </span>
+                  <Icon size={20} strokeWidth={active ? 2.2 : 1.8} />
                 </button>
               );
             })}
+
+            <button
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-paper/55 transition hover:text-paper active:scale-90"
+              title="Urungkan"
+              aria-label="Urungkan"
+            >
+              <Undo2 size={20} strokeWidth={1.8} />
+            </button>
+            <button
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-paper/55 transition hover:text-paper active:scale-90"
+              title="Ulangi"
+              aria-label="Ulangi"
+            >
+              <Redo2 size={20} strokeWidth={1.8} />
+            </button>
+            <button
+              onClick={() => setShowPresetPanel(true)}
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-paper/55 transition hover:text-paper active:scale-90"
+              title="Preset"
+              aria-label="Preset"
+            >
+              <Bookmark size={20} strokeWidth={1.8} />
+            </button>
           </div>
         </div>
       ))}
