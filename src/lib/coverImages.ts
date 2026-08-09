@@ -111,38 +111,6 @@ export const DEFAULT_COVER_IMAGES: Record<string, CoverImageEntry[]> = {
       ...unsplashUrls("photo-1564951434112-64d74cc2a2d7"),
     },
   ],
-  "iphone-music-player-cover": [
-    {
-      id: "aditya-saxena-_mIXHvl_wzA",
-      credit: "Aditya Saxena",
-      creditUrl: "https://unsplash.com/photos/_mIXHvl_wzA",
-      ...unsplashUrls("photo-1507835661088-ac1e84fe645f"),
-    },
-    {
-      id: "mark-hayward-ekvNI_03FLM",
-      credit: "Mark Hayward",
-      creditUrl: "https://unsplash.com/photos/ekvNI_03FLM",
-      ...unsplashUrls("photo-1530975080071-4d6704a9a993"),
-    },
-    {
-      id: "martin-sanchez-ZOEXP6vnLb0",
-      credit: "Martin Sanchez",
-      creditUrl: "https://unsplash.com/photos/ZOEXP6vnLb0",
-      ...unsplashUrls("photo-1582129165473-a878f105f3b8"),
-    },
-    {
-      id: "nicolas-lysandrou-iiP6ScYDIf4",
-      credit: "Nicolas Lysandrou",
-      creditUrl: "https://unsplash.com/photos/iiP6ScYDIf4",
-      ...unsplashUrls("photo-1577729576719-f75f3808c435"),
-    },
-    {
-      id: "ian-dooley-TevqnfbI0Zc",
-      credit: "ian dooley",
-      creditUrl: "https://unsplash.com/photos/TevqnfbI0Zc",
-      ...unsplashUrls("photo-1507608443039-bfde4fbcd142"),
-    },
-  ],
 };
 
 /** Sekali panggil pas app start — kalau Firebase belum punya data
