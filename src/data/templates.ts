@@ -186,14 +186,13 @@ export const TEMPLATES: Template[] = [
         opacity: 100,
         adjustable: true,
         liquidGlass: {
-          // Bbox & radius sudut identik dengan card.png original (biar
-          // posisi cover/kontrol tetep pas), tapi sekarang ini beneran
-          // kaca hidup, bukan gambar mati.
-          x: 8.33,
-          y: 11.875,
-          width: 83.24,
-          height: 76.15,
-          cornerRadius: 72,
+          // Bbox & radius disamain ke mock-up baru (template2_mock-up):
+          // card lebih tinggi & lebar sedikit dikurangi dari sebelumnya.
+          x: 9.63,
+          y: 9.27,
+          width: 80.65,
+          height: 81.41,
+          cornerRadius: 70,
           settings: {
             mode: "standard",
             displacementScale: 70,
@@ -235,10 +234,10 @@ export const TEMPLATES: Template[] = [
         id: "sampul",
         type: "image",
         label: "Foto sampul",
-        x: 13.89,
-        y: 15,
-        width: 72.22,
-        height: 40.57,
+        x: 15.37,
+        y: 12.5,
+        width: 69.17,
+        height: 38.91,
         startSec: 0,
         endSec: 15,
         radius: 36,
@@ -252,13 +251,16 @@ export const TEMPLATES: Template[] = [
         endSec: 15,
       },
     ],
+    // Posisi teks digeser naik & disamain ke tepi kiri baru (15.83, sejajar
+    // progress bar) biar pas sama gap baru antara sampul (habis di ~51.4%)
+    // & progress bar (mulai ~62%) di layout mock-up.
     textLayers: [
       {
         id: "device",
         label: "Nama device",
         defaultText: "psiquiss",
-        x: 13.8,
-        y: 59.4,
+        x: 15.83,
+        y: 54.9,
         fontSize: 30,
         fontWeight: 500,
         color: "rgba(255,255,255,0.65)",
@@ -269,8 +271,8 @@ export const TEMPLATES: Template[] = [
         id: "title",
         label: "Judul",
         defaultText: "new vision",
-        x: 13.8,
-        y: 61.6,
+        x: 15.83,
+        y: 56.9,
         fontSize: 48,
         fontWeight: 800,
         color: "#FFFFFF",
@@ -281,8 +283,8 @@ export const TEMPLATES: Template[] = [
         id: "artist",
         label: "Artist",
         defaultText: "@nyxvoids",
-        x: 13.8,
-        y: 63.6,
+        x: 15.83,
+        y: 58.7,
         fontSize: 28,
         fontWeight: 500,
         color: "rgba(255,255,255,0.65)",
@@ -291,18 +293,18 @@ export const TEMPLATES: Template[] = [
       },
     ],
     durationLayer: {
-      currentX: 13.8,
-      currentY: 69.3,
-      totalX: 86.0,
-      totalY: 69.3,
+      currentX: 15.83,
+      currentY: 64.0,
+      totalX: 84.07,
+      totalY: 64.0,
       fontSize: 32,
       fontWeight: 500,
       color: "rgba(255,255,255,0.7)",
     },
     progressLayer: {
-      x1: 13.8,
-      x2: 86.02,
-      y: 67.29,
+      x1: 15.83, // ≈171/1080, sejajar ujung kiri progressbar.png (mock-up baru)
+      x2: 84.07, // ≈908/1080, sejajar ujung kanan progressbar.png
+      y: 62.03, // ≈1191/1920, tengah track progressbar.png (mock-up baru)
       thickness: 10,
       color: "#FFFFFF",
     },
