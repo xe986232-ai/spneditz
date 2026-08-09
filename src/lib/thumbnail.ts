@@ -16,6 +16,7 @@ import {
   resolveLiquidGlassRectPx,
   DEFAULT_LIQUID_GLASS_SETTINGS,
 } from "./liquidGlass";
+import { fetchCoverImagesOnce } from "./coverImages";
 
 /** Loader gambar berbasis Promise (beda dari ImageCache yang berbasis
  *  callback di render loop React) — pas dipakai buat render sekali jalan
@@ -60,20 +61,46 @@ export async function renderTemplateThumbnail(
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas 2D context tidak tersedia");
 
-  // Kumpulin semua src gambar yang perlu di-load: background, decorLayer
-  // (yang bukan liquidGlass live), & sampleSrc tiap slot foto/video.
+  // Slot foto sampul template ini (kalau ada) — foto yang dipakai di sini
+  // HARUS sama sumbernya dengan yang bakal user lihat pas beneran buka
+  // Editor: random dari Firebase/Unsplash (config/coverImages/{id}),
+  // fallback ke sampleSrc lokal cuma kalau daftar itu kosong/gagal
+  // diambil. Satu foto yang sama dipakai buat DUA tempat (background &
+  // slot sampul), sama seperti auto-sync customBackground di Editor.tsx,
+  // biar thumbnail galeri gak "beda sistem" sama isi timeline aslinya.
+  const coverSlot = template.slots.find((s) => s.type === "image");
+  let coverImageSrc: string | undefined = coverSlot?.sampleSrc;
+  if (coverSlot) {
+    try {
+      const covers = await fetchCoverImagesOnce(template.id);
+      if (covers.length > 0) {
+        const picked = covers[Math.floor(Math.random() * covers.length)];
+        coverImageSrc = picked.url;
+      }
+    } catch {
+      // Gagal ambil daftar Firebase/Unsplash — tetap lanjut pakai
+      // sampleSrc lokal (sudah di-assign di atas) sebagai fallback.
+    }
+  }
+
+  // Kumpulin semua src gambar yang perlu di-load: background/cover,
+  // decorLayer (yang bukan liquidGlass live), & sampleSrc slot LAIN
+  // (kalau ada slot foto/video selain slot sampul).
   const decorLayers = template.decorLayers ?? [];
   const staticDecorSrcs = decorLayers
     .filter((l) => !l.liquidGlass)
     .map((l) => l.assetSrc);
-  const slotSampleSrcs = template.slots
-    .filter((s) => s.type !== "audio" && s.sampleSrc)
+  const otherSlotSampleSrcs = template.slots
+    .filter((s) => s.type !== "audio" && s.id !== coverSlot?.id && s.sampleSrc)
     .map((s) => s.sampleSrc!);
   const allSrcs = Array.from(
     new Set(
-      [template.baseAssetSrc, ...staticDecorSrcs, ...slotSampleSrcs].filter(
-        (s): s is string => Boolean(s),
-      ),
+      [
+        template.baseAssetSrc,
+        coverImageSrc,
+        ...staticDecorSrcs,
+        ...otherSlotSampleSrcs,
+      ].filter((s): s is string => Boolean(s)),
     ),
   );
   const loaded = await Promise.all(allSrcs.map((src) => loadImage(src)));
@@ -83,16 +110,11 @@ export async function renderTemplateThumbnail(
   ctx.clearRect(0, 0, canvasW, canvasH);
 
   // 1) Background — SAMA kayak default state Editor.tsx: begitu template
-  // punya slot foto sampul (type "image"), foto itu (sample bawaan atau
-  // upload user) OTOMATIS jadi background juga (lihat `customBackground`
-  // di Editor.tsx, di-init dari initialSlotMedia). Jadi thumbnail nggak
-  // pakai baseAssetSrc/bg.jpg statis — dia "nyontek" foto sampul yang
-  // sama seperti yang bakal kelihatan pas user pertama buka editor,
-  // biar sistemnya konsisten sama aplikasi asli.
-  const coverSlot = template.slots.find(
-    (s) => s.type === "image" && s.sampleSrc,
-  );
-  const backgroundSrc = coverSlot?.sampleSrc ?? template.baseAssetSrc;
+  // punya slot foto sampul, foto itu (sekarang random dari Firebase/
+  // Unsplash, sama seperti di atas) OTOMATIS jadi background juga (lihat
+  // `customBackground` di Editor.tsx, di-init dari initialSlotMedia).
+  // Jadi thumbnail nggak pakai baseAssetSrc/bg.jpg statis.
+  const backgroundSrc = coverImageSrc ?? template.baseAssetSrc;
   if (backgroundSrc) {
     const bg = imageBySrc.get(backgroundSrc);
     if (bg) drawImageCoverZoomed(ctx, bg, 0, 0, canvasW, canvasH, 0);
@@ -122,14 +144,17 @@ export async function renderTemplateThumbnail(
     ctx.restore();
   }
 
-  // 3) Slot foto/video (pakai sampleSrc, karena thumbnail belum ada isian user)
+  // 3) Slot foto/video — slot sampul pakai coverImageSrc (random Firebase/
+  // Unsplash, sama kayak background di atas), slot lain (kalau ada) pakai
+  // sampleSrc masing-masing.
   for (const slot of template.slots) {
     if (slot.type === "audio") continue;
     if (slot.x == null || slot.y == null || slot.width == null || slot.height == null)
       continue;
     if (!isSlotActiveAt(slot, currentSec)) continue;
-    if (!slot.sampleSrc) continue;
-    const img = imageBySrc.get(slot.sampleSrc);
+    const src = slot.id === coverSlot?.id ? coverImageSrc : slot.sampleSrc;
+    if (!src) continue;
+    const img = imageBySrc.get(src);
     if (!img) continue;
     const dx = (slot.x / 100) * canvasW;
     const dy = (slot.y / 100) * canvasH;

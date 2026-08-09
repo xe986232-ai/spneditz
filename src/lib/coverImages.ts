@@ -79,11 +79,46 @@ export const DEFAULT_COVER_IMAGES: Record<string, CoverImageEntry[]> = {
       ...unsplashUrls("photo-1527348857765-589fb3b5d6f6"),
     },
   ],
-  // "iphone-music-player-glass" SENGAJA tidak ada di sini lagi — template
-  // ini sekarang pakai satu foto tetap dari file lokal
-  // (public/templates/iphone-music-player-glass/sample-cover.jpg) sebagai
-  // default-nya, bukan foto random dari Firebase/Unsplash. Lihat
-  // SKIP_DYNAMIC_COVER_TEMPLATE_IDS di src/components/Editor.tsx.
+  // "iphone-music-player-glass" sekarang JUGA random dari Firebase/
+  // Unsplash (lihat SKIP_DYNAMIC_COVER_TEMPLATE_IDS di Editor.tsx, sudah
+  // dikosongkan) — sengaja PAKAI ULANG set foto yang sama kayak
+  // "iphone-music-player" di atas (bukan nebak ID foto Unsplash baru yang
+  // belum pernah dites, biar nggak ada risiko link patah/404). Admin
+  // tetap bisa nambah/ganti foto khusus template ini kapan aja lewat
+  // Dashboard (config/coverImages/iphone-music-player-glass di Firebase),
+  // tanpa perlu deploy ulang.
+  "iphone-music-player-glass": [
+    {
+      id: "karsten-wurth-7BjhtdogU3A",
+      credit: "Karsten Würth",
+      creditUrl: "https://unsplash.com/photos/7BjhtdogU3A",
+      ...unsplashUrls("photo-1475070929565-c985b496cb9f"),
+    },
+    {
+      id: "jeremy-bishop-G9i_plbfDgk",
+      credit: "Jeremy Bishop",
+      creditUrl: "https://unsplash.com/photos/G9i_plbfDgk",
+      ...unsplashUrls("photo-1478760329108-5c3ed9d495a0"),
+    },
+    {
+      id: "stormseeker-rX12B5uX7QM",
+      credit: "Stormseeker",
+      creditUrl: "https://unsplash.com/photos/rX12B5uX7QM",
+      ...unsplashUrls("photo-1500099817043-86d46000d58f"),
+    },
+    {
+      id: "nathan-dumlao-ciO5L8pin8A",
+      credit: "Nathan Dumlao",
+      creditUrl: "https://unsplash.com/photos/ciO5L8pin8A",
+      ...unsplashUrls("photo-1518156677180-95a2893f3e9f"),
+    },
+    {
+      id: "peter-lloyd-rRWyOn9gat4",
+      credit: "Peter Lloyd",
+      creditUrl: "https://unsplash.com/photos/rRWyOn9gat4",
+      ...unsplashUrls("photo-1527348857765-589fb3b5d6f6"),
+    },
+  ],
 };
 
 /** Sekali panggil pas app start — kalau Firebase belum punya data
@@ -108,6 +143,26 @@ export async function ensureCoverImagesSeeded() {
   } catch {
     // Offline / rules nolak tulis / dll — gak fatal, DEFAULT_COVER_IMAGES
     // di kode tetap jalan sebagai fallback lewat subscribeCoverImages.
+  }
+}
+
+/** Sekali panggil (bukan langganan real-time) — dipakai buat konteks yang
+ *  cuma butuh SATU snapshot daftar foto (misalnya render thumbnail
+ *  galeri), bukan komponen React yang perlu terus update live. Sama
+ *  seperti subscribeCoverImages: fail-open ke DEFAULT_COVER_IMAGES kalau
+ *  Firebase kosong/offline/gagal dibaca. */
+export async function fetchCoverImagesOnce(
+  templateId: string,
+): Promise<CoverImageEntry[]> {
+  const safeId = sanitizeTemplateId(templateId);
+  const fallback = DEFAULT_COVER_IMAGES[templateId] ?? [];
+  try {
+    const snapshot = await get(ref(db, `config/coverImages/${safeId}`));
+    const val = snapshot.val() as Record<string, CoverImageEntry> | null;
+    if (!val || Object.keys(val).length === 0) return fallback;
+    return Object.entries(val).map(([id, entry]) => ({ ...entry, id }));
+  } catch {
+    return fallback;
   }
 }
 

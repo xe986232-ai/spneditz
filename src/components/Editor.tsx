@@ -159,13 +159,14 @@ function generateTimeMarks(duration: number): number[] {
 }
 
 // Template yang SENGAJA dilewatin dari sistem "foto default random dari
-// Firebase" (lihat efek subscribeCoverImages di bawah) — dipakai buat
-// template yang default cover-nya mau tetap satu foto tetap dari file
-// lokal (public/templates/{id}/sample-cover.jpg), bukan dirandom dari
-// Firebase/Unsplash.
-const SKIP_DYNAMIC_COVER_TEMPLATE_IDS = new Set<string>([
-  "iphone-music-player-glass",
-]);
+// Firebase" (lihat efek subscribeCoverImages di bawah) — kosong sekarang,
+// artinya SEMUA template (termasuk "iphone-music-player-glass") pakai
+// foto sampul default random dari Firebase/Unsplash (config/coverImages/
+// {templateId}, lihat DEFAULT_COVER_IMAGES di lib/coverImages.ts buat
+// fallback-nya kalau Firebase kosong/offline). sample-cover.jpg lokal
+// tetap ada, tapi sekarang cuma jadi fallback instan sekejap sebelum
+// daftar Firebase/Unsplash kebaca.
+const SKIP_DYNAMIC_COVER_TEMPLATE_IDS = new Set<string>([]);
 
 export default function Editor({
   template,
