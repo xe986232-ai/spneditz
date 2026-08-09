@@ -29,12 +29,14 @@ const collageCache = new Map<string, { bar: string; waveform: string }>();
 
 /** Thumbnail kolase — 2 potongan gambar dibelah pakai clip-path miring
  *  ("keren", bukan potongan lurus doang), disambung sama pita aksen ungu
- *  (senada editor-accent di halaman Editor). Potongan atas & bawahnya
- *  BUKAN foto sampul mentah lagi — keduanya jepretan CANVAS SUNGGUHAN
- *  (hasil renderTemplateThumbnail, sama mesinnya kayak TemplateThumbnail),
- *  jadi kelihatan background, card player, foto sampul (random dari
- *  Firebase/Unsplash), teks, DAN progress-nya sekalian — potongan atas
- *  gaya "Progress Bar" klasik, potongan bawah gaya "Waveform" iconik. */
+ *  — SAMA PERSIS warna editor-accent yang dipakai di halaman Editor
+ *  (rgba(124,108,255,…)), bukan warna ungu custom terpisah, biar kartu
+ *  galeri & editor kerasa satu identitas visual. Potongan atas & bawahnya
+ *  jepretan CANVAS SUNGGUHAN (hasil renderTemplateThumbnail, sama mesinnya
+ *  kayak TemplateThumbnail), jadi kelihatan background, card player, foto
+ *  sampul (random dari Firebase/Unsplash), teks, DAN progress-nya
+ *  sekalian — potongan atas gaya "Progress Bar" klasik, potongan bawah
+ *  gaya "Waveform" iconik. */
 function CollageThumbnail({
   template,
   className,
@@ -59,8 +61,13 @@ function CollageThumbnail({
     }
 
     Promise.all([
-      renderTemplateThumbnail(template, undefined, "bar"),
-      renderTemplateThumbnail(template, undefined, "waveform"),
+      // Crop 6%–75% tinggi canvas: lompatin margin atas kosong, langsung
+      // mulai dari foto sampul, ikutin teks judul/artist, sampai progress
+      // bar/waveform + label durasi — biar elemen progress-nya SAMA-SAMA
+      // kepotong di dalam frame kolase (baik potongan atas "bar" maupun
+      // potongan bawah "waveform").
+      renderTemplateThumbnail(template, undefined, "bar", [0.06, 0.75]),
+      renderTemplateThumbnail(template, undefined, "waveform", [0.06, 0.75]),
     ])
       .then(([bar, waveform]) => {
         if (cancelledRef.current) return;
@@ -104,23 +111,24 @@ function CollageThumbnail({
         style={{ clipPath: bottomClip }}
       />
 
-      {/* glow ambient di garis sambungan — kesan "premium", bukan sekadar
-          dua foto ditempel */}
+      {/* glow ambient di garis sambungan — warna editor-accent, senada
+          Editor */}
       <div
         className="pointer-events-none absolute inset-x-0 top-[38%] h-24 opacity-80 blur-2xl"
         style={{
           backgroundImage:
-            "linear-gradient(100deg, transparent, rgba(124,108,255,0.6), transparent)",
+            "linear-gradient(100deg, transparent, rgba(124,108,255,0.55), transparent)",
         }}
       />
 
-      {/* pita pemisah miring, aksen ungu senada editor-accent (bukan garis
-          lurus polos) + highlight tipis biar keliatan kayak kaca/metal */}
+      {/* pita pemisah miring, warna editor-accent persis (bukan ungu
+          custom terpisah) + highlight tipis biar keliatan kayak kaca */}
       <div
         className="absolute inset-0"
         style={{
           clipPath: bandClip,
-          backgroundImage: "linear-gradient(100deg, #5a4fd6, #a695ff 45%, #5a4fd6)",
+          backgroundImage:
+            "linear-gradient(100deg, rgba(124,108,255,0.92), rgba(168,157,255,0.98) 45%, rgba(124,108,255,0.92))",
         }}
       />
       <div
@@ -132,14 +140,15 @@ function CollageThumbnail({
         }}
       />
 
-      {/* badge bulat pas di tengah sambungan, biar potongannya kelihatan
-          sengaja didesain, bukan sekedar dipotong */}
+      {/* badge bulat pas di tengah sambungan */}
       <div className="absolute left-1/2 top-[49.5%] z-10 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-editor-accent/60 bg-editor-panel shadow-[0_0_18px_rgba(124,108,255,0.65)]">
         <Sparkles size={12} className="text-editor-accent" />
       </div>
 
       {/* chip mini "Progress Bar" di potongan atas — gaya progress bar
-          klasik (isian putih polos) */}
+          klasik (isian putih polos), pill gelap + border tipis, sama pola
+          badge mengambang di preview Editor (bg-black/45, border-white/10,
+          backdrop-blur-sm) */}
       <div className="absolute left-2.5 top-[15%] flex items-center gap-1.5 rounded-full border border-white/10 bg-black/50 py-1 pl-1.5 pr-2 backdrop-blur-sm">
         <SlidersHorizontal size={9} className="shrink-0 text-paper/80" />
         <div className="h-1 w-9 overflow-hidden rounded-full bg-white/25">
@@ -200,21 +209,22 @@ function TemplateCard({
     onSelect(template);
   }
 
-  // Template dengan gaya kolase khusus — potongan atas & bawahnya sekarang
-  // dua jepretan canvas SUNGGUHAN dari template ini sendiri (gaya "bar" &
-  // "waveform"), bukan lagi foto sampul mentah dari template lain.
+  // Template dengan gaya kolase khusus — potongan atas & bawahnya dua
+  // jepretan canvas SUNGGUHAN dari template ini sendiri (gaya "bar" &
+  // "waveform").
   const isCollageStyle = COLLAGE_TEMPLATE_IDS.has(template.id);
 
   return (
     <button
       onClick={handleClick}
-      className="group relative flex w-full flex-col overflow-hidden rounded-[22px] p-[1px] text-left transition-transform duration-300 active:scale-[0.97]"
-      style={{
-        backgroundImage:
-          "linear-gradient(155deg, rgba(236,234,228,0.28), rgba(236,234,228,0.04) 35%, rgba(236,234,228,0.02) 60%, rgba(225,76,76,0.25))",
-      }}
+      className="group relative flex w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-editor-panel text-left shadow-[0_8px_28px_rgba(0,0,0,0.35)] transition-transform duration-300 active:scale-[0.97]"
     >
-      <div className="relative flex h-full flex-col overflow-hidden rounded-[21px] bg-panel">
+      {/* ring tipis di dalam border, kesan "kaca premium" — pola yang
+          sama dipakai di snapshot export Editor (ring-1 ring-inset
+          ring-white/10) */}
+      <div className="pointer-events-none absolute inset-0 z-20 rounded-2xl ring-1 ring-inset ring-white/[0.06]" />
+
+      <div className="relative flex h-full flex-col overflow-hidden">
         {/* kartu preview */}
         <div
           className="relative aspect-[9/16] w-full overflow-hidden"
@@ -240,20 +250,20 @@ function TemplateCard({
           )}
 
           {/* vignette halus biar teks & badge kebaca di semua foto */}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/10" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/15" />
 
-          {/* dim overlay + badge "Nonaktif" kalau template lagi dimatiin */}
+          {/* dim overlay + badge "Nonaktif" kalau template lagi dimatiin —
+              gelap pekat senada bg-editor-bg, bukan lagi abu-abu graphite */}
           {!enabled && (
-            <div className="absolute inset-0 bg-graphite/60 backdrop-blur-[1px]">
-              <span className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full border border-paper/10 bg-graphite/80 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-paper/90">
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-[1px]">
+              <span className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full border border-white/10 bg-black/70 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-paper/90 backdrop-blur-sm">
                 <Lock size={9} strokeWidth={2.5} />
                 Nonaktif
               </span>
             </div>
           )}
 
-          {/* badge "2 Gaya Progress" — cuma di kartu bergaya kolase, promosiin
-              kalau template ini bisa pakai progress bar ATAU waveform */}
+          {/* badge "2 Gaya Progress" — cuma di kartu bergaya kolase */}
           {isCollageStyle && enabled && (
             <span className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full border border-editor-accent/50 bg-editor-panel/85 px-2 py-0.5 text-[8.5px] font-semibold uppercase tracking-wide text-editor-accent backdrop-blur-sm">
               <Sparkles size={9} strokeWidth={2.5} />
@@ -261,12 +271,12 @@ function TemplateCard({
             </span>
           )}
 
-          <span className="absolute right-2.5 top-2.5 rounded-full border border-paper/10 bg-black/40 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-paper/90 backdrop-blur-sm">
+          <span className="absolute right-2.5 top-2.5 rounded-full border border-white/10 bg-black/50 px-2 py-0.5 text-[9px] font-semibold tabular-nums tracking-wide text-paper/90 backdrop-blur-sm">
             {template.duration}
           </span>
 
           {/* overlay bawah + info */}
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/45 to-transparent px-3 pb-2.5 pt-10">
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-3 pb-2.5 pt-10">
             <p className="truncate text-[13px] font-semibold leading-tight tracking-tight text-paper">
               {template.name}
             </p>
@@ -277,28 +287,33 @@ function TemplateCard({
               </p>
             ) : (
               usageCount !== null && (
-                <div className="mt-1 flex items-center gap-1 text-[9.5px] text-paper/60">
+                <div className="mt-1 flex items-center gap-1 text-[9.5px] text-editor-muted">
                   <ImageIcon size={10} strokeWidth={2} />
-                  <span>{usageCount.toLocaleString("id-ID")} kali digunakan</span>
+                  <span className="tabular-nums">
+                    {usageCount.toLocaleString("id-ID")} kali digunakan
+                  </span>
                 </div>
               )
             )}
           </div>
         </div>
 
-        {/* footer tipis, gantiin tombol lama — sekarang seluruh kartu bisa
-            diklik, footer ini cuma jadi indikator visual "Gunakan" */}
-        <div className="flex items-center justify-between gap-2 border-t border-paper/[0.06] px-3 py-2.5">
+        {/* footer tipis — CTA "Gunakan" pakai aksen ungu editor-accent
+            (bukan lagi merah "rec"), sama pola visual sama tombol "Unduh"
+            di modal export Editor (bg-editor-accent + glow shadow ungu) */}
+        <div className="flex items-center justify-between gap-2 border-t border-white/[0.06] bg-black/20 px-3 py-2.5">
           <span
             className={`text-[11px] font-semibold tracking-wide ${
-              enabled ? "text-paper/85" : "text-mute"
+              enabled ? "text-paper/85" : "text-editor-muted"
             }`}
           >
             Gunakan
           </span>
           <span
             className={`flex h-6 w-6 items-center justify-center rounded-full transition-transform duration-300 group-active:translate-x-0.5 ${
-              enabled ? "bg-rec text-paper" : "bg-mute/15 text-mute"
+              enabled
+                ? "bg-editor-accent text-paper shadow-[0_2px_10px_rgba(124,108,255,0.5)]"
+                : "bg-white/[0.06] text-editor-muted"
             }`}
           >
             <ArrowRight size={12} strokeWidth={2.5} />
@@ -320,33 +335,32 @@ export default function TemplateGallery({
     useState<Template | null>(null);
 
   return (
-    <div className="relative flex h-[100dvh] w-screen flex-col overflow-hidden bg-graphite font-sans">
-      {/* glow ambient di belakang header, kesan premium bukan flat generic */}
+    <div className="relative flex h-[100dvh] w-screen flex-col overflow-hidden bg-editor-bg font-sans">
+      {/* glow ambient ungu di belakang header — senada persis sama glow
+          di modal export Editor (bg-editor-accent/25 blur-3xl), bukan lagi
+          glow merah generik */}
       <div
-        className="pointer-events-none absolute -top-24 left-1/2 h-64 w-[140%] -translate-x-1/2 opacity-40 blur-3xl"
-        style={{
-          backgroundImage:
-            "radial-gradient(closest-side, rgba(225,76,76,0.35), transparent)",
-        }}
+        className="pointer-events-none absolute -top-24 left-1/2 h-64 w-[140%] -translate-x-1/2 rounded-full bg-editor-accent/20 opacity-90 blur-3xl"
       />
 
-      {/* Header */}
-      <div className="relative flex shrink-0 flex-col gap-3 border-b border-paper/[0.06] bg-panel/80 px-4 pb-4 pt-5 backdrop-blur">
+      {/* Header — border-white/5 & bg-editor-panel/80, sama persis pola
+          panel gelap di Editor (bg-editor-panel, border-white/5) */}
+      <div className="relative flex shrink-0 flex-col gap-3 border-b border-white/5 bg-editor-panel/80 px-4 pb-4 pt-5 backdrop-blur">
         <div className="flex items-center justify-between">
           <div>
-            <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-rec">
+            <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-editor-accent">
               <Sparkles size={11} strokeWidth={2.5} />
               Koleksi Template
             </div>
             <h1 className="text-xl font-bold tracking-tight text-paper">
               Pilih Template
             </h1>
-            <p className="mt-0.5 text-xs text-mute">
+            <p className="mt-0.5 text-xs text-editor-muted">
               Tinggal isi foto & audio, sisanya udah beres
             </p>
           </div>
           <button
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-paper/10 bg-graphite/60 text-mute transition hover:text-paper active:scale-95"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-paper/70 transition hover:text-paper active:scale-90"
             title="Cari template"
           >
             <Search size={17} />
@@ -366,33 +380,38 @@ export default function TemplateGallery({
         ))}
       </div>
 
-      {/* Alert modal — muncul kalau tombol "Gunakan" diklik pas template
-          lagi dinonaktifkan dari dashboard admin */}
+      {/* Alert modal — dipasang ulang persis kayak modal export di Editor:
+          rounded-3xl, border-white/10, bg-editor-panel, glow ambient
+          bg-editor-accent/25 blur-3xl, shadow gelap dalam, tombol CTA
+          bg-editor-accent dengan glow shadow ungu. */}
       {disabledAlertTemplate && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-6 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
           onClick={() => setDisabledAlertTemplate(null)}
         >
           <div
-            className="w-full max-w-[320px] rounded-3xl border border-paper/10 bg-panel p-5 text-center shadow-2xl"
+            className="relative w-full max-w-xs overflow-hidden rounded-3xl border border-white/10 bg-editor-panel p-5 text-center shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-rec/15 text-rec">
-              <Lock size={18} />
+            <div className="pointer-events-none absolute -top-24 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-rec/20 blur-3xl" />
+            <div className="relative">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-rec/15">
+                <Lock size={20} className="text-rec" />
+              </div>
+              <p className="text-sm font-semibold text-paper">
+                Template belum bisa dipakai
+              </p>
+              <p className="mt-1.5 text-xs leading-relaxed text-editor-muted">
+                "{disabledAlertTemplate.name}" lagi dinonaktifkan sementara.
+                Coba lagi nanti ya.
+              </p>
+              <button
+                onClick={() => setDisabledAlertTemplate(null)}
+                className="mt-4 w-full rounded-full bg-editor-accent px-4 py-2.5 text-xs font-semibold text-paper shadow-[0_4px_16px_rgba(124,108,255,0.4)] transition hover:brightness-110 active:scale-[0.98]"
+              >
+                Oke
+              </button>
             </div>
-            <p className="mb-1 text-sm font-semibold text-paper">
-              Template belum bisa dipakai
-            </p>
-            <p className="mb-4 text-xs text-mute">
-              "{disabledAlertTemplate.name}" lagi dinonaktifkan sementara.
-              Coba lagi nanti ya.
-            </p>
-            <button
-              onClick={() => setDisabledAlertTemplate(null)}
-              className="w-full rounded-full bg-rec px-3.5 py-2.5 text-sm font-semibold text-paper shadow-lg shadow-rec/20 active:scale-95"
-            >
-              Oke
-            </button>
           </div>
         </div>
       )}

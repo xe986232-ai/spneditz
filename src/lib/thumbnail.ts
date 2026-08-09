@@ -66,11 +66,23 @@ function fakeWaveformPeaks(count = 200): number[] {
  *  thumbnail kolase "2 Gaya Progress" di TemplateGallery) — supaya kedua
  *  potongan kolase itu adalah hasil jepretan CANVAS SUNGGUHAN, bukan cuma
  *  foto sampul mentah.
+ *
+ *  `cropYRange` opsional: [start, end] dalam FRAKSI tinggi canvas (0–1),
+ *  dipakai buat "zoom-crop" hasil render sebelum di-export jadi JPEG —
+ *  cuma ambil jendela vertikal itu terus di-stretch penuh ke ukuran
+ *  canvas asli. Dipakai khusus sama thumbnail kolase: progress bar/
+ *  waveform template ini letaknya di bagian BAWAH canvas (~67%), jadi
+ *  potongan diagonal kolase yang cuma nunjukin ~separuh atas canvas
+ *  nggak pernah kebagian elemen progress-nya sama sekali. Dengan crop
+ *  ini, jendela yang di-render sengaja digeser turun (misal 6%–75%)
+ *  biar cover + teks + progress bar/waveform-nya SAMA-SAMA kelihatan
+ *  di kedua potongan kolase, bukan cuma di potongan bawah doang.
  */
 export async function renderTemplateThumbnail(
   template: Template,
   atSec?: number,
   progressStyle: "bar" | "waveform" = "bar",
+  cropYRange?: [number, number],
 ): Promise<string> {
   const canvasW = template.canvasWidth ?? 1080;
   const canvasH = template.canvasHeight ?? 1920;
@@ -234,5 +246,24 @@ export async function renderTemplateThumbnail(
     }
   }
 
-  return canvas.toDataURL("image/jpeg", 0.9);
+  // Tanpa cropYRange: langsung export full canvas kayak sebelumnya.
+  if (!cropYRange) {
+    return canvas.toDataURL("image/jpeg", 0.9);
+  }
+
+  // Dengan cropYRange: ambil jendela vertikal itu dari canvas full-res di
+  // atas, lalu "stretch" ke canvas baru berukuran sama (canvasW x canvasH)
+  // — hasilnya versi zoom-in yang cover + progress bar/waveform-nya
+  // kepotong pas di frame, bukan ketinggalan di luar area yang di-crop.
+  const [cropStart, cropEnd] = cropYRange;
+  const sy = Math.max(0, cropStart) * canvasH;
+  const sh = Math.max(1, (Math.min(1, cropEnd) - Math.max(0, cropStart)) * canvasH);
+  const cropCanvas = document.createElement("canvas");
+  cropCanvas.width = canvasW;
+  cropCanvas.height = canvasH;
+  const cropCtx = cropCanvas.getContext("2d");
+  if (!cropCtx) throw new Error("Canvas 2D context tidak tersedia (crop)");
+  cropCtx.drawImage(canvas, 0, sy, canvasW, sh, 0, 0, canvasW, canvasH);
+
+  return cropCanvas.toDataURL("image/jpeg", 0.9);
 }

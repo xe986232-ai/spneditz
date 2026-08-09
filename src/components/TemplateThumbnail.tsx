@@ -12,19 +12,20 @@ const thumbnailCache = new Map<string, string>();
 // smooth & konsisten, bukan "kedip" sekejap terus langsung ganti gambar.
 const MIN_SKELETON_MS = 2000;
 
-/** Shimmer skeleton — placeholder abu-abu dengan highlight yang gerak dari
- *  kiri ke kanan, dipakai selama thumbnail belum siap ditampilkan. Di-
- *  export juga karena dipakai ulang sama CollageThumbnail (TemplateGallery)
- *  selagi 2 jepretan canvas-nya (bar & waveform) masih di-render. */
+/** Shimmer skeleton — placeholder gelap (senada bg-editor-track dari
+ *  palet Editor) dengan highlight yang gerak dari kiri ke kanan, dipakai
+ *  selama thumbnail belum siap ditampilkan. Di-export juga karena dipakai
+ *  ulang sama CollageThumbnail (TemplateGallery) selagi 2 jepretan
+ *  canvas-nya (bar & waveform) masih di-render. */
 export function ThumbnailSkeleton({ className }: { className?: string }) {
   return (
-    <div className={`absolute inset-0 overflow-hidden bg-graphite ${className ?? ""}`}>
-      <div className="absolute inset-0 animate-pulse bg-mute/10" />
+    <div className={`absolute inset-0 overflow-hidden bg-editor-track ${className ?? ""}`}>
+      <div className="absolute inset-0 animate-pulse bg-white/[0.04]" />
       <div
         className="absolute inset-0 -translate-x-full animate-skeleton-shimmer"
         style={{
           backgroundImage:
-            "linear-gradient(100deg, transparent 30%, rgba(236,234,228,0.10) 50%, transparent 70%)",
+            "linear-gradient(100deg, transparent 30%, rgba(236,234,228,0.08) 50%, transparent 70%)",
         }}
       />
     </div>
