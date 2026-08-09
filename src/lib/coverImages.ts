@@ -79,38 +79,11 @@ export const DEFAULT_COVER_IMAGES: Record<string, CoverImageEntry[]> = {
       ...unsplashUrls("photo-1527348857765-589fb3b5d6f6"),
     },
   ],
-  "iphone-music-player-glass": [
-    {
-      id: "adrian-infernus-GLf7bAwCdYg",
-      credit: "Adrian Infernus",
-      creditUrl: "https://unsplash.com/photos/GLf7bAwCdYg",
-      ...unsplashUrls("photo-1554034483-04fda0d3507b"),
-    },
-    {
-      id: "codioful-LeG68PrXA6Y",
-      credit: "Codioful",
-      creditUrl: "https://unsplash.com/photos/LeG68PrXA6Y",
-      ...unsplashUrls("photo-1614849286521-4c58b2f0ff15"),
-    },
-    {
-      id: "plufow-le-studio-aE8Mx8-vQss",
-      credit: "Plufow Le Studio",
-      creditUrl: "https://unsplash.com/photos/aE8Mx8-vQss",
-      ...unsplashUrls("photo-1710162734106-6932b5799f99"),
-    },
-    {
-      id: "luke-chesser-IGtutkXikuc",
-      credit: "Luke Chesser",
-      creditUrl: "https://unsplash.com/photos/IGtutkXikuc",
-      ...unsplashUrls("photo-1557683311-eac922347aa1"),
-    },
-    {
-      id: "pawel-czerwinski-Qiy4hr18aGs",
-      credit: "Pawel Czerwinski",
-      creditUrl: "https://unsplash.com/photos/Qiy4hr18aGs",
-      ...unsplashUrls("photo-1564951434112-64d74cc2a2d7"),
-    },
-  ],
+  // "iphone-music-player-glass" SENGAJA tidak ada di sini lagi — template
+  // ini sekarang pakai satu foto tetap dari file lokal
+  // (public/templates/iphone-music-player-glass/sample-cover.jpg) sebagai
+  // default-nya, bukan foto random dari Firebase/Unsplash. Lihat
+  // SKIP_DYNAMIC_COVER_TEMPLATE_IDS di src/components/Editor.tsx.
 };
 
 /** Sekali panggil pas app start — kalau Firebase belum punya data

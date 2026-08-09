@@ -158,6 +158,15 @@ function generateTimeMarks(duration: number): number[] {
   return marks;
 }
 
+// Template yang SENGAJA dilewatin dari sistem "foto default random dari
+// Firebase" (lihat efek subscribeCoverImages di bawah) — dipakai buat
+// template yang default cover-nya mau tetap satu foto tetap dari file
+// lokal (public/templates/{id}/sample-cover.jpg), bukan dirandom dari
+// Firebase/Unsplash.
+const SKIP_DYNAMIC_COVER_TEMPLATE_IDS = new Set<string>([
+  "iphone-music-player-glass",
+]);
+
 export default function Editor({
   template,
   onBack,
@@ -342,9 +351,20 @@ export default function Editor({
   // dari Firebase (config/coverImages/{templateId}), lihat lib/coverImages.ts.
   // Begitu daftarnya nyampe, foto sampul yang masih "sample" (belum diganti
   // user) di-random-in satu dari daftar ini & langsung nyontek jadi
-  // background juga (lewat customBackground, sama kayak upload manual). ----
+  // background juga (lewat customBackground, sama kayak upload manual).
+  //
+  // "iphone-music-player-glass" SENGAJA dilewatin (skip) dari sistem ini —
+  // template ini pakai satu foto tetap dari file lokal
+  // (/templates/iphone-music-player-glass/sample-cover.jpg, sekarang foto
+  // kucing) sebagai default-nya, bukan foto random dari Firebase/Unsplash.
+  // Jadi apapun isi node Firebase-nya, gak akan pernah nimpa sample lokal
+  // ini. ----
   useEffect(() => {
     appliedCoverRef.current = false;
+    if (SKIP_DYNAMIC_COVER_TEMPLATE_IDS.has(template.id)) {
+      setCoverImages([]);
+      return;
+    }
     const unsubscribe = subscribeCoverImages(template.id, setCoverImages);
     return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
