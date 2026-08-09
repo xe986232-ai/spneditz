@@ -250,7 +250,7 @@ export const TEMPLATES: Template[] = [
       {
         id: "device",
         label: "Nama device",
-        defaultText: "iPhone",
+        defaultText: "psiquiss",
         x: 13.8,
         y: 59.4,
         fontSize: 30,
@@ -262,7 +262,7 @@ export const TEMPLATES: Template[] = [
       {
         id: "title",
         label: "Judul",
-        defaultText: "PLERRR",
+        defaultText: "new vision",
         x: 13.8,
         y: 61.6,
         fontSize: 48,
@@ -274,7 +274,7 @@ export const TEMPLATES: Template[] = [
       {
         id: "artist",
         label: "Artist",
-        defaultText: "@artist",
+        defaultText: "@nyxvoids",
         x: 13.8,
         y: 63.6,
         fontSize: 28,
