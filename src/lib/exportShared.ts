@@ -44,44 +44,49 @@ export async function createImageBitmapWithRetry(
 }
 
 /** Siapin sumber gambar buat digambar ke canvas, dari File (upload user)
- *  ATAU dari url (sample/template asset dari network).
+ *  ATAU dari url (sample/template asset dari network / blob: URL yang
+ *  sudah dibuat pas file dipilih).
  *
  *  Strategi 2 lapis:
- *  1. Coba decode LANGSUNG dari File pakai createImageBitmap (skip blob:
- *     URL + <img> sama sekali) — ini yang paling stabil buat kasus hiccup
- *     blob: URL di browser mobile.
- *  2. Kalau createImageBitmap gagal decode (ada JPEG/foto tertentu, mis.
- *     hasil kamera HP dengan encoding aneh, yang bikin createImageBitmap
- *     lempar "source image could not be decoded" padahal fotonya valid),
- *     fallback ke jalur lama: blob: URL + <img> — decoder <img> di
- *     browser lebih toleran/permisif buat kasus begini.
- *  Kalau dua-duanya gagal, baru beneran dianggap gagal.
+ *  1. Coba `url` dulu (blob: URL yang dibuat FRESH pas user pilih file,
+ *     lewat <img>+loadImageEl) — ini yang PALING STABIL, sama kayak pola
+ *     yang sudah dipakai & terbukti aman di bagian audio (Editor.tsx) dan
+ *     restore preset (presets.ts: readEntryAsBlob). SENGAJA BUKAN
+ *     createImageBitmap(file) duluan: objek File mentah dari
+ *     `<input type=file>` suka jadi "stale" (gak kebaca lagi) di Chrome
+ *     Android setelah beberapa saat/interaksi — begitu itu kejadian,
+ *     createImageBitmap(file) gagal, DAN bikin blob URL baru dari File
+ *     yang sama itu juga ikut gagal (karena sumbernya, bukan URL-nya,
+ *     yang rusak). Blob URL yang sudah ada dari awal biasanya masih valid
+ *     walau File-nya sendiri sudah stale.
+ *  2. Kalau `url` gagal dimuat DAN ada `file`, fallback ke
+ *     createImageBitmap(file) langsung — buat jaga-jaga kasus sebaliknya
+ *     (ada JPEG/foto tertentu, mis. hasil kamera HP dengan encoding aneh,
+ *     yang bikin <img> gagal padahal fotonya valid & File-nya masih segar).
+ *  Kalau dua-duanya gagal, baru beneran dianggap gagal (lempar error dari
+ *  jalur `url`, karena itu jalur utama & pesannya lebih informatif).
  *  PENTING: kalau hasilnya ImageBitmap, pemanggil WAJIB `.close()` sesudah
  *  dipakai supaya memorinya dilepas. */
 export async function loadDrawableSource(
   file: File | undefined | null,
   url: string,
 ): Promise<DrawableImageSource> {
-  if (!file) return loadImageEl(url);
-
   try {
-    return await createImageBitmapWithRetry(file);
-  } catch (bitmapErr) {
+    return await loadImageEl(url);
+  } catch (urlErr) {
+    if (!file) throw urlErr;
     // eslint-disable-next-line no-console
     console.warn(
-      "[export] createImageBitmap gagal decode file langsung, fallback ke <img>+blob URL…",
-      bitmapErr instanceof Error ? bitmapErr.message : bitmapErr,
+      "[export] loadImageEl(url) gagal (kemungkinan blob URL sempat invalid), fallback ke createImageBitmap(file) langsung…",
+      urlErr instanceof Error ? urlErr.message : urlErr,
     );
-    const objectUrl = URL.createObjectURL(file);
     try {
-      return await loadImageEl(objectUrl);
-    } catch (imgErr) {
-      URL.revokeObjectURL(objectUrl);
-      throw imgErr;
+      return await createImageBitmapWithRetry(file);
+    } catch {
+      // Dua-duanya gagal — lempar error dari jalur `url` (jalur utama,
+      // pesannya lebih jelas nunjuk ke asset mana yang bermasalah).
+      throw urlErr;
     }
-    // Sengaja TIDAK revoke di jalur sukses — pemanggil cuma pegang
-    // <img> (bukan url-nya), jadi biarin browser yang bebersih objectUrl
-    // ini sendiri (memori kecil, 1 elemen <img>, bukan masalah).
   }
 }
 
