@@ -13,7 +13,7 @@
 // biar slot sampul TETAP ada isinya, bukan malah kosong gara-gara error
 // jaringan.
 
-import { ref, onValue, off, update, get, push } from "firebase/database";
+import { ref, onValue, off, update, get, push, set } from "firebase/database";
 import { db } from "./firebase";
 
 export type CoverImageEntry = {
@@ -38,6 +38,20 @@ function unsplashUrls(photoId: string) {
   return {
     url: `https://images.unsplash.com/${photoId}?auto=format&fit=crop&w=1080&h=1920&q=80`,
     thumbUrl: `https://images.unsplash.com/${photoId}?auto=format&fit=crop&w=200&h=200&q=60`,
+  };
+}
+
+/** Bikin URL Picsum Photos (https://picsum.photos) dari satu "seed" string.
+ *  BEDA sama unsplashUrls di atas: Picsum generate gambar dari hash seed-nya
+ *  sendiri, BUKAN nunjuk ke satu foto spesifik yang bisa dihapus si
+ *  fotografer/Unsplash. Jadi URL ini nggak akan pernah 404 atau balik jadi
+ *  placeholder gradient kayak yang kejadian ke foto Unsplash lama (per
+ *  Agustus 2026, beberapa photo id di bawah udah mati/ilang). Dipakai buat
+ *  template "iphone-music-player-glass". */
+function picsumUrls(seed: string) {
+  return {
+    url: `https://picsum.photos/seed/${seed}/1080/1920`,
+    thumbUrl: `https://picsum.photos/seed/${seed}/200/200`,
   };
 }
 
@@ -79,44 +93,44 @@ export const DEFAULT_COVER_IMAGES: Record<string, CoverImageEntry[]> = {
       ...unsplashUrls("photo-1527348857765-589fb3b5d6f6"),
     },
   ],
-  // "iphone-music-player-glass" sekarang JUGA random dari Firebase/
-  // Unsplash (lihat SKIP_DYNAMIC_COVER_TEMPLATE_IDS di Editor.tsx, sudah
-  // dikosongkan) — sengaja PAKAI ULANG set foto yang sama kayak
-  // "iphone-music-player" di atas (bukan nebak ID foto Unsplash baru yang
-  // belum pernah dites, biar nggak ada risiko link patah/404). Admin
-  // tetap bisa nambah/ganti foto khusus template ini kapan aja lewat
-  // Dashboard (config/coverImages/iphone-music-player-glass di Firebase),
-  // tanpa perlu deploy ulang.
+  // "iphone-music-player-glass" — dulu pakai ulang set foto Unsplash yang
+  // sama kayak "iphone-music-player" di atas, TAPI foto-foto Unsplash itu
+  // sekarang udah mati/dihapus (photo id-nya balik jadi placeholder
+  // gradient polos, bukan foto asli lagi). Diganti total ke Picsum Photos
+  // (seed-based, lihat picsumUrls di atas) biar nggak ngalamin masalah
+  // yang sama lagi ke depannya. Admin tetap bisa nambah/ganti foto khusus
+  // template ini kapan aja lewat Dashboard (config/coverImages/
+  // iphone-music-player-glass di Firebase), tanpa perlu deploy ulang.
   "iphone-music-player-glass": [
     {
-      id: "karsten-wurth-7BjhtdogU3A",
-      credit: "Karsten Würth",
-      creditUrl: "https://unsplash.com/photos/7BjhtdogU3A",
-      ...unsplashUrls("photo-1475070929565-c985b496cb9f"),
+      id: "picsum-glass-01",
+      credit: "Picsum Photos",
+      creditUrl: "https://picsum.photos/",
+      ...picsumUrls("spneditz-glass-01"),
     },
     {
-      id: "jeremy-bishop-G9i_plbfDgk",
-      credit: "Jeremy Bishop",
-      creditUrl: "https://unsplash.com/photos/G9i_plbfDgk",
-      ...unsplashUrls("photo-1478760329108-5c3ed9d495a0"),
+      id: "picsum-glass-02",
+      credit: "Picsum Photos",
+      creditUrl: "https://picsum.photos/",
+      ...picsumUrls("spneditz-glass-02"),
     },
     {
-      id: "stormseeker-rX12B5uX7QM",
-      credit: "Stormseeker",
-      creditUrl: "https://unsplash.com/photos/rX12B5uX7QM",
-      ...unsplashUrls("photo-1500099817043-86d46000d58f"),
+      id: "picsum-glass-03",
+      credit: "Picsum Photos",
+      creditUrl: "https://picsum.photos/",
+      ...picsumUrls("spneditz-glass-03"),
     },
     {
-      id: "nathan-dumlao-ciO5L8pin8A",
-      credit: "Nathan Dumlao",
-      creditUrl: "https://unsplash.com/photos/ciO5L8pin8A",
-      ...unsplashUrls("photo-1518156677180-95a2893f3e9f"),
+      id: "picsum-glass-04",
+      credit: "Picsum Photos",
+      creditUrl: "https://picsum.photos/",
+      ...picsumUrls("spneditz-glass-04"),
     },
     {
-      id: "peter-lloyd-rRWyOn9gat4",
-      credit: "Peter Lloyd",
-      creditUrl: "https://unsplash.com/photos/rRWyOn9gat4",
-      ...unsplashUrls("photo-1527348857765-589fb3b5d6f6"),
+      id: "picsum-glass-05",
+      credit: "Picsum Photos",
+      creditUrl: "https://picsum.photos/",
+      ...picsumUrls("spneditz-glass-05"),
     },
   ],
 };
@@ -191,6 +205,36 @@ export function subscribeCoverImages(
   );
 
   return () => off(listRef, "value", listener);
+}
+
+/** Sekali panggil pas app start — khusus migrasi bug foto Unsplash mati di
+ *  template "iphone-music-player-glass" (lihat komentar DEFAULT_COVER_IMAGES
+ *  di atas). ensureCoverImagesSeeded() TIDAK bisa benerin ini karena dia
+ *  cuma seed kalau config/coverImages KOSONG TOTAL — sedangkan node glass
+ *  ini udah ada isinya (isinya Unsplash yang mati). Jadi di sini kita paksa
+ *  timpa NODE INI DOANG (template lain & foto yang udah ditambah admin
+ *  lewat Dashboard buat template lain tetap aman, gak disentuh), ditandai
+ *  lewat flag config/coverImagesMigrations/unsplashDeadLinksFixV1 biar
+ *  cuma jalan SEKALI & gak nimpa balik kalau admin udah edit ulang foto
+ *  glass-nya sendiri lewat Dashboard setelah migrasi ini jalan. */
+export async function ensureGlassCoverImagesMigrated() {
+  const FLAG_PATH = "config/coverImagesMigrations/unsplashDeadLinksFixV1";
+  try {
+    const flagSnap = await get(ref(db, FLAG_PATH));
+    if (flagSnap.exists()) return;
+    const safeId = sanitizeTemplateId("iphone-music-player-glass");
+    const seed: Record<string, CoverImageEntry> = {};
+    for (const entry of DEFAULT_COVER_IMAGES["iphone-music-player-glass"]) {
+      seed[entry.id] = entry;
+    }
+    // Set (bukan update/merge) node-nya biar entry Unsplash mati yang lama
+    // beneran ilang, ganti total sama set Picsum yang baru.
+    await set(ref(db, `config/coverImages/${safeId}`), seed);
+    await set(ref(db, FLAG_PATH), true);
+  } catch {
+    // Offline / rules nolak tulis — gak fatal, coba lagi pas app dibuka
+    // lagi nanti (flag belum ke-set kalau gagal di tengah jalan).
+  }
 }
 
 /** Tambah satu foto ke daftar default satu template. Dipanggil dari

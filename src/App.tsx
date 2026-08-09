@@ -3,7 +3,10 @@ import TemplateGallery from "./components/TemplateGallery";
 import Editor from "./components/Editor";
 import AdminDashboard from "./components/AdminDashboard";
 import type { Template } from "./types";
-import { ensureCoverImagesSeeded } from "./lib/coverImages";
+import {
+  ensureCoverImagesSeeded,
+  ensureGlassCoverImagesMigrated,
+} from "./lib/coverImages";
 
 // Nama halaman dashboard sengaja dibikin susah ditebak — bukan link yang
 // muncul di mana pun di UI, cuma bisa diakses kalau tau URL persisnya:
@@ -21,6 +24,10 @@ export default function App() {
   // admin. Lihat lib/coverImages.ts.
   useEffect(() => {
     ensureCoverImagesSeeded();
+    // Migrasi sekali: benerin foto default template Glass yang sebelumnya
+    // Unsplash-nya udah mati (balik jadi placeholder gradient) — lihat
+    // ensureGlassCoverImagesMigrated di lib/coverImages.ts.
+    ensureGlassCoverImagesMigrated();
   }, []);
 
   if (window.location.pathname.replace(/\/+$/, "") === DASHBOARD_PATH) {
