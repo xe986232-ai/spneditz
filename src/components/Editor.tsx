@@ -28,6 +28,8 @@ import {
   Bookmark,
   Save,
   Lock,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { getDominantColor } from "../lib/color";
 import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../types";
@@ -402,6 +404,12 @@ export default function Editor({
   // sendiri (biar nggak nutupin preview terus-terusan). Klik masih bisa
   // lewat track "Background" di timeline bawah.
   const [showBgLabel, setShowBgLabel] = useState(false);
+
+  // Mode preview full screen — cuma kanvas yang kelihatan, top bar,
+  // playback controls, timeline & toolbar bawah semua di-hide. Ini
+  // full-screen "in-app" (bukan Fullscreen API browser), biar konsisten
+  // di semua browser/WebView mobile.
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Panel "Preset" — simpan/muat jepretan pengaturan (opacity, blur, gaya
   // progress, teks, & foto/background) biar gak perlu ngatur ulang dari nol
@@ -1344,7 +1352,8 @@ export default function Editor({
 
   return (
     <div className="relative flex h-[100dvh] w-screen flex-col overflow-hidden bg-graphite font-sans">
-      {/* Top bar */}
+      {/* Top bar — di-hide total pas mode fullscreen */}
+      {!isFullscreen && (
       <div className="flex shrink-0 items-center justify-between border-b border-mute/10 bg-panel px-3 py-2">
         <button
           onClick={onBack}
@@ -1397,6 +1406,7 @@ export default function Editor({
           )}
         </div>
       </div>
+      )}
 
       {/* Canvas / preview area — takes remaining space, keeps 9:16 ratio */}
       <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-graphite p-3">
@@ -1442,9 +1452,23 @@ export default function Editor({
           )}
           <audio ref={audioElRef} src={audioMedia?.url} className="hidden" />
         </div>
+
+        {/* Tombol Fullscreen — SENGAJA di luar box kanvas 9:16 (bukan
+            nempel di atas video-nya), nempel di tepi kanan area preview,
+            di atas panel timeline (bukan di dalamnya). Icon & title
+            berubah sesuai mode: Maximize2 = masuk fullscreen, Minimize2 =
+            balik ke ukuran normal. */}
+        <button
+          onClick={() => setIsFullscreen((f) => !f)}
+          className="absolute right-3 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-paper/10 bg-black/50 text-paper backdrop-blur-sm transition active:scale-90"
+          title={isFullscreen ? "Keluar dari fullscreen" : "Lihat preview fullscreen"}
+        >
+          {isFullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+        </button>
       </div>
 
-      {/* Playback controls */}
+      {/* Playback controls — di-hide pas fullscreen */}
+      {!isFullscreen && (
       <div className="grid shrink-0 grid-cols-3 items-center border-t border-mute/10 bg-panel px-4 py-1.5">
         <div className="justify-self-start flex items-center gap-1">
           <button
@@ -1542,6 +1566,7 @@ export default function Editor({
           </button>
         </div>
       </div>
+      )}
 
       <input
         ref={fileInputRef}
@@ -1550,7 +1575,9 @@ export default function Editor({
         onChange={handleFileChange}
       />
 
-      {/* Timeline — bisa digeser horizontal (overflow-x-auto) */}
+      {/* Timeline — bisa digeser horizontal (overflow-x-auto), di-hide
+          pas fullscreen */}
+      {!isFullscreen && (
       <div className="shrink-0 select-none border-t border-mute/10 bg-panel px-4 pb-1.5 pt-2">
         <div ref={timelineScrollRef} className="overflow-x-auto">
           <div className="relative" style={{ width: TRACK_WIDTH }}>
@@ -1906,11 +1933,12 @@ export default function Editor({
           </div>
         </div>
       </div>
+      )}
 
       {/* Toolbar bawah — kontekstual: default cuma Audio & Teks, tapi
           begitu ada slot yang diketuk/terseleksi, berubah jadi satu
           tombol besar "Ganti" buat slot itu. */}
-      {isBackgroundLayerSelected ? (
+      {!isFullscreen && (isBackgroundLayerSelected ? (
         <div
           className="absolute inset-x-0 bottom-0 z-30 flex flex-col rounded-t-2xl border border-mute/10 bg-panel shadow-[0_-8px_30px_rgba(0,0,0,0.35)]"
           style={{ height: sheetHeight }}
@@ -2429,7 +2457,7 @@ export default function Editor({
             })}
           </div>
         </div>
-      )}
+      ))}
 
 
       {/* Modal Preset — simpan pengaturan sekarang jadi preset baru, atau
