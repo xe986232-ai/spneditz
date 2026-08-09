@@ -13,8 +13,10 @@ const thumbnailCache = new Map<string, string>();
 const MIN_SKELETON_MS = 2000;
 
 /** Shimmer skeleton — placeholder abu-abu dengan highlight yang gerak dari
- *  kiri ke kanan, dipakai selama thumbnail belum siap ditampilkan. */
-function ThumbnailSkeleton({ className }: { className?: string }) {
+ *  kiri ke kanan, dipakai selama thumbnail belum siap ditampilkan. Di-
+ *  export juga karena dipakai ulang sama CollageThumbnail (TemplateGallery)
+ *  selagi 2 jepretan canvas-nya (bar & waveform) masih di-render. */
+export function ThumbnailSkeleton({ className }: { className?: string }) {
   return (
     <div className={`absolute inset-0 overflow-hidden bg-graphite ${className ?? ""}`}>
       <div className="absolute inset-0 animate-pulse bg-mute/10" />

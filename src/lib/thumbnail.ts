@@ -3,6 +3,7 @@ import {
   drawImageCover,
   drawImageCoverZoomed,
   drawProgressFill,
+  drawWaveformProgress,
   drawDurationLayer,
   drawTextLayers,
   roundRectPath,
@@ -31,6 +32,22 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+/** Peaks palsu buat mode waveform di thumbnail statis — bukan flat rata
+ *  kayak FALLBACK_PEAKS di Editor (itu sengaja polos karena representasi
+ *  "belum ada audio"), di sini sengaja dibikin naik-turun (gelombang sinus
+ *  + sedikit variasi) biar potongan thumbnail-nya kelihatan seperti
+ *  waveform beneran, bukan garis rata membosankan. Nilainya deterministik
+ *  (bukan Math.random()) biar thumbnail yang di-cache konsisten tiap reload
+ *  & tidak "berkedip" beda pola tiap kali komponen re-render.
+ */
+function fakeWaveformPeaks(count = 200): number[] {
+  return Array.from({ length: count }, (_, i) => {
+    const base = 0.35 + 0.3 * Math.sin(i * 0.35) + 0.18 * Math.sin(i * 0.9 + 1.3);
+    const wobble = 0.12 * Math.sin(i * 2.7);
+    return Math.min(1, Math.max(0.12, base + wobble));
+  });
+}
+
 /** Render SATU frame template (di detik `atSec`) ke canvas baru yang
  *  BERDIRI SENDIRI (bukan canvas Editor yang lagi kepake user), lalu
  *  balikin sebagai data URL JPEG — dipakai buat thumbnail kartu galeri
@@ -42,10 +59,18 @@ function loadImage(src: string): Promise<HTMLImageElement> {
  *  Pakai sampleSrc slot (foto contoh bawaan template) & defaultText
  *  textLayers, karena thumbnail galeri digambar SEBELUM user upload
  *  apa pun.
+ *
+ *  `progressStyle` menentukan gaya progress yang di-screenshot: "bar"
+ *  (track abu-abu + isian putih polos, default, sama seperti sebelumnya)
+ *  atau "waveform" (bar equalizer "berjalan", dipakai buat potongan bawah
+ *  thumbnail kolase "2 Gaya Progress" di TemplateGallery) — supaya kedua
+ *  potongan kolase itu adalah hasil jepretan CANVAS SUNGGUHAN, bukan cuma
+ *  foto sampul mentah.
  */
 export async function renderTemplateThumbnail(
   template: Template,
   atSec?: number,
+  progressStyle: "bar" | "waveform" = "bar",
 ): Promise<string> {
   const canvasW = template.canvasWidth ?? 1080;
   const canvasH = template.canvasHeight ?? 1920;
@@ -167,8 +192,13 @@ export async function renderTemplateThumbnail(
     ctx.restore();
   }
 
-  // 4) decorLayers "front" (ikon, progress bar track, kontrol)
-  for (const layer of decorLayers.filter((l) => l.order === "front")) {
+  // 4) decorLayers "front" (ikon, progress bar track, kontrol) — track
+  // progressbar.png statis disembunyikan di mode "waveform" (sama seperti
+  // di Editor.tsx), karena drawWaveformProgress gambar bar-nya dari nol,
+  // bukan cuma isian di atas track itu.
+  for (const layer of decorLayers.filter(
+    (l) => l.order === "front" && !(progressStyle === "waveform" && l.hideInWaveformMode),
+  )) {
     const img = imageBySrc.get(layer.assetSrc);
     if (!img) continue;
     const opacity = (layer.opacity ?? 100) / 100;
@@ -189,7 +219,19 @@ export async function renderTemplateThumbnail(
     drawDurationLayer(ctx, canvasW, canvasH, template.durationLayer, currentSec, DURATION);
   }
   if (template.progressLayer) {
-    drawProgressFill(ctx, canvasW, canvasH, template.progressLayer, currentSec, DURATION);
+    if (progressStyle === "waveform") {
+      drawWaveformProgress(
+        ctx,
+        canvasW,
+        canvasH,
+        template.progressLayer,
+        currentSec,
+        DURATION,
+        fakeWaveformPeaks(),
+      );
+    } else {
+      drawProgressFill(ctx, canvasW, canvasH, template.progressLayer, currentSec, DURATION);
+    }
   }
 
   return canvas.toDataURL("image/jpeg", 0.9);

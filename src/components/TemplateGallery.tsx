@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Image as ImageIcon,
   Search,
@@ -12,7 +12,8 @@ import { TEMPLATES } from "../data/templates";
 import type { Template } from "../types";
 import { subscribeTemplateUsage } from "../lib/exportLog";
 import { subscribeTemplateEnabled } from "../lib/templateFlags";
-import TemplateThumbnail from "./TemplateThumbnail";
+import TemplateThumbnail, { ThumbnailSkeleton } from "./TemplateThumbnail";
+import { renderTemplateThumbnail } from "../lib/thumbnail";
 
 // Id template yang dapet perlakuan khusus: thumbnail kolase 2 foto yang
 // dibelah miring, biar sekilas kelihatan template ini punya 2 gaya
@@ -21,21 +22,62 @@ import TemplateThumbnail from "./TemplateThumbnail";
 // gaya sama, tinggal tambahin id-nya di sini.
 const COLLAGE_TEMPLATE_IDS = new Set(["iphone-music-player"]);
 
-/** Thumbnail kolase — 2 foto dibelah pakai clip-path miring ("keren", bukan
- *  potongan lurus doang), disambung sama pita aksen ungu (senada
- *  editor-accent di halaman Editor). Potongan atas dikasih chip mini
- *  "Progress Bar" (gaya klasik), potongan bawah dikasih chip mini
- *  "Waveform" (gaya lebih iconik) — dua gaya progress yang bisa dipilih
- *  user pas ngedit, jadi kelihatan dari thumbnail-nya doang. */
+// Cache di level modul buat 2 potongan kolase (bar & waveform) — sama
+// pola-nya kayak thumbnailCache di TemplateThumbnail.tsx, biar nggak
+// render ulang canvas tiap kartu ini muncul lagi.
+const collageCache = new Map<string, { bar: string; waveform: string }>();
+
+/** Thumbnail kolase — 2 potongan gambar dibelah pakai clip-path miring
+ *  ("keren", bukan potongan lurus doang), disambung sama pita aksen ungu
+ *  (senada editor-accent di halaman Editor). Potongan atas & bawahnya
+ *  BUKAN foto sampul mentah lagi — keduanya jepretan CANVAS SUNGGUHAN
+ *  (hasil renderTemplateThumbnail, sama mesinnya kayak TemplateThumbnail),
+ *  jadi kelihatan background, card player, foto sampul (random dari
+ *  Firebase/Unsplash), teks, DAN progress-nya sekalian — potongan atas
+ *  gaya "Progress Bar" klasik, potongan bawah gaya "Waveform" iconik. */
 function CollageThumbnail({
-  topSrc,
-  bottomSrc,
+  template,
   className,
 }: {
-  topSrc: string;
-  bottomSrc: string;
+  template: Template;
   className?: string;
 }) {
+  const cached = collageCache.get(template.id);
+  const [shots, setShots] = useState<{ bar: string; waveform: string } | null>(
+    cached ?? null,
+  );
+  const cancelledRef = useRef(false);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+
+    if (collageCache.has(template.id)) {
+      setShots(collageCache.get(template.id)!);
+      return () => {
+        cancelledRef.current = true;
+      };
+    }
+
+    Promise.all([
+      renderTemplateThumbnail(template, undefined, "bar"),
+      renderTemplateThumbnail(template, undefined, "waveform"),
+    ])
+      .then(([bar, waveform]) => {
+        if (cancelledRef.current) return;
+        const result = { bar, waveform };
+        collageCache.set(template.id, result);
+        setShots(result);
+      })
+      .catch(() => {
+        // Render canvas gagal (mis. aset gagal load) — biarin kosong,
+        // ThumbnailSkeleton di TemplateCard tetap kepasang lewat fallback
+        // gradient background kartu, jadi kartu nggak kelihatan rusak.
+      });
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, [template]);
+
   // Garis potong miring: dari (0%, 58%) ke (100%, 44%) — dipakai bareng
   // buat 2 foto DAN pita pemisahnya, biar semuanya nyambung presisi
   // walau ukuran kartu beda-beda (persen, bukan px, jadi selalu pas).
@@ -43,16 +85,20 @@ function CollageThumbnail({
   const bottomClip = "polygon(0% 58%, 100% 44%, 100% 100%, 0% 100%)";
   const bandClip = "polygon(0% 55.5%, 100% 41.5%, 100% 47%, 0% 61%)";
 
+  if (!shots) {
+    return <ThumbnailSkeleton className={className} />;
+  }
+
   return (
     <div className={`absolute inset-0 ${className ?? ""}`}>
       <img
-        src={topSrc}
+        src={shots.bar}
         alt=""
         className="absolute inset-0 h-full w-full object-cover"
         style={{ clipPath: topClip }}
       />
       <img
-        src={bottomSrc}
+        src={shots.waveform}
         alt=""
         className="absolute inset-0 h-full w-full object-cover"
         style={{ clipPath: bottomClip }}
@@ -154,14 +200,10 @@ function TemplateCard({
     onSelect(template);
   }
 
-  // Template dengan gaya kolase khusus — pakai 2 foto sampul beda template
-  // (punya sendiri + tetangganya) biar potongannya kelihatan kontras/niat,
-  // bukan foto yang sama diulang dua kali.
+  // Template dengan gaya kolase khusus — potongan atas & bawahnya sekarang
+  // dua jepretan canvas SUNGGUHAN dari template ini sendiri (gaya "bar" &
+  // "waveform"), bukan lagi foto sampul mentah dari template lain.
   const isCollageStyle = COLLAGE_TEMPLATE_IDS.has(template.id);
-  const collageTopSrc = template.slots.find((s) => s.type === "image")?.sampleSrc;
-  const collageBottomSrc = TEMPLATES.find(
-    (t) => t.id !== template.id,
-  )?.slots.find((s) => s.type === "image")?.sampleSrc;
 
   return (
     <button
@@ -180,10 +222,9 @@ function TemplateCard({
             backgroundImage: `linear-gradient(160deg, ${template.gradientFrom}, ${template.gradientTo})`,
           }}
         >
-          {isCollageStyle && collageTopSrc && collageBottomSrc ? (
+          {isCollageStyle ? (
             <CollageThumbnail
-              topSrc={collageTopSrc}
-              bottomSrc={collageBottomSrc}
+              template={template}
               className={`transition duration-500 ${
                 enabled ? "group-active:scale-105" : "grayscale"
               }`}
