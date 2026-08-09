@@ -1,10 +1,124 @@
 import { useEffect, useState } from "react";
-import { Image as ImageIcon, Search, Lock, Sparkles, ArrowRight } from "lucide-react";
+import {
+  Image as ImageIcon,
+  Search,
+  Lock,
+  Sparkles,
+  ArrowRight,
+  AudioWaveform,
+  SlidersHorizontal,
+} from "lucide-react";
 import { TEMPLATES } from "../data/templates";
 import type { Template } from "../types";
 import { subscribeTemplateUsage } from "../lib/exportLog";
 import { subscribeTemplateEnabled } from "../lib/templateFlags";
 import TemplateThumbnail from "./TemplateThumbnail";
+
+// Id template yang dapet perlakuan khusus: thumbnail kolase 2 foto yang
+// dibelah miring, biar sekilas kelihatan template ini punya 2 gaya
+// progress (bar polos & waveform) — bukan cuma 1 render statis kayak
+// kartu template lain. Kalau nanti ada template lain yang mau dikasih
+// gaya sama, tinggal tambahin id-nya di sini.
+const COLLAGE_TEMPLATE_IDS = new Set(["iphone-music-player"]);
+
+/** Thumbnail kolase — 2 foto dibelah pakai clip-path miring ("keren", bukan
+ *  potongan lurus doang), disambung sama pita aksen ungu (senada
+ *  editor-accent di halaman Editor). Potongan atas dikasih chip mini
+ *  "Progress Bar" (gaya klasik), potongan bawah dikasih chip mini
+ *  "Waveform" (gaya lebih iconik) — dua gaya progress yang bisa dipilih
+ *  user pas ngedit, jadi kelihatan dari thumbnail-nya doang. */
+function CollageThumbnail({
+  topSrc,
+  bottomSrc,
+  className,
+}: {
+  topSrc: string;
+  bottomSrc: string;
+  className?: string;
+}) {
+  // Garis potong miring: dari (0%, 58%) ke (100%, 44%) — dipakai bareng
+  // buat 2 foto DAN pita pemisahnya, biar semuanya nyambung presisi
+  // walau ukuran kartu beda-beda (persen, bukan px, jadi selalu pas).
+  const topClip = "polygon(0% 0%, 100% 0%, 100% 44%, 0% 58%)";
+  const bottomClip = "polygon(0% 58%, 100% 44%, 100% 100%, 0% 100%)";
+  const bandClip = "polygon(0% 55.5%, 100% 41.5%, 100% 47%, 0% 61%)";
+
+  return (
+    <div className={`absolute inset-0 ${className ?? ""}`}>
+      <img
+        src={topSrc}
+        alt=""
+        className="absolute inset-0 h-full w-full object-cover"
+        style={{ clipPath: topClip }}
+      />
+      <img
+        src={bottomSrc}
+        alt=""
+        className="absolute inset-0 h-full w-full object-cover"
+        style={{ clipPath: bottomClip }}
+      />
+
+      {/* glow ambient di garis sambungan — kesan "premium", bukan sekadar
+          dua foto ditempel */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-[38%] h-24 opacity-80 blur-2xl"
+        style={{
+          backgroundImage:
+            "linear-gradient(100deg, transparent, rgba(124,108,255,0.6), transparent)",
+        }}
+      />
+
+      {/* pita pemisah miring, aksen ungu senada editor-accent (bukan garis
+          lurus polos) + highlight tipis biar keliatan kayak kaca/metal */}
+      <div
+        className="absolute inset-0"
+        style={{
+          clipPath: bandClip,
+          backgroundImage: "linear-gradient(100deg, #5a4fd6, #a695ff 45%, #5a4fd6)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute inset-0 animate-skeleton-shimmer opacity-70"
+        style={{
+          clipPath: bandClip,
+          backgroundImage:
+            "linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.85) 50%, transparent 70%)",
+        }}
+      />
+
+      {/* badge bulat pas di tengah sambungan, biar potongannya kelihatan
+          sengaja didesain, bukan sekedar dipotong */}
+      <div className="absolute left-1/2 top-[49.5%] z-10 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-editor-accent/60 bg-editor-panel shadow-[0_0_18px_rgba(124,108,255,0.65)]">
+        <Sparkles size={12} className="text-editor-accent" />
+      </div>
+
+      {/* chip mini "Progress Bar" di potongan atas — gaya progress bar
+          klasik (isian putih polos) */}
+      <div className="absolute left-2.5 top-[15%] flex items-center gap-1.5 rounded-full border border-white/10 bg-black/50 py-1 pl-1.5 pr-2 backdrop-blur-sm">
+        <SlidersHorizontal size={9} className="shrink-0 text-paper/80" />
+        <div className="h-1 w-9 overflow-hidden rounded-full bg-white/25">
+          <div className="h-full w-[62%] rounded-full bg-paper" />
+        </div>
+      </div>
+
+      {/* chip mini "Waveform" di potongan bawah — bar naik-turun kayak
+          gelombang audio beneran, warna emerald sama kayak klip audio di
+          Editor, biar konsisten identitas warnanya */}
+      <div className="absolute bottom-[14%] left-2.5 flex items-center gap-1.5 rounded-full border border-white/10 bg-black/50 py-1 pl-1.5 pr-2 backdrop-blur-sm">
+        <AudioWaveform size={9} className="shrink-0 text-emerald-300" />
+        <div className="flex items-end gap-[1.5px]">
+          {[3, 7, 4, 9, 5, 8, 3].map((h, i) => (
+            <span
+              key={i}
+              className="w-[2px] rounded-full bg-emerald-300"
+              style={{ height: `${h}px` }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function TemplateCard({
   template,
@@ -40,6 +154,15 @@ function TemplateCard({
     onSelect(template);
   }
 
+  // Template dengan gaya kolase khusus — pakai 2 foto sampul beda template
+  // (punya sendiri + tetangganya) biar potongannya kelihatan kontras/niat,
+  // bukan foto yang sama diulang dua kali.
+  const isCollageStyle = COLLAGE_TEMPLATE_IDS.has(template.id);
+  const collageTopSrc = template.slots.find((s) => s.type === "image")?.sampleSrc;
+  const collageBottomSrc = TEMPLATES.find(
+    (t) => t.id !== template.id,
+  )?.slots.find((s) => s.type === "image")?.sampleSrc;
+
   return (
     <button
       onClick={handleClick}
@@ -57,13 +180,23 @@ function TemplateCard({
             backgroundImage: `linear-gradient(160deg, ${template.gradientFrom}, ${template.gradientTo})`,
           }}
         >
-          <TemplateThumbnail
-            template={template}
-            alt={`Preview ${template.name}`}
-            className={`absolute inset-0 h-full w-full object-cover transition duration-500 ${
-              enabled ? "group-active:scale-105" : "grayscale"
-            }`}
-          />
+          {isCollageStyle && collageTopSrc && collageBottomSrc ? (
+            <CollageThumbnail
+              topSrc={collageTopSrc}
+              bottomSrc={collageBottomSrc}
+              className={`transition duration-500 ${
+                enabled ? "group-active:scale-105" : "grayscale"
+              }`}
+            />
+          ) : (
+            <TemplateThumbnail
+              template={template}
+              alt={`Preview ${template.name}`}
+              className={`absolute inset-0 h-full w-full object-cover transition duration-500 ${
+                enabled ? "group-active:scale-105" : "grayscale"
+              }`}
+            />
+          )}
 
           {/* vignette halus biar teks & badge kebaca di semua foto */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/10" />
@@ -78,6 +211,15 @@ function TemplateCard({
             </div>
           )}
 
+          {/* badge "2 Gaya Progress" — cuma di kartu bergaya kolase, promosiin
+              kalau template ini bisa pakai progress bar ATAU waveform */}
+          {isCollageStyle && enabled && (
+            <span className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full border border-editor-accent/50 bg-editor-panel/85 px-2 py-0.5 text-[8.5px] font-semibold uppercase tracking-wide text-editor-accent backdrop-blur-sm">
+              <Sparkles size={9} strokeWidth={2.5} />
+              2 Gaya Progress
+            </span>
+          )}
+
           <span className="absolute right-2.5 top-2.5 rounded-full border border-paper/10 bg-black/40 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-paper/90 backdrop-blur-sm">
             {template.duration}
           </span>
@@ -88,12 +230,17 @@ function TemplateCard({
               {template.name}
             </p>
 
-            {/* ikon foto + "X kali digunakan", rata kiri */}
-            {usageCount !== null && (
-              <div className="mt-1 flex items-center gap-1 text-[9.5px] text-paper/60">
-                <ImageIcon size={10} strokeWidth={2} />
-                <span>{usageCount.toLocaleString("id-ID")} kali digunakan</span>
-              </div>
+            {isCollageStyle ? (
+              <p className="mt-1 truncate text-[9.5px] text-editor-accent/90">
+                Bar klasik & waveform iconik, tinggal pilih
+              </p>
+            ) : (
+              usageCount !== null && (
+                <div className="mt-1 flex items-center gap-1 text-[9.5px] text-paper/60">
+                  <ImageIcon size={10} strokeWidth={2} />
+                  <span>{usageCount.toLocaleString("id-ID")} kali digunakan</span>
+                </div>
+              )
             )}
           </div>
         </div>
