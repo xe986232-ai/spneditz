@@ -305,7 +305,7 @@ export const TEMPLATES: Template[] = [
       x1: 15.83, // ≈171/1080, sejajar ujung kiri progressbar.png (mock-up baru)
       x2: 84.07, // ≈908/1080, sejajar ujung kanan progressbar.png
       y: 62.03, // ≈1191/1920, tengah track progressbar.png (mock-up baru)
-      thickness: 10,
+      thickness: 19, // disamain ke tinggi track progressbar.png baru (hasil ekstrak mock-up), biar isian putih nggak keliatan kurus di dalam track abu-abu
       color: "#FFFFFF",
     },
   },
