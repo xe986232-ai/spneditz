@@ -1451,68 +1451,52 @@ export default function Editor({
         >
           {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
         </button>
+
+        {/* Play/Pause + label waktu — mengambang nempel di preview
+            (kayak referensi), jadi nggak butuh panel terpisah lagi. */}
+        {!isFullscreen && (
+          <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-1.5">
+            <span className="rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-medium tabular-nums text-paper backdrop-blur-sm">
+              {formatClock(currentSec)}
+              <span className="text-paper/50"> / {formatClock(DURATION)}</span>
+            </span>
+            <button
+              onClick={() => setIsPlaying((p) => !p)}
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/45 text-paper backdrop-blur-sm transition active:scale-90"
+              title={isPlaying ? "Jeda" : "Putar"}
+            >
+              {isPlaying ? (
+                <Pause size={20} fill="currentColor" />
+              ) : (
+                <Play size={20} fill="currentColor" className="ml-0.5" />
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
 
-      {/* Playback controls — di-hide pas fullscreen */}
-      {!isFullscreen && (
-      <div className="shrink-0 border-t border-white/5 bg-editor-panel px-5 pb-1 pt-2">
-        {/* Label waktu (current / total) di atas baris kontrol */}
-        <div className="mb-1 flex items-center justify-center gap-2 text-[11px] font-medium tabular-nums">
-          <span className="text-paper">{formatClock(currentSec)}</span>
-          <span className="text-editor-muted">{formatClock(DURATION)}</span>
-        </div>
-
-        <div className="flex items-center justify-between">
-          {/* Kiri — Potong (gunting). Tombol hapus cuma nongol pas ada
-              klip audio yang beneran keseleksi (adaptif). */}
-          <div className="flex items-center gap-1">
+      {/* Baris Potong/Hapus audio — cuma nongol pas emang lagi motong
+          klip audio (adaptif), biar nggak makan ruang pas nggak kepake. */}
+      {!isFullscreen && canCutAudio && (
+      <div className="shrink-0 border-t border-white/5 bg-editor-panel px-5 py-1.5">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleCutAudio}
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-paper transition active:scale-90"
+            title="Potong audio di posisi playhead"
+          >
+            <Scissors size={18} />
+          </button>
+          {canDeleteAudioClip && (
             <button
-              onClick={handleCutAudio}
-              disabled={!canCutAudio}
-              className={`flex h-9 w-9 items-center justify-center rounded-xl transition active:scale-90 ${
-                canCutAudio ? "text-paper" : "cursor-not-allowed text-paper/25"
-              }`}
-              title={
-                canCutAudio
-                  ? "Potong audio di posisi playhead"
-                  : "Pilih track audio & posisikan playhead di tengah klip buat motong"
-              }
+              onClick={handleDeleteAudioClip}
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-rec transition active:scale-90"
+              title="Hapus bagian audio yang dipilih"
             >
-              <Scissors size={18} />
+              <Trash2 size={18} />
             </button>
-            {canDeleteAudioClip && (
-              <button
-                onClick={handleDeleteAudioClip}
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-rec transition active:scale-90"
-                title="Hapus bagian audio yang dipilih"
-              >
-                <Trash2 size={18} />
-              </button>
-            )}
-          </div>
-
-          {/* Tengah — Play/Pause (icon simple tanpa background) */}
-          <button
-            onClick={() => setIsPlaying((p) => !p)}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-paper transition active:scale-90"
-            title={isPlaying ? "Jeda" : "Putar"}
-          >
-            {isPlaying ? (
-              <Pause size={22} fill="currentColor" />
-            ) : (
-              <Play size={22} fill="currentColor" className="ml-0.5" />
-            )}
-          </button>
-
-          {/* Kanan — toggle fullscreen preview */}
-          <button
-            onClick={() => setIsFullscreen((f) => !f)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-paper/70 transition hover:text-paper active:scale-90"
-            title="Lihat preview fullscreen"
-          >
-            <Maximize2 size={18} />
-          </button>
+          )}
         </div>
       </div>
       )}
