@@ -56,6 +56,7 @@ import { exportTemplateVideoAuto, ExportCancelledError, type ExportProgress, typ
 import { analyzeAudio, type AudioAnalysis } from "../lib/waveform";
 import { logExportEvent } from "../lib/exportLog";
 import { subscribeWaveformEnabled } from "../lib/premiumFlags";
+import { subscribeCoverImages, type CoverImageEntry } from "../lib/coverImages";
 import {
   savePreset,
   listPresets,
@@ -217,6 +218,16 @@ export default function Editor({
   const [customBackground, setCustomBackground] = useState<SlotMediaEntry | null>(
     () => (coverSlotId ? initialSlotMedia(template)[coverSlotId] ?? null : null),
   );
+  // Daftar foto default (Unsplash) buat slot sampul template ini, di-load
+  // real-time dari Firebase — lihat lib/coverImages.ts. Selama ini masih
+  // kosong, editor tetap jalan pakai sample statis lokal (sampleSrc) dulu
+  // sebagai fallback instan, biar slot gak keliatan kosong pas nunggu.
+  const [coverImages, setCoverImages] = useState<CoverImageEntry[]>([]);
+  // Nge-pastiin foto default dari Firebase cuma di-random & diterapin
+  // SEKALI per mount/template (bukan tiap kali daftarnya berubah real-time,
+  // biar gak "loncat" ganti foto pas user lagi ngedit). Direset tiap ganti
+  // template.
+  const appliedCoverRef = useRef(false);
   // Opacity (0-100) & blur (0-MAX_BACKGROUND_BLUR px) khusus buat
   // background hasil auto-sync dari sampul — diatur lewat track
   // "Background" di timeline, cuma relevan selama customBackground aktif.
@@ -327,6 +338,31 @@ export default function Editor({
     const unsubscribe = subscribeWaveformEnabled(setWaveformEnabled);
     return unsubscribe;
   }, []);
+  // ---- Daftar foto default (Unsplash) template ini — dengerin real-time
+  // dari Firebase (config/coverImages/{templateId}), lihat lib/coverImages.ts.
+  // Begitu daftarnya nyampe, foto sampul yang masih "sample" (belum diganti
+  // user) di-random-in satu dari daftar ini & langsung nyontek jadi
+  // background juga (lewat customBackground, sama kayak upload manual). ----
+  useEffect(() => {
+    appliedCoverRef.current = false;
+    const unsubscribe = subscribeCoverImages(template.id, setCoverImages);
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [template.id]);
+  useEffect(() => {
+    if (!coverSlotId || coverImages.length === 0 || appliedCoverRef.current) {
+      return;
+    }
+    appliedCoverRef.current = true;
+    // User udah keburu upload foto sendiri sebelum daftar Firebase nyampe
+    // -> jangan diganggu/ditimpa foto random.
+    if (slotMedia[coverSlotId]?.kind === "file") return;
+    const picked = coverImages[Math.floor(Math.random() * coverImages.length)];
+    const entry: SlotMediaEntry = { kind: "sample", url: picked.url };
+    setSlotMedia((prev) => ({ ...prev, [coverSlotId]: entry }));
+    setCustomBackground(entry);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coverImages, coverSlotId]);
   // ---- Klip-klip di track audio (hasil potong/geser/trim user). Mulai
   // dari satu klip yang membentang penuh file audio, direset tiap kali
   // audio-nya diganti (lihat effect analisis audio di bawah). ----

@@ -43,6 +43,29 @@ Realtime Database → Rules** ke:
             ".validate": "newData.isBoolean()"
           }
         }
+      },
+      "coverImages": {
+        "$templateId": {
+          "$entryId": {
+            ".read": true,
+            ".write": true,
+            "url": {
+              ".validate": "newData.isString()"
+            },
+            "thumbUrl": {
+              ".validate": "newData.isString()"
+            },
+            "credit": {
+              ".validate": "newData.isString()"
+            },
+            "creditUrl": {
+              ".validate": "newData.isString()"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        }
       }
     },
     ".read": false,
@@ -83,6 +106,19 @@ Kenapa gini:
   belum pernah di-set sama sekali (belum pernah disentuh dari dashboard),
   aplikasi nganggep template itu AKTIF (fail-open) — jadi template baru
   otomatis kepake tanpa perlu di-toggle manual dulu.
+- `config/coverImages/$templateId/$entryId` — daftar foto default
+  (Unsplash) yang otomatis ngisi slot sampul & background tiap template
+  sebelum user upload foto sendiri (lihat `src/lib/coverImages.ts`).
+  `.read: true` supaya SEMUA orang yang buka editor (belum tentu admin)
+  bisa nge-load foto-foto ini pas pertama buka. `.write: true` dipakai dua
+  tempat: (1) `ensureCoverImagesSeeded()` yang jalan otomatis sekali pas
+  app pertama kali dibuka di device siapa pun buat nyeed data awal kalau
+  Firebase masih kosong, dan (2) panel "Foto Default (Unsplash)" di
+  dashboard admin buat nambah/hapus foto. Sama kayak flag-flag lain di
+  atas, gak ada auth di belakangnya — password dashboard cuma penghalang
+  di sisi aplikasi, BUKAN proteksi Rules yang sesungguhnya. `$other:
+  false` nolak field lain di luar `url/thumbUrl/credit/creditUrl` biar
+  data gak "kotor" ditulis sembarangan lewat DevTools.
 - `.validate: "newData.isNumber()"` → mencegah orang iseng nulis nilai aneh
   (string, object, dll) ke path itu lewat DevTools/network tab.
 - Root `.read/.write: false` → path lain di luar `exports`/`config` tertutup
@@ -102,6 +138,9 @@ kamu). Di situ kamu bisa:
   dimatiin, template tetap kelihatan di galeri (ditandai badge "Nonaktif" +
   gambar jadi grayscale) tapi tombol "Gunakan" munculin alert modal,
   bukan lanjut buka editor.
+- Tambah/hapus foto default (Unsplash) per template lewat panel "Foto
+  Default (Unsplash)" — foto-foto ini yang otomatis ngisi slot sampul &
+  background sebelum user upload foto sendiri.
 
 Baca catatan soal batas keamanan pendekatan ini di bagian atas file ini.
 

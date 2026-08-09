@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import TemplateGallery from "./components/TemplateGallery";
 import Editor from "./components/Editor";
 import AdminDashboard from "./components/AdminDashboard";
 import type { Template } from "./types";
+import { ensureCoverImagesSeeded } from "./lib/coverImages";
 
 // Nama halaman dashboard sengaja dibikin susah ditebak — bukan link yang
 // muncul di mana pun di UI, cuma bisa diakses kalau tau URL persisnya:
@@ -13,6 +14,14 @@ export default function App() {
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(
     null,
   );
+
+  // Sekali aja pas app pertama kali dibuka (di device siapa pun) — kalau
+  // Firebase belum punya config/coverImages sama sekali, ke-seed otomatis
+  // pakai DEFAULT_COVER_IMAGES. No-op kalau udah pernah ke-seed/diedit
+  // admin. Lihat lib/coverImages.ts.
+  useEffect(() => {
+    ensureCoverImagesSeeded();
+  }, []);
 
   if (window.location.pathname.replace(/\/+$/, "") === DASHBOARD_PATH) {
     return <AdminDashboard />;

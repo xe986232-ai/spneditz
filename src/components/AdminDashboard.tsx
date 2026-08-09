@@ -1,9 +1,15 @@
 import { useEffect, useState } from "react";
 import { ref, onValue, off, update } from "firebase/database";
-import { Lock, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { Lock, Eye, EyeOff, ShieldCheck, ImagePlus, Trash2 } from "lucide-react";
 import { db } from "../lib/firebase";
 import { TEMPLATES } from "../data/templates";
 import { subscribeTemplateEnabled, setTemplateEnabled } from "../lib/templateFlags";
+import {
+  subscribeCoverImages,
+  addCoverImage,
+  removeCoverImage,
+  type CoverImageEntry,
+} from "../lib/coverImages";
 
 // Password ringan buat buka dashboard ini — BUKAN pengaman kelas berat
 // (nggak pakai Firebase Auth), cuma penghalang tambahan di atas nama
@@ -37,6 +43,20 @@ export default function AdminDashboard() {
   const [savingTemplateId, setSavingTemplateId] = useState<string | null>(
     null,
   );
+
+  // Daftar foto default (Unsplash) tiap template, key-nya template.id.
+  // Dipakai buat panel "Foto Default (Unsplash)" di bawah.
+  const [coverImagesMap, setCoverImagesMap] = useState<
+    Record<string, CoverImageEntry[]>
+  >({});
+  const [coverFormTemplateId, setCoverFormTemplateId] = useState<
+    string | null
+  >(null);
+  const [coverFormUrl, setCoverFormUrl] = useState("");
+  const [coverFormCredit, setCoverFormCredit] = useState("");
+  const [coverFormError, setCoverFormError] = useState<string | null>(null);
+  const [savingCover, setSavingCover] = useState(false);
+  const [removingCoverId, setRemovingCoverId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!unlocked) return;
@@ -76,6 +96,65 @@ export default function AdminDashboard() {
 
     return () => unsubs.forEach((unsub) => unsub());
   }, [unlocked]);
+
+  useEffect(() => {
+    if (!unlocked) return;
+
+    const unsubs = TEMPLATES.map((t) =>
+      subscribeCoverImages(t.id, (entries) => {
+        setCoverImagesMap((prev) => ({ ...prev, [t.id]: entries }));
+      }),
+    );
+
+    return () => unsubs.forEach((unsub) => unsub());
+  }, [unlocked]);
+
+  async function handleAddCoverImage(e: React.FormEvent) {
+    e.preventDefault();
+    if (!coverFormTemplateId) return;
+    const url = coverFormUrl.trim();
+    if (!url) {
+      setCoverFormError("URL foto belum diisi.");
+      return;
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      setCoverFormError("URL-nya gak valid.");
+      return;
+    }
+    if (parsed.protocol !== "https:") {
+      setCoverFormError("URL harus https://.");
+      return;
+    }
+    setCoverFormError(null);
+    setSavingCover(true);
+    try {
+      await addCoverImage(coverFormTemplateId, {
+        url,
+        thumbUrl: url,
+        credit: coverFormCredit.trim() || undefined,
+      });
+      setCoverFormUrl("");
+      setCoverFormCredit("");
+    } catch (err) {
+      setCoverFormError(
+        err instanceof Error ? err.message : "Gagal nambahin foto.",
+      );
+    } finally {
+      setSavingCover(false);
+    }
+  }
+
+  async function handleRemoveCoverImage(templateId: string, entryId: string) {
+    setRemovingCoverId(entryId);
+    try {
+      await removeCoverImage(templateId, entryId);
+    } finally {
+      setRemovingCoverId(null);
+    }
+  }
 
   function handleUnlock(e: React.FormEvent) {
     e.preventDefault();
@@ -249,6 +328,118 @@ export default function AdminDashboard() {
                       }`}
                     />
                   </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Foto Default (Unsplash) — foto yang otomatis ngisi slot sampul
+            (jadi background juga) sebelum user upload foto sendiri. Per
+            template, minimal biarin 1 foto biar slot gak kosong. */}
+        <div className="mb-4 rounded-2xl border border-mute/15 bg-panel p-5">
+          <p className="mb-1 text-sm font-semibold">Foto Default (Unsplash)</p>
+          <p className="mb-3 text-xs text-mute">
+            Foto-foto ini yang otomatis ngisi slot sampul & background
+            sebelum user upload foto sendiri — beda-beda per template, satu
+            dipilih acak tiap kali editor dibuka.
+          </p>
+          <div className="flex flex-col gap-4">
+            {TEMPLATES.map((t) => {
+              const entries = coverImagesMap[t.id];
+              const formOpen = coverFormTemplateId === t.id;
+              return (
+                <div
+                  key={t.id}
+                  className="border-t border-mute/10 pt-3 first:border-t-0 first:pt-0"
+                >
+                  <p className="mb-2 text-sm font-medium">{t.name}</p>
+                  {entries === undefined ? (
+                    <p className="text-xs text-mute">Memuat…</p>
+                  ) : entries.length === 0 ? (
+                    <p className="text-xs text-mute">Belum ada foto.</p>
+                  ) : (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {entries.map((entry) => (
+                        <div key={entry.id} className="group relative">
+                          <img
+                            src={entry.thumbUrl}
+                            alt={entry.credit ?? "Foto default"}
+                            className="h-14 w-14 rounded-lg border border-mute/15 object-cover"
+                          />
+                          <button
+                            onClick={() => handleRemoveCoverImage(t.id, entry.id)}
+                            disabled={removingCoverId === entry.id}
+                            title={
+                              entry.credit
+                                ? `Hapus foto by ${entry.credit}`
+                                : "Hapus foto"
+                            }
+                            className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white opacity-0 transition group-hover:opacity-100 disabled:opacity-50"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {formOpen ? (
+                    <form
+                      onSubmit={handleAddCoverImage}
+                      className="flex flex-col gap-2 rounded-lg border border-mute/15 bg-graphite/40 p-3"
+                    >
+                      <input
+                        type="url"
+                        required
+                        value={coverFormUrl}
+                        onChange={(e) => setCoverFormUrl(e.target.value)}
+                        placeholder="https://images.unsplash.com/photo-..."
+                        className="w-full rounded-lg border border-mute/20 bg-graphite px-2.5 py-2 text-xs text-paper outline-none focus:border-paper/40"
+                      />
+                      <input
+                        type="text"
+                        value={coverFormCredit}
+                        onChange={(e) => setCoverFormCredit(e.target.value)}
+                        placeholder="Nama fotografer (opsional)"
+                        className="w-full rounded-lg border border-mute/20 bg-graphite px-2.5 py-2 text-xs text-paper outline-none focus:border-paper/40"
+                      />
+                      {coverFormError && (
+                        <p className="text-xs text-red-400">{coverFormError}</p>
+                      )}
+                      <div className="flex gap-2">
+                        <button
+                          type="submit"
+                          disabled={savingCover}
+                          className="flex-1 rounded-full bg-paper px-3 py-2 text-xs font-semibold text-graphite active:scale-95 disabled:opacity-50"
+                        >
+                          {savingCover ? "Nyimpen…" : "Tambah"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCoverFormTemplateId(null);
+                            setCoverFormError(null);
+                          }}
+                          className="rounded-full border border-mute/20 px-3 py-2 text-xs text-mute"
+                        >
+                          Batal
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setCoverFormTemplateId(t.id);
+                        setCoverFormUrl("");
+                        setCoverFormCredit("");
+                        setCoverFormError(null);
+                      }}
+                      className="flex items-center gap-1.5 text-xs font-medium text-mute transition hover:text-paper"
+                    >
+                      <ImagePlus size={13} />
+                      Tambah foto
+                    </button>
+                  )}
                 </div>
               );
             })}
