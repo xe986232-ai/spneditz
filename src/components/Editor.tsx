@@ -26,6 +26,9 @@ import {
   Minimize2,
   Check,
   ArrowLeft,
+  Eye,
+  EyeOff,
+  Sparkles,
 } from "lucide-react";
 import { getDominantColor } from "../lib/color";
 import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../types";
@@ -154,6 +157,35 @@ function formatClock(sec: number): string {
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+// Tombol mata kecil di kiri tiap baris track — nempel (sticky) ke tepi
+// kiri area timeline yang scrollable, jadi tetap keliatan/gampang diketuk
+// meskipun user geser timeline ke kanan. Klik toggle hidden/show elemen
+// itu tanpa ikut milih (select) track-nya.
+function TrackEyeButton({
+  hidden,
+  onToggle,
+  title,
+}: {
+  hidden: boolean;
+  onToggle: (e: React.MouseEvent) => void;
+  title?: string;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      title={title ?? (hidden ? "Tampilkan elemen" : "Sembunyikan elemen")}
+      aria-label={hidden ? "Tampilkan elemen" : "Sembunyikan elemen"}
+      className={`sticky left-1 z-20 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition active:scale-90 ${
+        hidden
+          ? "border-mute/20 bg-graphite/80 text-mute"
+          : "border-editor-accent/40 bg-editor-accent/15 text-editor-accent"
+      }`}
+    >
+      {hidden ? <EyeOff size={12} /> : <Eye size={12} />}
+    </button>
+  );
 }
 
 function generateTimeMarks(duration: number): number[] {
@@ -359,6 +391,25 @@ export default function Editor({
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
     timelineDragRef.current = null;
+  }
+
+  // ---- Visibilitas elemen di timeline ----
+  // Set berisi id elemen (slot foto/video, "Background", decor layer
+  // adjustable, atau text layer) yang lagi di-hide user lewat ikon mata
+  // di kiri track. Elemen yang di-hide nggak digambar di canvas preview
+  // MAUPUN di hasil export — bener-bener "dimatiin", bukan cuma disamarin
+  // di timeline doang.
+  const [hiddenElements, setHiddenElements] = useState<Set<string>>(
+    () => new Set(),
+  );
+  function toggleElementHidden(id: string, e?: React.MouseEvent) {
+    e?.stopPropagation();
+    setHiddenElements((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   // ---- Export state ----
@@ -729,7 +780,10 @@ export default function Editor({
   }, [isPlaying, currentSec, audioMedia, activeAudioClip?.id]);
 
   // ---- Render loop: gambar baseAssetSrc + slot yang aktif di detik ini ----
-  const backgroundSrc = customBackground?.url ?? template.baseAssetSrc;
+  const isBackgroundHidden = hiddenElements.has(BACKGROUND_LAYER_ID);
+  const backgroundSrc =
+    (!isBackgroundHidden ? customBackground?.url : undefined) ??
+    template.baseAssetSrc;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -750,7 +804,7 @@ export default function Editor({
     if (bgImg) {
       ctx.save();
       let blurOverscan = 0;
-      if (customBackground) {
+      if (customBackground && !isBackgroundHidden) {
         ctx.globalAlpha = Math.max(0, Math.min(100, backgroundOpacity)) / 100;
         if (backgroundBlur > 0) {
           ctx.filter = `blur(${backgroundBlur}px)`;
@@ -767,6 +821,7 @@ export default function Editor({
     // foto/video, jadi ada di belakang foto. Full-canvas, pakai opacity
     // masing-masing (default 100 kalau belum diubah user).
     for (const layer of backDecorLayers) {
+      if (hiddenElements.has(layer.id)) continue;
       const op = (layerOpacity[layer.id] ?? layer.opacity ?? 100) / 100;
       if (op <= 0) continue;
       if (layer.liquidGlass) {
@@ -795,6 +850,7 @@ export default function Editor({
 
     for (const slot of effectiveSlots) {
       if (slot.type === "audio") continue;
+      if (hiddenElements.has(slot.id)) continue;
       if (
         slot.x == null ||
         slot.y == null ||
@@ -842,6 +898,7 @@ export default function Editor({
     // Layer dekoratif "front" (ikon, progress bar, info & kontrol) —
     // digambar SETELAH slot foto/video, jadi selalu di atas/depan foto.
     for (const layer of frontDecorLayers) {
+      if (hiddenElements.has(layer.id)) continue;
       const img = cache.get(layer.assetSrc, () => setRenderTick((t) => t + 1));
       if (!img) continue;
       const op = (layerOpacity[layer.id] ?? layer.opacity ?? 100) / 100;
@@ -855,7 +912,12 @@ export default function Editor({
     // Teks custom (judul, artist, nama device) — di atas semua decor
     // layer, biar selalu kebaca jelas.
     if (template.textLayers?.length) {
-      drawTextLayers(ctx, canvasW, canvasH, template.textLayers, textValues);
+      const visibleTextLayers = template.textLayers.filter(
+        (l) => !hiddenElements.has(l.id),
+      );
+      if (visibleTextLayers.length) {
+        drawTextLayers(ctx, canvasW, canvasH, visibleTextLayers, textValues);
+      }
     }
     // Label durasi berjalan/total — selalu otomatis dari playhead & DURATION
     // asli, tidak pernah dari textValues (dikunci, tidak bisa di-custom).
@@ -907,6 +969,7 @@ export default function Editor({
     backgroundOpacity,
     backgroundBlur,
     textValues,
+    hiddenElements,
     DURATION,
     progressStyle,
     audioInfo,
@@ -1279,6 +1342,7 @@ export default function Editor({
 
     for (const slot of effectiveSlots) {
       if (slot.type === "audio") continue;
+      if (hiddenElements.has(slot.id)) continue;
       if (
         slot.x == null ||
         slot.y == null ||
@@ -1329,27 +1393,36 @@ export default function Editor({
       // balik ke default template.
       const exportTemplate: Template = {
         ...template,
-        decorLayers: template.decorLayers?.map((layer) =>
-          layer.liquidGlass
-            ? {
-                ...layer,
-                liquidGlass: {
-                  ...layer.liquidGlass,
-                  settings: {
-                    ...layer.liquidGlass.settings,
-                    ...glassSettings[layer.id],
-                  },
-                },
-              }
-            : layer,
+        slots: template.slots.filter((slot) => !hiddenElements.has(slot.id)),
+        textLayers: template.textLayers?.filter(
+          (l) => !hiddenElements.has(l.id),
         ),
+        decorLayers: template.decorLayers
+          ?.filter((layer) => !hiddenElements.has(layer.id))
+          .map((layer) =>
+            layer.liquidGlass
+              ? {
+                  ...layer,
+                  liquidGlass: {
+                    ...layer.liquidGlass,
+                    settings: {
+                      ...layer.liquidGlass.settings,
+                      ...glassSettings[layer.id],
+                    },
+                  },
+                }
+              : layer,
+          ),
       };
+      const exportCustomBackground = hiddenElements.has(BACKGROUND_LAYER_ID)
+        ? null
+        : customBackground;
       const { blob, engine } = await exportTemplateVideoAuto(
         exportTemplate,
         slotMedia,
         layerOpacity,
         (p) => setExportProgress(p),
-        customBackground,
+        exportCustomBackground,
         backgroundOpacity,
         backgroundBlur,
         textValues,
@@ -1643,22 +1716,32 @@ export default function Editor({
                   {template.textLayers.map((layer) => {
                     const isSelected = selectedTextLayerId === layer.id;
                     const value = textValues[layer.id] || layer.defaultText;
+                    const isTextHidden = hiddenElements.has(layer.id);
                     return (
                       <div
                         key={layer.id}
-                        className="relative h-9 rounded-md border border-mute/10 bg-editor-track"
+                        className="relative flex h-9 items-center rounded-md border border-mute/10 bg-editor-track"
                       >
+                        <TrackEyeButton
+                          hidden={isTextHidden}
+                          onToggle={(e) => toggleElementHidden(layer.id, e)}
+                          title={
+                            isTextHidden
+                              ? `Tampilkan "${layer.label}"`
+                              : `Sembunyikan "${layer.label}"`
+                          }
+                        />
                         <div
                           onClick={() => {
                             setSelectedSlotId(null);
                             setSelectedLayerId(null);
                             setSelectedTextLayerId(layer.id);
                           }}
-                          className={`absolute inset-y-0.5 left-0.5 cursor-pointer overflow-hidden rounded border transition ${
+                          className={`absolute inset-y-0.5 left-8 cursor-pointer overflow-hidden rounded border transition ${
                             isSelected
                               ? "border-paper ring-2 ring-paper bg-amber-400/20"
                               : "border-amber-400/40 bg-amber-400/15"
-                          }`}
+                          } ${isTextHidden ? "opacity-40 grayscale" : ""}`}
                           style={{ width: Math.max(28, DURATION * effectivePxPerSec - 4) }}
                           title={layer.label}
                         >
@@ -1700,17 +1783,21 @@ export default function Editor({
                     lagi. Klik buat munculin slider opacity & blur di
                     toolbar bawah. */}
                 {customBackground && (
-                  <div className="relative h-9 rounded-md border border-mute/10 bg-editor-track">
+                  <div className="relative flex h-9 items-center rounded-md border border-mute/10 bg-editor-track">
+                    <TrackEyeButton
+                      hidden={hiddenElements.has(BACKGROUND_LAYER_ID)}
+                      onToggle={(e) => toggleElementHidden(BACKGROUND_LAYER_ID, e)}
+                    />
                     <div
                       onClick={() => {
                         setSelectedSlotId(null);
                         setSelectedLayerId(BACKGROUND_LAYER_ID);
                       }}
-                      className={`absolute inset-y-0.5 left-0.5 cursor-pointer overflow-hidden rounded border transition ${
+                      className={`absolute inset-y-0.5 left-8 cursor-pointer overflow-hidden rounded border transition ${
                         isBackgroundLayerSelected
                           ? "border-paper ring-2 ring-paper bg-sky-400/20"
                           : "border-sky-400/40 bg-sky-400/15"
-                      }`}
+                      } ${hiddenElements.has(BACKGROUND_LAYER_ID) ? "opacity-40 grayscale" : ""}`}
                       style={{ width: Math.max(28, DURATION * effectivePxPerSec - 4) }}
                       title="Background"
                     >
@@ -1883,7 +1970,8 @@ export default function Editor({
                   // semula, satu blok statis sepanjang startSec..endSec. ----
                   const start = slot.startSec ?? 0;
                   const end = slot.endSec ?? DURATION;
-                  const clipLeft = start * effectivePxPerSec + 2;
+                  const isSlotHidden = hiddenElements.has(slot.id);
+                  const clipLeft = start * effectivePxPerSec + 34;
                   const clipWidth = Math.max(
                     28,
                     (end - start) * effectivePxPerSec - 4,
@@ -1891,8 +1979,17 @@ export default function Editor({
                   return (
                     <div
                       key={slot.id}
-                      className="relative h-9 rounded-md border border-mute/10 bg-editor-track"
+                      className="relative flex h-9 items-center rounded-md border border-mute/10 bg-editor-track"
                     >
+                      <TrackEyeButton
+                        hidden={isSlotHidden}
+                        onToggle={(e) => toggleElementHidden(slot.id, e)}
+                        title={
+                          isSlotHidden
+                            ? `Tampilkan "${slot.label}"`
+                            : `Sembunyikan "${slot.label}"`
+                        }
+                      />
                       <div
                         onClick={() => {
                           setSelectedLayerId(null);
@@ -1904,7 +2001,9 @@ export default function Editor({
                             : filled
                               ? "border-sky-400/40 bg-sky-400/20"
                               : "border-dashed border-mute/40 bg-transparent"
-                        } ${isSelected && filled ? "bg-sky-400/20" : ""}`}
+                        } ${isSelected && filled ? "bg-sky-400/20" : ""} ${
+                          isSlotHidden ? "opacity-40 grayscale" : ""
+                        }`}
                         style={{ left: clipLeft, width: clipWidth }}
                         title={slot.label}
                       >
@@ -1934,21 +2033,31 @@ export default function Editor({
                 {adjustableLayers.map((layer) => {
                   const isSelected = selectedLayerId === layer.id;
                   const op = layerOpacity[layer.id] ?? layer.opacity ?? 100;
+                  const isLayerHidden = hiddenElements.has(layer.id);
                   return (
                     <div
                       key={layer.id}
-                      className="relative h-9 rounded-md border border-mute/10 bg-editor-track"
+                      className="relative flex h-9 items-center rounded-md border border-mute/10 bg-editor-track"
                     >
+                      <TrackEyeButton
+                        hidden={isLayerHidden}
+                        onToggle={(e) => toggleElementHidden(layer.id, e)}
+                        title={
+                          isLayerHidden
+                            ? `Tampilkan "${layer.label}"`
+                            : `Sembunyikan "${layer.label}"`
+                        }
+                      />
                       <div
                         onClick={() => {
                           setSelectedSlotId(null);
                           setSelectedLayerId(layer.id);
                         }}
-                        className={`absolute inset-y-0.5 left-0.5 cursor-pointer overflow-hidden rounded border transition ${
+                        className={`absolute inset-y-0.5 left-8 cursor-pointer overflow-hidden rounded border transition ${
                           isSelected
                             ? "border-paper ring-2 ring-paper bg-violet-400/20"
                             : "border-violet-400/40 bg-violet-400/15"
-                        }`}
+                        } ${isLayerHidden ? "opacity-40 grayscale" : ""}`}
                         style={{ width: Math.max(28, DURATION * effectivePxPerSec - 4) }}
                         title={layer.label}
                       >
@@ -2639,64 +2748,98 @@ export default function Editor({
         </div>
       )}
 
-      {/* Modal progress / hasil export */}
+      {/* Modal progress / hasil export — dark theme senada sama editor
+          (editor-bg/editor-panel/editor-track + aksen ungu editor-accent),
+          bukan lagi palet lama (panel/graphite/rec) biar nyambung visual
+          sama layar editornya. */}
       {(isExporting || exportResultUrl || exportError) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
-          <div className="w-full max-w-xs rounded-2xl bg-panel p-5 text-center shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm">
+          <div className="relative w-full max-w-xs overflow-hidden rounded-3xl border border-white/10 bg-editor-panel p-5 text-center shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
+            {/* Glow ambient ungu di belakang, senada sama editor-accent —
+                kasih kesan "premium" tanpa ganggu keterbacaan. */}
+            <div className="pointer-events-none absolute -top-24 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-editor-accent/25 blur-3xl" />
+
             {isExporting && (
-              <>
-                {exportSnapshot && (
-                  <div className="relative mx-auto mb-3 aspect-[9/16] w-full overflow-hidden rounded-lg">
+              <div className="relative">
+                {exportSnapshot ? (
+                  <div className="relative mx-auto mb-4 aspect-[9/16] w-full overflow-hidden rounded-2xl border border-white/10 bg-black">
                     <img
                       src={exportSnapshot}
                       alt=""
                       className="h-full w-full object-cover transition-opacity duration-300 ease-linear"
-                      style={{ opacity: 0.25 + 0.75 * ((exportProgress?.percent ?? 0) / 100) }}
+                      style={{ opacity: 0.3 + 0.7 * ((exportProgress?.percent ?? 0) / 100) }}
                     />
-                    <div className="animate-export-scan pointer-events-none absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-transparent via-white/25 to-transparent" />
+                    <div className="animate-export-scan pointer-events-none absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-transparent via-editor-accent/30 to-transparent" />
+                    <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/10" />
+                    {/* Badge persen mengambang di pojok, biar fokus tetap di
+                        preview sambil tetap keliatan progressnya jalan. */}
+                    <div className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 backdrop-blur-sm">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-editor-accent" />
+                      <span className="text-[10px] font-semibold tabular-nums text-paper">
+                        {Math.round(exportProgress?.percent ?? 0)}%
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-editor-accent/15">
+                    <Loader2 size={20} className="animate-spin text-editor-accent" />
                   </div>
                 )}
-                <p className="text-sm font-medium text-paper">
-                  eksport video eluuu...
+                <div className="flex items-center justify-center gap-1.5">
+                  <Sparkles size={13} className="text-editor-accent" />
+                  <p className="text-sm font-semibold text-paper">
+                    Merender video kamu…
+                  </p>
+                </div>
+                <p className="mt-1 text-[11px] text-editor-muted">
+                  {exportProgress?.label ?? "Lagi diproses, jangan tutup dulu ya"}
                 </p>
-                <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-graphite">
+                <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-editor-track">
                   <div
-                    className="h-full rounded-full bg-rec transition-all"
+                    className="h-full rounded-full bg-gradient-to-r from-editor-accent/70 via-editor-accent to-editor-accent/70 transition-all duration-300 ease-out"
                     style={{ width: `${exportProgress?.percent ?? 0}%` }}
                   />
                 </div>
-                <p className="mt-1 text-[10px] text-mute">
-                  {exportProgress?.percent ?? 0}%
+                <p className="mt-1.5 text-[10px] font-medium tabular-nums text-editor-muted">
+                  {Math.round(exportProgress?.percent ?? 0)}%
                 </p>
                 <button
                   onClick={handleCancelExport}
-                  className="mt-4 rounded-full bg-graphite px-4 py-2 text-xs font-medium text-paper"
+                  className="mt-4 w-full rounded-full border border-white/10 bg-editor-track px-4 py-2.5 text-xs font-medium text-paper transition hover:bg-white/10 active:scale-[0.98]"
                 >
                   Batalkan
                 </button>
-              </>
+              </div>
             )}
 
             {!isExporting && exportError && (
-              <>
-                <p className="text-sm font-medium text-rec">Export gagal</p>
-                <p className="mt-1 text-xs text-mute">{exportError}</p>
+              <div className="relative">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-rec/15">
+                  <X size={20} className="text-rec" />
+                </div>
+                <p className="text-sm font-semibold text-paper">Export gagal</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-editor-muted">
+                  {exportError}
+                </p>
                 <button
                   onClick={() => setExportError(null)}
-                  className="mt-4 rounded-full bg-graphite px-4 py-2 text-xs font-medium text-paper"
+                  className="mt-4 w-full rounded-full border border-white/10 bg-editor-track px-4 py-2.5 text-xs font-medium text-paper transition hover:bg-white/10 active:scale-[0.98]"
                 >
                   Tutup
                 </button>
-              </>
+              </div>
             )}
 
             {!isExporting && exportResultUrl && (
-              <>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-paper">Video siap 🎉</p>
+              <div className="relative">
+                <div className="flex items-center justify-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15">
+                    <Check size={16} className="text-emerald-400" />
+                  </div>
+                  <p className="text-sm font-semibold text-paper">Video siap!</p>
                   {exportEngineUsed && (
                     <span
-                      className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-400"
+                      className="rounded-full bg-editor-accent/15 px-2 py-0.5 text-[10px] font-semibold text-editor-accent"
                       title="Dirender pakai WebCodecs API (VideoEncoder/AudioEncoder) — hardware-accelerated"
                     >
                       ⚡ WebCodecs
@@ -2706,24 +2849,24 @@ export default function Editor({
                 <video
                   src={exportResultUrl}
                   controls
-                  className="mt-3 aspect-[9/16] w-full rounded-lg bg-black"
+                  className="mt-3 aspect-[9/16] w-full rounded-2xl border border-white/10 bg-black"
                 />
                 <div className="mt-3 flex gap-2">
                   <a
                     href={exportResultUrl}
                     download={`${template.id}.mp4`}
-                    className="flex-1 rounded-full bg-rec px-3 py-2 text-xs font-semibold text-paper"
+                    className="flex-1 rounded-full bg-editor-accent px-3 py-2.5 text-xs font-semibold text-paper shadow-[0_4px_16px_rgba(124,108,255,0.4)] transition hover:brightness-110 active:scale-[0.98]"
                   >
                     Unduh
                   </a>
                   <button
                     onClick={() => setExportResultUrl(null)}
-                    className="flex-1 rounded-full bg-graphite px-3 py-2 text-xs font-medium text-paper"
+                    className="flex-1 rounded-full border border-white/10 bg-editor-track px-3 py-2.5 text-xs font-medium text-paper transition hover:bg-white/10 active:scale-[0.98]"
                   >
                     Tutup
                   </button>
                 </div>
-              </>
+              </div>
             )}
           </div>
         </div>
