@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Video,
@@ -204,15 +204,22 @@ export default function Editor({
   // ---- Mesin render: state media tiap slot (diisi contoh dari internet
   // dulu via sampleSrc, user bisa ganti kapan saja) ----
   const [slotMedia, setSlotMedia] = useState(() => initialSlotMedia(template));
-  // Kalau user pilih "Jadi Background" di salah satu sampul, isi slot itu
-  // (foto) dipindah ke sini & dipakai gantiin baseAssetSrc template pas
-  // render preview maupun export. null = masih pakai background asli.
+  // Slot foto sampul (cover) template ini — otomatis dipakai juga sebagai
+  // sumber background, jadi user gak perlu pencet "Transfer" manual lagi.
+  const coverSlotId = useMemo(
+    () => template.slots.find((s) => s.type === "image")?.id ?? null,
+    [template],
+  );
+  // Foto sampul (baik masih contoh/sample, atau udah diganti user) otomatis
+  // dipakai jadi background, gantiin baseAssetSrc template pas render
+  // preview maupun export. null = template ini gak punya slot foto sampul
+  // sama sekali, jadi tetap pakai background asli.
   const [customBackground, setCustomBackground] = useState<SlotMediaEntry | null>(
-    null,
+    () => (coverSlotId ? initialSlotMedia(template)[coverSlotId] ?? null : null),
   );
   // Opacity (0-100) & blur (0-MAX_BACKGROUND_BLUR px) khusus buat
-  // background hasil transfer sampul — diatur lewat track "Background"
-  // di timeline, cuma relevan selama customBackground aktif.
+  // background hasil auto-sync dari sampul — diatur lewat track
+  // "Background" di timeline, cuma relevan selama customBackground aktif.
   const [backgroundOpacity, setBackgroundOpacity] = useState(100);
   const [backgroundBlur, setBackgroundBlur] = useState(0);
   // Warna dominan (vivid) hasil ekstraksi dari foto yang lagi diupload
@@ -827,19 +834,11 @@ export default function Editor({
     input.click();
   }
 
-  // Ambil media yang lagi ngisi sampul (slot) terpilih, lalu jadiin
-  // background penuh canvas (gantiin baseAssetSrc template). Slot-nya
-  // sendiri tetap terisi seperti semula — cuma background-nya yang ikut
-  // berubah nyontek isi sampul itu.
-  function handleTransferToBackground(slot: TemplateSlot) {
-    const media = slotMedia[slot.id];
-    if (!media) return;
-    setCustomBackground(media);
-    setBackgroundOpacity(100);
-    setBackgroundBlur(0);
-    setSelectedSlotId(null);
-  }
-
+  // Balikin background ke bg.jpg asli template (lepas dari foto sampul).
+  // Begitu user ganti/upload foto sampul lagi, auto-sync di
+  // handleFileChange bakal langsung nyontek foto barunya lagi jadi
+  // background (lihat komentar di sana) — jadi Reset ini sifatnya
+  // sementara, bukan "matiin" auto-sync selamanya.
   function handleResetBackground() {
     setCustomBackground(null);
     setBackgroundOpacity(100);
@@ -1141,8 +1140,17 @@ export default function Editor({
     e.target.value = "";
     if (!file || !slotId) return;
     const url = URL.createObjectURL(file);
-    setSlotMedia((prev) => ({ ...prev, [slotId]: { kind: "file", url, file } }));
+    const entry: SlotMediaEntry = { kind: "file", url, file };
+    setSlotMedia((prev) => ({ ...prev, [slotId]: entry }));
     setSelectedSlotId(null);
+    // Foto sampul otomatis dipakai lagi jadi background begitu diganti —
+    // gak perlu pencet "Transfer" manual, dan otomatis REPLACE (bukan
+    // numpuk) background lama siapa pun sumbernya.
+    if (slotId === coverSlotId) {
+      setCustomBackground(entry);
+      setBackgroundOpacity(100);
+      setBackgroundBlur(0);
+    }
   }
 
   function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
@@ -1575,9 +1583,12 @@ export default function Editor({
                 {/* Pilihan tampilan progress lagu dipindah ke toolbar
                     bawah (muncul pas tab "Audio" aktif) — lihat
                     activeTool === "audio" di bagian toolbar. */}
-                {/* Track "Background" — cuma muncul kalau user udah transfer
-                    sampul jadi background. Klik buat munculin slider
-                    opacity & blur di toolbar bawah. */}
+                {/* Track "Background" — otomatis muncul begitu template
+                    punya foto sampul (dari sample bawaan ATAU upload user),
+                    karena foto sampul sekarang OTOMATIS jadi background
+                    juga (lihat handleFileChange), gak perlu transfer manual
+                    lagi. Klik buat munculin slider opacity & blur di
+                    toolbar bawah. */}
                 {customBackground && (
                   <div className="relative h-9 rounded-md border border-mute/10 bg-black/20">
                     <div
@@ -2186,17 +2197,6 @@ export default function Editor({
             <RefreshCcw size={15} />
             Ganti {SLOT_SHORT_LABEL[selectedSlot.type]}
           </button>
-          {selectedSlot.type === "image" && (
-            <button
-              onClick={() => handleTransferToBackground(selectedSlot)}
-              disabled={!slotMedia[selectedSlot.id]}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-paper/40 px-3 py-2.5 text-xs font-semibold text-paper transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-              title="Transfer sampul jadi background"
-            >
-              <Layers size={15} />
-              Jadi Background
-            </button>
-          )}
         </div>
       ) : selectedTextLayer ? (
         <div className="flex shrink-0 items-center gap-3 border-t border-mute/10 bg-panel px-3 py-2.5">
