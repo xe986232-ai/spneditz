@@ -82,9 +82,19 @@ export async function renderTemplateThumbnail(
 
   ctx.clearRect(0, 0, canvasW, canvasH);
 
-  // 1) Background
-  if (template.baseAssetSrc) {
-    const bg = imageBySrc.get(template.baseAssetSrc);
+  // 1) Background — SAMA kayak default state Editor.tsx: begitu template
+  // punya slot foto sampul (type "image"), foto itu (sample bawaan atau
+  // upload user) OTOMATIS jadi background juga (lihat `customBackground`
+  // di Editor.tsx, di-init dari initialSlotMedia). Jadi thumbnail nggak
+  // pakai baseAssetSrc/bg.jpg statis — dia "nyontek" foto sampul yang
+  // sama seperti yang bakal kelihatan pas user pertama buka editor,
+  // biar sistemnya konsisten sama aplikasi asli.
+  const coverSlot = template.slots.find(
+    (s) => s.type === "image" && s.sampleSrc,
+  );
+  const backgroundSrc = coverSlot?.sampleSrc ?? template.baseAssetSrc;
+  if (backgroundSrc) {
+    const bg = imageBySrc.get(backgroundSrc);
     if (bg) drawImageCoverZoomed(ctx, bg, 0, 0, canvasW, canvasH, 0);
   }
 
