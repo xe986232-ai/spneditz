@@ -318,6 +318,49 @@ export default function Editor({
     );
   }
 
+  // ---- Tinggi panel Timeline (bisa di-drag naik/turun) ----
+  // Timeline defaultnya makan ruang lumayan besar. Biar canvas preview
+  // bisa keliatan penuh kalau dibutuhkan, tinggi panel ini dibuat
+  // adjustable lewat handle drag di atasnya (pola sama kayak SheetDragHandle
+  // di atas) — geser ke bawah = panel mengecil = canvas kelihatan lebih
+  // penuh, geser ke atas = panel membesar lagi.
+  const [timelineHeight, setTimelineHeight] = useState(() =>
+    typeof window !== "undefined" ? Math.round(window.innerHeight * 0.26) : 200,
+  );
+  const timelineDragRef = useRef<{ startY: number; startHeight: number } | null>(
+    null,
+  );
+
+  function clampTimelineHeight(h: number) {
+    const viewportH = typeof window !== "undefined" ? window.innerHeight : 800;
+    // Minimum kecil banget (cuma handle + sedikit ruler) biar canvas bisa
+    // hampir penuh; maksimum dibatasi biar nggak nutupin top bar & preview.
+    return Math.min(viewportH * 0.55, Math.max(40, h));
+  }
+
+  function handleTimelineDragStart(e: React.PointerEvent<HTMLDivElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    timelineDragRef.current = { startY: e.clientY, startHeight: timelineHeight };
+  }
+
+  function handleTimelineDragMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!timelineDragRef.current) return;
+    const delta = e.clientY - timelineDragRef.current.startY;
+    setTimelineHeight(
+      clampTimelineHeight(timelineDragRef.current.startHeight - delta),
+    );
+  }
+
+  function handleTimelineDragEnd(e: React.PointerEvent<HTMLDivElement>) {
+    if (
+      timelineDragRef.current &&
+      e.currentTarget.hasPointerCapture(e.pointerId)
+    ) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    timelineDragRef.current = null;
+  }
+
   // ---- Export state ----
   const [isExporting, setIsExporting] = useState(false);
   const [exportSnapshot, setExportSnapshot] = useState<string | null>(null);
@@ -1509,10 +1552,27 @@ export default function Editor({
         onChange={handleFileChange}
       />
 
-      {/* Timeline — bisa digeser horizontal (overflow-x-auto), di-hide
-          pas fullscreen */}
+      {/* Timeline — bisa digeser horizontal (overflow-x-auto) & tingginya
+          bisa di-drag naik/turun (overflow-y-auto di dalam), di-hide pas
+          fullscreen */}
       {!isFullscreen && (
-      <div className="shrink-0 select-none border-t border-white/5 bg-editor-panel px-4 pb-2 pt-2">
+      <div
+        className="flex shrink-0 select-none flex-col border-t border-white/5 bg-editor-panel"
+        style={{ height: timelineHeight }}
+      >
+        {/* Handle drag — geser buat ngatur tinggi timeline, biar canvas
+            preview di atas bisa keliatan penuh kalau ditarik ke bawah. */}
+        <div
+          onPointerDown={handleTimelineDragStart}
+          onPointerMove={handleTimelineDragMove}
+          onPointerUp={handleTimelineDragEnd}
+          onPointerCancel={handleTimelineDragEnd}
+          className="flex shrink-0 cursor-grab touch-none items-center justify-center py-1.5 active:cursor-grabbing"
+          title="Geser buat atur tinggi timeline"
+        >
+          <div className="h-1 w-10 rounded-full bg-mute/30" />
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">
         <div ref={timelineScrollRef} className="overflow-x-auto">
           <div className="relative" style={{ width: TRACK_WIDTH }}>
             {/* Ruler gaya baru — label lebih tipis + dot ticks kecil
@@ -1916,6 +1976,7 @@ export default function Editor({
               </button>
             )}
           </div>
+        </div>
         </div>
       </div>
       )}
