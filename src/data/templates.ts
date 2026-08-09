@@ -206,7 +206,13 @@ export const TEMPLATES: Template[] = [
       },
       {
         id: "icon",
-        label: "Ikon AirPlay",
+        // Badge AirPlay (ikon + teks "AirPlay" + card pill samar di
+        // belakangnya), semua di-bake jadi satu asset transparan penuh
+        // canvas. Ikonnya digambar dari SVG "AirPlay Audio" resmi (bukan
+        // ikon cast generik kayak sebelumnya), diposisikan di bawah baris
+        // kontrol/volume & masih di dalam batas card kaca — niru posisi
+        // badge AirPlay di lockscreen iOS.
+        label: "Badge AirPlay",
         assetSrc: "/templates/iphone-music-player-glass/icon.png",
         order: "front",
       },
