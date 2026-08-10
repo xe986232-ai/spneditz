@@ -29,6 +29,7 @@ import {
   Eye,
   EyeOff,
   Sparkles,
+  Check,
 } from "lucide-react";
 import { getDominantColor } from "../lib/color";
 import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../types";
@@ -2841,9 +2842,13 @@ export default function Editor({
                   {exportEngineUsed && (
                     <span
                       className="rounded-full bg-editor-accent/15 px-2 py-0.5 text-[10px] font-semibold text-editor-accent"
-                      title="Dirender pakai WebCodecs API (VideoEncoder/AudioEncoder) — hardware-accelerated"
+                      title={
+                        exportEngineUsed === "webcodecs"
+                          ? "Dirender pakai WebCodecs API (VideoEncoder/AudioEncoder) — hardware-accelerated"
+                          : "Dirender pakai FFmpeg.wasm (fallback, browser ini tidak/kurang mendukung WebCodecs)"
+                      }
                     >
-                      ⚡ WebCodecs
+                      {exportEngineUsed === "webcodecs" ? "⚡ WebCodecs" : "🎬 FFmpeg"}
                     </span>
                   )}
                 </div>

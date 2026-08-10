@@ -1,9 +1,7 @@
-// Engine render/export SATU-SATUNYA: VideoEncoder + AudioEncoder (WebCodecs
-// API) dikawinkan sama Canvas, muxing ke .mp4 pakai pustaka murni JS
-// `mp4-muxer`. (Engine FFmpeg.wasm yang dulu ada sebagai fallback sudah
-// dihapus — lihat engine.ts untuk alasannya.)
+// Engine render/export "utama": VideoEncoder + AudioEncoder (WebCodecs API)
+// dikawinkan sama Canvas, muxing ke .mp4 pakai pustaka murni JS `mp4-muxer`.
 //
-// Kelebihannya:
+// Kenapa ini lebih baik dibanding engine FFmpeg.wasm (lihat export.ts):
 // - Render per-frame beneran (bukan "tick" PNG yang di-loop) -> label
 //   durasi & progress bar jalan MULUS, tidak pernah loncat/patah.
 // - VideoEncoder pakai hardware acceleration browser kalau tersedia ->
@@ -14,14 +12,14 @@
 //   lambat/stuck seperti bug lama di FFmpeg engine.
 //
 // Timeline model: slot foto/video BUKAN layer yang tumpang-tindih
-// berdasarkan waktu, tapi SEGMEN berurutan — frame loop di bawah jalan
-// lurus dari segmen ke segmen, currentSec global terus naik.
+// berdasarkan waktu, tapi SEGMEN berurutan (persis seperti FFmpeg engine
+// yang meng-concat seg_0.mp4, seg_1.mp4, dst) — jadi frame loop di bawah
+// cukup jalan lurus dari segmen ke segmen, currentSec global terus naik.
 //
 // Kalau browser tidak dukung WebCodecs (VideoEncoder/AudioEncoder) atau
-// config yang dibutuhkan tidak didukung, fungsi ini melempar error.
-// Pemanggil (lihat engine.ts) TIDAK fallback ke engine lain lagi — error
-// dilempar apa adanya ke UI supaya user tahu jelas & bisa coba lagi/pakai
-// browser lain, daripada diam-diam pindah ke engine yang lebih lambat.
+// config yang dibutuhkan tidak didukung, fungsi ini melempar error —
+// pemanggil (lihat engine.ts) WAJIB menangkap dan fallback ke FFmpeg
+// engine yang lama.
 
 import type {
   Template,
@@ -37,16 +35,16 @@ import {
   getAudioDuration,
 } from "./render";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
-import { compositeLayers, loadDrawableSource, createImageBitmapWithRetry, ExportCancelledError } from "./exportShared";
-import type { ExportProgress } from "./exportShared";
+import { loadImageEl, compositeLayers, ExportCancelledError } from "./export";
+import type { ExportProgress } from "./export";
 import { buildRemappedAudioBuffer, clipsAreTrivial } from "./audioClips";
 import type { AudioClipExport } from "./audioClips";
 
 const TARGET_FPS = 25;
 
 /** Cek dukungan browser buat jalur WebCodecs. Dipanggil oleh engine.ts
- *  SEBELUM nyoba exportTemplateVideoWebCodecs — kalau false, export
- *  langsung gagal dengan pesan jelas (tidak ada engine fallback lagi). */
+ *  SEBELUM nyoba exportTemplateVideoWebCodecs — kalau false, langsung
+ *  pakai FFmpeg engine tanpa buang waktu nyoba WebCodecs dulu. */
 export function isWebCodecsExportSupported(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -237,25 +235,17 @@ export async function exportTemplateVideoWebCodecs(
         true,
         backgroundOpacity,
         backgroundBlur,
-        undefined,
-        undefined,
-        undefined,
-        customBackground?.file ?? null,
       );
-      staticBgBitmap = await createImageBitmapWithRetry(bgBlob);
+      staticBgBitmap = await createImageBitmap(bgBlob);
     } else {
-      const bgImg = await loadDrawableSource(customBackground?.file ?? null, backgroundImageSrc);
-      try {
-        const c = document.createElement("canvas");
-        c.width = canvasW;
-        c.height = canvasH;
-        const cctx = c.getContext("2d");
-        if (!cctx) throw new Error("Gagal membuat canvas background");
-        drawImageCover(cctx, bgImg, 0, 0, canvasW, canvasH);
-        staticBgBitmap = await createImageBitmapWithRetry(c);
-      } finally {
-        if (bgImg instanceof ImageBitmap) bgImg.close();
-      }
+      const bgImg = await loadImageEl(backgroundImageSrc);
+      const c = document.createElement("canvas");
+      c.width = canvasW;
+      c.height = canvasH;
+      const cctx = c.getContext("2d");
+      if (!cctx) throw new Error("Gagal membuat canvas background");
+      drawImageCover(cctx, bgImg, 0, 0, canvasW, canvasH);
+      staticBgBitmap = await createImageBitmap(c);
     }
   } catch (e) {
     throw new Error(
@@ -278,7 +268,7 @@ export async function exportTemplateVideoWebCodecs(
         template.textLayers,
         textValues,
       );
-      staticFrontBitmap = await createImageBitmapWithRetry(frontBlob);
+      staticFrontBitmap = await createImageBitmap(frontBlob);
     } catch (e) {
       throw new Error(
         `Gagal menyiapkan layer depan/teks. (${e instanceof Error ? e.message : String(e)})`,
@@ -367,22 +357,16 @@ export async function exportTemplateVideoWebCodecs(
         if (resolved.isVideo) {
           resolved.videoEl = await loadVideoEl(media.file ?? media.url);
         } else {
-          // Decode LANGSUNG dari File (kalau ada) — tanpa bikin blob: URL
-          // baru & tanpa lewat <img>, jalur yang paling sering hiccup di
-          // browser mobile/in-app browser pas load foto slot ("Foto
-          // sampul", dst). Lihat loadDrawableSource di exportShared.ts.
-          const img = await loadDrawableSource(media.file, media.url);
-          try {
-            const c = document.createElement("canvas");
-            c.width = Math.max(1, Math.round(resolved.width));
-            c.height = Math.max(1, Math.round(resolved.height));
-            const cctx = c.getContext("2d");
-            if (!cctx) throw new Error("Gagal membuat canvas slot");
-            drawImageCover(cctx, img, 0, 0, c.width, c.height);
-            resolved.imgBitmap = await createImageBitmapWithRetry(c);
-          } finally {
-            if (img instanceof ImageBitmap) img.close();
-          }
+          const src = media.file ? URL.createObjectURL(media.file) : media.url;
+          if (media.file) objectUrlsToRevoke.push(src);
+          const img = await loadImageEl(src);
+          const c = document.createElement("canvas");
+          c.width = Math.max(1, Math.round(resolved.width));
+          c.height = Math.max(1, Math.round(resolved.height));
+          const cctx = c.getContext("2d");
+          if (!cctx) throw new Error("Gagal membuat canvas slot");
+          drawImageCover(cctx, img, 0, 0, c.width, c.height);
+          resolved.imgBitmap = await createImageBitmap(c);
         }
       } catch (e) {
         throw new Error(
