@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import TemplateGallery from "./components/TemplateGallery";
 import Editor from "./components/Editor";
 import AdminDashboard from "./components/AdminDashboard";
+import DiscordGate from "./components/DiscordGate";
 import type { Template } from "./types";
 import {
   ensureCoverImagesSeeded,
@@ -30,18 +31,18 @@ export default function App() {
     ensureGlassCoverImagesMigrated();
   }, []);
 
-  if (window.location.pathname.replace(/\/+$/, "") === DASHBOARD_PATH) {
-    return <AdminDashboard />;
-  }
-
-  if (!selectedTemplate) {
-    return <TemplateGallery onSelect={setSelectedTemplate} />;
-  }
-
   return (
-    <Editor
-      template={selectedTemplate}
-      onBack={() => setSelectedTemplate(null)}
-    />
+    <DiscordGate>
+      {window.location.pathname.replace(/\/+$/, "") === DASHBOARD_PATH ? (
+        <AdminDashboard />
+      ) : !selectedTemplate ? (
+        <TemplateGallery onSelect={setSelectedTemplate} />
+      ) : (
+        <Editor
+          template={selectedTemplate}
+          onBack={() => setSelectedTemplate(null)}
+        />
+      )}
+    </DiscordGate>
   );
 }
