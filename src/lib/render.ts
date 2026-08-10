@@ -290,20 +290,31 @@ export function drawWaveformProgress(
 
   const x1 = (progressLayer.x1 / 100) * canvasW;
   const x2 = (progressLayer.x2 / 100) * canvasW;
-  const trackThickness = progressLayer.thickness;
   const fullW = x2 - x1;
   if (fullW <= 0) return;
 
-  // Bar tipis & rapat (mirip equalizer), skala mengikuti thickness track
-  // aslinya biar tetap proporsional di template manapun.
-  const barW = Math.max(2, trackThickness * 0.55);
-  const gap = Math.max(1, trackThickness * 0.35);
+  // Ukuran visual bar waveform (lebar, jarak antar-bar, amplitudo) SENGAJA
+  // TIDAK ikut skala dari progressLayer.thickness aslinya. thickness itu
+  // dipakai buat mode "Standar" (track polos) biar pas sama tinggi asset
+  // progressbar.png tiap template (beda2 per template: 10 di Template 1,
+  // 19 di Template 2 & 3 biar nggak keliatan kurus). Tapi kalau dipakai
+  // juga buat ngitung waveform, hasilnya jadi beda ukuran antar-template
+  // (waveform di Template 2/3 jadi hampir 2x lebih gede/kasar daripada
+  // Template 1) padahal lebar track-nya (x1..x2) mirip. Makanya di sini
+  // dipakai SATU acuan tetap (REF_THICKNESS, disamain ke thickness
+  // Template 1) supaya gaya waveform konsisten di template manapun,
+  // nggak peduli berapa thickness track "Standar"-nya.
+  const REF_THICKNESS = 10;
+
+  // Bar tipis & rapat (mirip equalizer), skala dari acuan tetap di atas.
+  const barW = Math.max(2, REF_THICKNESS * 0.55);
+  const gap = Math.max(1, REF_THICKNESS * 0.35);
   const step = barW + gap;
   const barCount = Math.max(1, Math.floor(fullW / step));
   // Amplitudo maksimum bar (di atas & bawah garis tengah) — dibikin
   // beberapa kali lipat tebal track biar kelihatan kayak waveform
   // beneran, bukan cuma garis rata.
-  const ampMax = Math.max(trackThickness * 7, canvasH * 0.018);
+  const ampMax = Math.max(REF_THICKNESS * 7, canvasH * 0.018);
   // progressLayer.y itu posisi track TIPIS standar (mode "Standar") —
   // kalau dipakai apa adanya buat waveform, bar-nya jadi nyembul ke ATAS
   // *dan* ke BAWAH dari titik itu, jadi ujung bawahnya nabrak
@@ -347,7 +358,7 @@ export function drawWaveformProgress(
     const clampedStart = Math.max(0, Math.min(peaks.length - 1, idxStart));
     const clampedEnd = Math.max(clampedStart + 0.001, Math.min(peaks.length, idxEnd));
     const value = sampleWaveformValue(peaks, clampedStart, clampedEnd);
-    const barH = Math.max(trackThickness, value * ampMax);
+    const barH = Math.max(REF_THICKNESS, value * ampMax);
     const x = x1 + i * step;
     const isPlayed = barTimeOffset <= 0;
 
