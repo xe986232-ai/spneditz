@@ -7,7 +7,7 @@ import { STATE_COOKIE, buildSetCookie } from "./_lib/session";
 // halaman login/izin Discord, lalu Discord balikin dia ke
 // /api/discord-callback bawa "code" (bukan token — token ditukar di server,
 // lihat discord-callback.ts, biar client_secret nggak pernah nyampe browser).
-export default function handler(req: VercelRequest, res: VercelResponse) {
+export default function handler(_req: VercelRequest, res: VercelResponse) {
   try {
     const { clientId, redirectUri } = getDiscordConfig();
 
