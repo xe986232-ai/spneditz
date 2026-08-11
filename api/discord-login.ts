@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { randomBytes } from "crypto";
-import { getDiscordConfig, DISCORD_SCOPES } from "./_lib/discord";
-import { STATE_COOKIE, buildSetCookie } from "./_lib/session";
+import { getDiscordConfig, DISCORD_SCOPES } from "./_lib/discord.js";
+import { STATE_COOKIE, buildSetCookie } from "./_lib/session.js";
 
 // GET /api/discord-login — mulai alur OAuth Discord. User diarahkan ke
 // halaman login/izin Discord, lalu Discord balikin dia ke

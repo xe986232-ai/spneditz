@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { SESSION_COOKIE, parseCookies, verifySessionCookieValue } from "./_lib/session";
+import { SESSION_COOKIE, parseCookies, verifySessionCookieValue } from "./_lib/session.js";
 
 // GET /api/session — dipanggil frontend (lihat DiscordGate.tsx) tiap kali
 // app dibuka, buat nanya "user ini masih punya sesi login+member yang valid

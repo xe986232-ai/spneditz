@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getDiscordConfig } from "./_lib/discord";
+import { getDiscordConfig } from "./_lib/discord.js";
 import {
   STATE_COOKIE,
   SESSION_COOKIE,
@@ -8,7 +8,7 @@ import {
   buildSetCookie,
   buildClearCookie,
   createSessionCookieValue,
-} from "./_lib/session";
+} from "./_lib/session.js";
 
 type DiscordGuild = { id: string };
 type DiscordUser = { id: string; username: string };
