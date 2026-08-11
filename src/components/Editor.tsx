@@ -32,8 +32,7 @@ import {
   Check,
 } from "lucide-react";
 import { getDominantColor } from "../lib/color";
-import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../types";
-import {
+import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../types";import {
   parseDurationSec,
   initialSlotMedia,
   initialLayerOpacity,
@@ -58,6 +57,13 @@ import { exportTemplateVideoAuto, ExportCancelledError, type ExportProgress, typ
 import { analyzeAudio, type AudioAnalysis } from "../lib/waveform";
 import { logExportEvent } from "../lib/exportLog";
 import { subscribeWaveformEnabled } from "../lib/premiumFlags";
+import {
+  fetchDiscordSession,
+  savePendingWaveformExport,
+} from "../lib/discordSession";
+import DiscordExportGate, {
+  type DiscordExportGateState,
+} from "./DiscordExportGate";
 import { subscribeCoverImages, type CoverImageEntry } from "../lib/coverImages";
 import {
   savePreset,
@@ -210,9 +216,18 @@ const SKIP_DYNAMIC_COVER_TEMPLATE_IDS = new Set<string>([]);
 export default function Editor({
   template,
   onBack,
+  initialProgressStyle,
+  initialDiscordGateState,
 }: {
   template: Template;
   onBack: () => void;
+  /** Diisi App.tsx pas mount HASIL balik dari redirect OAuth Discord —
+   *  supaya user langsung kembali ke gaya "Waveform berjalan" yang lagi
+   *  dicoba di-export tadi, bukan balik ke "Standar". */
+  initialProgressStyle?: "bar" | "waveform";
+  /** Sama kayak di atas — kalau OAuth-nya balik dengan status "belum join"
+   *  atau error, modal gate-nya langsung ke-tampil lagi otomatis. */
+  initialDiscordGateState?: DiscordExportGateState | null;
 }) {
   const [activeTool, setActiveTool] = useState<string>("text");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -436,8 +451,13 @@ export default function Editor({
   // template — jadi berlaku buat template MANAPUN yang punya
   // progressLayer, bukan cuma satu template tertentu. ----
   const [progressStyle, setProgressStyle] = useState<"bar" | "waveform">(
-    "bar",
+    initialProgressStyle ?? "bar",
   );
+  // ---- Modal "harus join Discord dulu", cuma dipicu pas user pencet
+  // Export dengan progressStyle "waveform" (lihat handleExport). null berarti
+  // gak ada modal yang lagi ditampilin. ----
+  const [discordGateState, setDiscordGateState] =
+    useState<DiscordExportGateState | null>(initialDiscordGateState ?? null);
   // ---- Status fitur premium "Waveform berjalan" — dengerin real-time
   // dari Firebase Realtime Database (config/waveformEnabled). Selama belum
   // kebaca (null), anggap terkunci dulu (fail-safe) biar nggak sempat
@@ -1374,6 +1394,16 @@ export default function Editor({
         "Gaya \"Waveform berjalan\" masih Premium — belum bisa dipakai buat export. Ganti dulu ke gaya \"Standar\", atau tunggu fiturnya diaktifkan.",
       );
       return;
+    }
+    // Gaya "Waveform berjalan" juga butuh login + jadi member server
+    // Discord kami. Dicek di sini (pas Export dipencet), BUKAN dari awal
+    // buka app — biar user bebas eksplor editor lain-lainnya tanpa gate.
+    if (progressStyle === "waveform") {
+      const status = await fetchDiscordSession();
+      if (status !== "authed") {
+        setDiscordGateState("unauthed");
+        return;
+      }
     }
     setIsExporting(true);
     setExportError(null);
@@ -2872,6 +2902,16 @@ export default function Editor({
             )}
           </div>
         </div>
+      )}
+      {discordGateState && (
+        <DiscordExportGate
+          state={discordGateState}
+          onClose={() => setDiscordGateState(null)}
+          onLogin={() => {
+            savePendingWaveformExport(template.id);
+            window.location.href = "/api/discord-login";
+          }}
+        />
       )}
     </div>
   );
