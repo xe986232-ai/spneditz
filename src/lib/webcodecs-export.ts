@@ -37,6 +37,7 @@ import {
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
 import { loadImageEl, compositeLayers, ExportCancelledError } from "./export";
 import type { ExportProgress } from "./export";
+import { loadDrawableSource } from "./exportShared";
 import { buildRemappedAudioBuffer, clipsAreTrivial } from "./audioClips";
 import type { AudioClipExport } from "./audioClips";
 
@@ -123,27 +124,25 @@ function seekVideoTo(video: HTMLVideoElement, t: number, timeoutMs = 2000): Prom
   });
 }
 
-async function loadVideoEl(source: File | string): Promise<HTMLVideoElement> {
+function loadVideoElOnce(src: string): Promise<HTMLVideoElement> {
   const video = document.createElement("video");
   video.muted = true;
   video.playsInline = true;
   video.preload = "auto";
-  const objectUrl = source instanceof File ? URL.createObjectURL(source) : null;
-  const videoSrc = objectUrl ?? (source as string);
   // Sama kayak di loadImageEl: jangan pasang crossOrigin buat blob: URL
   // lokal, cuma buat URL remote http(s) — kalau nggak, sebagian
   // browser/WebView bisa gagal load blob-nya.
-  if (/^https?:\/\//i.test(videoSrc)) {
+  if (/^https?:\/\//i.test(src)) {
     video.crossOrigin = "anonymous";
   }
-  video.src = videoSrc;
-  await new Promise<void>((resolve, reject) => {
+  video.src = src;
+  return new Promise<HTMLVideoElement>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Timeout memuat metadata video")), 8000);
     video.addEventListener(
       "loadedmetadata",
       () => {
         clearTimeout(timer);
-        resolve();
+        resolve(video);
       },
       { once: true },
     );
@@ -156,7 +155,37 @@ async function loadVideoEl(source: File | string): Promise<HTMLVideoElement> {
       { once: true },
     );
   });
-  return video;
+}
+
+/** Sama strategi 2-lapis kayak loadDrawableSource (lihat exportShared.ts):
+ *  coba `url` (blob URL yang dibuat FRESH pas user pilih file) DULUAN —
+ *  itu paling stabil — baru fallback ke bikin blob URL baru dari `file`
+ *  mentah kalau `url`-nya gagal dimuat. JANGAN dibalik: bikin blob URL baru
+ *  dari File duluan itu justru rawan gagal kalau File-nya udah "stale"
+ *  (kejadian di Chrome Android setelah beberapa interaksi) — persis bug
+ *  yang bikin slot "Foto sampul" gagal walau background (yang pakai `url`
+ *  asli) berhasil dimuat. */
+async function loadVideoEl(file: File | undefined, url: string | undefined): Promise<HTMLVideoElement> {
+  if (url) {
+    try {
+      return await loadVideoElOnce(url);
+    } catch (urlErr) {
+      if (!file) throw urlErr;
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[export] loadVideoEl(url) gagal, fallback ke object URL dari file…",
+        urlErr instanceof Error ? urlErr.message : urlErr,
+      );
+    }
+  }
+  if (!file) throw new Error("Tidak ada sumber video yang valid.");
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    return await loadVideoElOnce(objectUrl);
+  } catch (e) {
+    URL.revokeObjectURL(objectUrl);
+    throw e;
+  }
 }
 
 type ResolvedSlot = {
@@ -361,17 +390,20 @@ export async function exportTemplateVideoWebCodecs(
     if (media) {
       try {
         if (resolved.isVideo) {
-          resolved.videoEl = await loadVideoEl(media.file ?? media.url);
+          resolved.videoEl = await loadVideoEl(media.file, media.url);
         } else {
-          const src = media.file ? URL.createObjectURL(media.file) : media.url;
-          if (media.file) objectUrlsToRevoke.push(src);
-          const img = await loadImageEl(src);
+          // Prioritaskan `media.url` (blob URL asli, dibuat pas file
+          // dipilih) — cuma fallback ke File mentah kalau url-nya gagal.
+          // Lihat catatan di loadVideoEl/loadDrawableSource soal kenapa
+          // urutan ini penting (File bisa "stale").
+          const img = await loadDrawableSource(media.file, media.url);
           const c = document.createElement("canvas");
           c.width = Math.max(1, Math.round(resolved.width));
           c.height = Math.max(1, Math.round(resolved.height));
           const cctx = c.getContext("2d");
           if (!cctx) throw new Error("Gagal membuat canvas slot");
           drawImageCover(cctx, img, 0, 0, c.width, c.height);
+          if (img instanceof ImageBitmap) img.close();
           resolved.imgBitmap = await createImageBitmap(c);
         }
       } catch (e) {
