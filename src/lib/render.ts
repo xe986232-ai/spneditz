@@ -475,7 +475,9 @@ export class ImageCache {
     if (!this.pending.has(url)) {
       this.pending.add(url);
       const img = new Image();
-      img.crossOrigin = "anonymous";
+      if (/^https?:\/\//i.test(url)) {
+        img.crossOrigin = "anonymous";
+      }
       img.onload = () => {
         this.cache.set(url, img);
         this.pending.delete(url);

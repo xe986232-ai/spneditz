@@ -128,9 +128,15 @@ async function loadVideoEl(source: File | string): Promise<HTMLVideoElement> {
   video.muted = true;
   video.playsInline = true;
   video.preload = "auto";
-  video.crossOrigin = "anonymous";
   const objectUrl = source instanceof File ? URL.createObjectURL(source) : null;
-  video.src = objectUrl ?? (source as string);
+  const videoSrc = objectUrl ?? (source as string);
+  // Sama kayak di loadImageEl: jangan pasang crossOrigin buat blob: URL
+  // lokal, cuma buat URL remote http(s) — kalau nggak, sebagian
+  // browser/WebView bisa gagal load blob-nya.
+  if (/^https?:\/\//i.test(videoSrc)) {
+    video.crossOrigin = "anonymous";
+  }
+  video.src = videoSrc;
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Timeout memuat metadata video")), 8000);
     video.addEventListener(

@@ -16,7 +16,9 @@ import type { LayerOpacityState, TextValueState } from "./render";
 export function loadImageEl(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = "anonymous";
+    if (/^https?:\/\//i.test(src)) {
+      img.crossOrigin = "anonymous";
+    }
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`Gagal memuat asset layer: ${src}`));
     img.src = src;

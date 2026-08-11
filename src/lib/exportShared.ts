@@ -99,7 +99,17 @@ export function loadImageEl(src: string, attempts = 3): Promise<HTMLImageElement
   const attemptOnce = (): Promise<HTMLImageElement> =>
     new Promise((resolve, reject) => {
       const img = new Image();
-      img.crossOrigin = "anonymous";
+      // PENTING: crossOrigin cuma dipasang buat URL remote (http/https).
+      // Untuk blob:/data: URL (lokal, hasil URL.createObjectURL di device
+      // sendiri) JANGAN dipasang — beberapa browser/WebView (in-app browser
+      // kayak TikTok/Instagram, sebagian Chrome Android) salah nge-treat
+      // <img crossOrigin> yang src-nya blob: sebagai CORS request dan bikin
+      // onerror padahal blob-nya valid & same-origin. Ini penyebab error
+      // "Gagal memuat asset layer: blob:..." meski file-nya sama sekali
+      // nggak rusak.
+      if (/^https?:\/\//i.test(src)) {
+        img.crossOrigin = "anonymous";
+      }
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error(`Gagal memuat asset layer: ${src}`));
       img.src = src;

@@ -38,7 +38,9 @@ export function getDominantColor(url: string): Promise<string> {
 
   const promise = new Promise<string>((resolve) => {
     const img = new Image();
-    img.crossOrigin = "anonymous";
+    if (/^https?:\/\//i.test(url)) {
+      img.crossOrigin = "anonymous";
+    }
     img.onload = () => {
       try {
         const SIZE = 48;
