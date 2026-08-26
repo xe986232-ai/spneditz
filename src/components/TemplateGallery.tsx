@@ -436,10 +436,12 @@ export default function TemplateGallery({
   const [disabledAlertTemplate, setDisabledAlertTemplate] =
     useState<Template | null>(null);
 
-  // Tab bawah: "template" (galeri, default) atau "draft" (daftar project
-  // yang lagi dikerjain, auto-tersimpan — lihat lib/drafts.ts).
+  // Tab bawah: "draft" (default — daftar project yang lagi dikerjain,
+  // auto-tersimpan, lihat lib/drafts.ts) atau "template" (galeri).
+  // Default-nya "draft" biar tiap buka web / keluar dari Editor, user
+  // langsung diarahin ke project lama dulu, bukan galeri template.
   const [activeTab, setActiveTab] = useState<"draft" | "template">(
-    "template",
+    "draft",
   );
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
