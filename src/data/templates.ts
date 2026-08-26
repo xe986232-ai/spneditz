@@ -467,9 +467,25 @@ export const TEMPLATES: Template[] = [
         adjustable: true,
       },
       {
-        id: "icon",
-        label: "Badge AirPlay",
-        assetSrc: "/templates/iphone-music-player-v4/icon.png",
+        // Dulu satu file icon.png (pill card + ikon AirPlay nempel jadi
+        // satu). Sekarang dipecah 2 asset biar opacity card-nya bisa
+        // diatur terpisah dari ikonnya (lihat "airplayLogo" di bawah) —
+        // posisi & ukuran sama persis (full-canvas 1080x1920), cuma
+        // kontennya beda: yang ini cuma pill/card-nya doang.
+        id: "airplayCard",
+        label: "Card AirPlay",
+        assetSrc: "/templates/iphone-music-player-v4/airplay-card.png",
+        order: "front",
+        // Sesuai instruksi: default card-nya di-ovacity ~17%.
+        opacity: 17,
+        adjustable: true,
+      },
+      {
+        // Ikon AirPlay-nya sendiri — posisi tetap, opacity tetap penuh
+        // (nggak ikut diredupkan bareng card di atas).
+        id: "airplayLogo",
+        label: "Ikon AirPlay",
+        assetSrc: "/templates/iphone-music-player-v4/airplay-logo.png",
         order: "front",
       },
       {
