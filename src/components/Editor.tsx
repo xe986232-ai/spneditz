@@ -118,6 +118,11 @@ const SLOT_SHORT_LABEL: Record<SlotType, string> = {
 const BACKGROUND_LAYER_ID = "__background__";
 // Batas max blur (px, dalam skala canvas asli 1080x1920).
 const MAX_BACKGROUND_BLUR = 100;
+// Blur background default per template (px). Template v4 langsung full
+// blur (100px) begitu dibuka/direset, template lain tetap 0 (tajam).
+function defaultBackgroundBlurFor(templateId: string): number {
+  return templateId === "iphone-music-player-v4" ? 100 : 0;
+}
 // Seberapa banyak background di-zoom (overscan, px per level blur) biar
 // pas di-blur nggak ada gradasi hitam di tepian — lihat drawImageCoverZoomed.
 const BACKGROUND_BLUR_OVERSCAN_FACTOR = 2;
@@ -296,7 +301,10 @@ export default function Editor({
   // background hasil auto-sync dari sampul — diatur lewat track
   // "Background" di timeline, cuma relevan selama customBackground aktif.
   const [backgroundOpacity, setBackgroundOpacity] = useState(100);
-  const [backgroundBlur, setBackgroundBlur] = useState(0);
+  // Template v4 defaultnya langsung full blur (100px) begitu dibuka.
+  const [backgroundBlur, setBackgroundBlur] = useState(() =>
+    defaultBackgroundBlurFor(template.id),
+  );
   // Warna dominan (vivid) hasil ekstraksi dari foto yang lagi diupload
   // user — dipakai buat ambient glow/shadow di belakang canvas preview,
   // biar nyatu sama warna foto-nya (mirip "Canvas" Spotify). Default abu2
@@ -1038,7 +1046,7 @@ export default function Editor({
   function handleResetBackground() {
     setCustomBackground(null);
     setBackgroundOpacity(100);
-    setBackgroundBlur(0);
+    setBackgroundBlur(defaultBackgroundBlurFor(template.id));
     setSelectedLayerId((id) => (id === BACKGROUND_LAYER_ID ? null : id));
   }
 
@@ -1345,7 +1353,7 @@ export default function Editor({
     if (slotId === coverSlotId) {
       setCustomBackground(entry);
       setBackgroundOpacity(100);
-      setBackgroundBlur(0);
+      setBackgroundBlur(defaultBackgroundBlurFor(template.id));
     }
   }
 
