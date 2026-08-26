@@ -437,4 +437,127 @@ export const TEMPLATES: Template[] = [
       color: "#FFFFFF",
     },
   },
+  {
+    // Template ke-4: "iPhone Music Player V4" — layout & asset dikirim
+    // langsung sama user (LAYOUT.png, FOTO Custom.png, JUDUL &ARTIST
+    // Custom.png, CARD HITAM ... opacity 35%.png), semua koordinat di
+    // bawah ini hasil ukur presisi dari bounding-box alpha channel
+    // masing2 asset (bukan estimasi manual). Bedanya dari 3 template
+    // sebelumnya: ada ikon favorit (star) di kontrol, & card default-nya
+    // dipakai di opacity 35% (bukan 100) sesuai instruksi nama file asset.
+    id: "iphone-music-player-v4",
+    name: "iPhone Music Player V4",
+    duration: "0:15",
+    gradientFrom: "#3A2E5C",
+    gradientTo: "#0A090E",
+    previewImage: "/templates/iphone-music-player-v4/preview.jpg",
+    canvasWidth: 1080,
+    canvasHeight: 1920,
+    baseAssetSrc: "/templates/iphone-music-player-v4/bg.jpg",
+    baseAssetType: "image",
+    decorLayers: [
+      {
+        id: "card",
+        label: "Card Player",
+        assetSrc: "/templates/iphone-music-player-v4/card.png",
+        order: "back",
+        // Sesuai nama asli asset ("BUAT DEFAULT JADI OVACITY 35%") —
+        // defaultnya transparan 35%, beda dari 3 template lain yang 100.
+        opacity: 35,
+        adjustable: true,
+      },
+      {
+        id: "icon",
+        label: "Badge AirPlay",
+        assetSrc: "/templates/iphone-music-player-v4/icon.png",
+        order: "front",
+      },
+      {
+        id: "progressbar",
+        label: "Progress bar",
+        // Nggak ada di asset asli (LAYOUT.png cuma kasih kontrol +
+        // duration text, track progress-nya nggak digambar) — jadi
+        // track abu-abu ini digenerate ulang manual, posisinya diukur
+        // dari screenshot hasil jadi yang user kirim (sejajar persis
+        // sama tepi kiri/kanan teks durasi di bawahnya).
+        assetSrc: "/templates/iphone-music-player-v4/progressbar.png",
+        order: "front",
+        hideInWaveformMode: true,
+      },
+      {
+        id: "musicplayer",
+        label: "Kontrol",
+        // rewind/pause/fast-forward + ikon favorit (star) + volume —
+        // teks durasi & badge AirPlay sudah dibersihkan dari asset ini
+        // (dipisah ke durationLayer & layer "icon" sendiri2, biar nggak
+        // dobel/ketutupan pas dirender).
+        assetSrc: "/templates/iphone-music-player-v4/musicplayer.png",
+        order: "front",
+      },
+    ],
+    slots: [
+      {
+        id: "sampul",
+        type: "image",
+        label: "Foto sampul",
+        x: 15.56,
+        y: 14.79,
+        width: 68.7,
+        height: 38.65,
+        startSec: 0,
+        endSec: 15,
+        radius: 36,
+        sampleSrc: "/templates/iphone-music-player-v4/sample-cover.jpg",
+      },
+      {
+        id: "audio1",
+        type: "audio",
+        label: "Musik latar",
+        startSec: 0,
+        endSec: 15,
+      },
+    ],
+    textLayers: [
+      {
+        id: "title",
+        label: "Judul",
+        defaultText: "MABUK CINTA JDM PLAT KT REMIX",
+        x: 16.2,
+        y: 57.47,
+        fontSize: 35,
+        fontWeight: 800,
+        color: "#FFFFFF",
+        align: "left",
+        maxLength: 40,
+      },
+      {
+        id: "artist",
+        label: "Artist",
+        defaultText: "Ragil YETE",
+        x: 16.3,
+        y: 59.87,
+        fontSize: 29,
+        fontWeight: 500,
+        color: "rgba(255,255,255,0.65)",
+        align: "left",
+        maxLength: 30,
+      },
+    ],
+    durationLayer: {
+      currentX: 16.2,
+      currentY: 67.63,
+      totalX: 83.7,
+      totalY: 67.63,
+      fontSize: 30,
+      fontWeight: 500,
+      color: "rgba(255,255,255,0.7)",
+    },
+    progressLayer: {
+      x1: 16.2,
+      x2: 83.7,
+      y: 64.84,
+      thickness: 18,
+      color: "#FFFFFF",
+    },
+  },
 ];
