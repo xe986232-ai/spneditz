@@ -511,14 +511,12 @@ export const TEMPLATES: Template[] = [
         order: "front",
       },
       {
-        // Dulu jadi satu sama musicplayer.png (star + volume + tombol
-        // kontrol dalam 1 file). Sekarang dipecah biar ikon favorit
-        // (star) & slider volume bisa diredupin sendiri tanpa
-        // pengaruh ke tombol play/skip — bentuk & posisi sama persis
-        // (full-canvas 1080x1920), cuma opacity elemen ini yang
-        // diturunin ke 10%.
+        // Dulu isinya star + volume (icon speaker kiri/kanan + bar).
+        // Di-crop ulang jadi cuma batang volume-nya doang — ikon star
+        // & kedua speaker udah dihapus dari asset ini. Posisi bar
+        // tetap sama persis (full-canvas 1080x1920), opacity tetap 10%.
         id: "layout",
-        label: "Star & Volume",
+        label: "Volume bar (redup)",
         assetSrc: "/templates/iphone-music-player-v4/layout.png",
         order: "front",
         opacity: 10,
