@@ -74,6 +74,7 @@ import {
   ensurePersistentStorage,
   type PresetSummary,
 } from "../lib/presets";
+import { saveDraft, getDraft as getDraftRecord } from "../lib/drafts";
 
 type Tool = {
   id: string;
@@ -226,6 +227,7 @@ export default function Editor({
   onBack,
   initialProgressStyle,
   initialDiscordGateState,
+  resumeDraftId,
 }: {
   template: Template;
   onBack: () => void;
@@ -236,6 +238,11 @@ export default function Editor({
   /** Sama kayak di atas — kalau OAuth-nya balik dengan status "belum join"
    *  atau error, modal gate-nya langsung ke-tampil lagi otomatis. */
   initialDiscordGateState?: DiscordExportGateState | null;
+  /** Diisi kalau user masuk Editor lewat tab "Draft" (lanjutin project
+   *  lama) — bukan lewat pilih Template baru dari galeri. Kalau ada
+   *  isinya, semua state di bawah di-hydrate dari draft ini pas mount,
+   *  DAN auto-save berikutnya nimpa draft yang sama (bukan bikin baru). */
+  resumeDraftId?: string | null;
 }) {
   const [activeTool, setActiveTool] = useState<string>("text");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -574,6 +581,159 @@ export default function Editor({
   const [isSavingPreset, setIsSavingPreset] = useState(false);
   const [presetError, setPresetError] = useState<string | null>(null);
   const [presetNotice, setPresetNotice] = useState<string | null>(null);
+
+  // ---- Auto-save Draft Project ----
+  // Beda dari Preset (disimpan manual, pakai nama, jumlahnya bebas): draft
+  // ini AUTO-SAVE diam-diam tiap kali ada perubahan, cuma nyimpen state
+  // PALING TERAKHIR (bukan riwayat), dan dibatasi maksimal 3 draft
+  // bersamaan (lihat lib/drafts.ts) — draft paling lama yang gak
+  // disentuh otomatis kehapus kalau limitnya kelebihan.
+  //
+  // draftIdRef: id draft yang lagi "dipegang" Editor ini. Kalau Editor
+  // dibuka dari tab Draft (lanjutin project lama), langsung diisi
+  // resumeDraftId. Kalau dibuka dari galeri Template (project baru),
+  // dibiarkan null dulu — auto-save PERTAMA yang bakal generate id-nya.
+  const draftIdRef = useRef<string | null>(resumeDraftId ?? null);
+  // true selama proses hydrate draft lama masih jalan (fetch dari
+  // IndexedDB + terapin ke semua state) — auto-save DIJEDA sementara,
+  // biar draft yang baru aja dimuat gak ketimpa balik oleh state awal
+  // (default template) sebelum sempat ke-hydrate.
+  const hydratingDraftRef = useRef(!!resumeDraftId);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Indikator kecil "Tersimpan" di top bar — nyala sebentar tiap kali
+  // auto-save berhasil, biar user yakin project-nya kesimpen tanpa perlu
+  // pencet tombol apa pun.
+  const [draftSavedFlash, setDraftSavedFlash] = useState(false);
+  const draftSavedFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  // Hydrate semua state Editor dari draft lama (kalau resumeDraftId ada) —
+  // jalan SEKALI pas mount, sebelum auto-save pertama diizinkan jalan.
+  useEffect(() => {
+    if (!resumeDraftId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const record = await getDraftRecord(resumeDraftId);
+        if (!record || cancelled) return;
+        draftIdRef.current = record.id;
+
+        const nextSlotMedia = initialSlotMedia(template);
+        for (const slot of template.slots) {
+          const stored = record.slotMedia[slot.id];
+          if (stored) {
+            nextSlotMedia[slot.id] = storedMediaToEntry(
+              stored,
+              `${slot.id}-draft`,
+            );
+          }
+        }
+        setSlotMedia(nextSlotMedia);
+        setCustomBackground(
+          record.customBackground
+            ? storedMediaToEntry(record.customBackground, "background-draft")
+            : null,
+        );
+        setLayerOpacity((prev) => {
+          const next = { ...prev };
+          for (const key of Object.keys(next)) {
+            if (record.layerOpacity[key] !== undefined) {
+              next[key] = record.layerOpacity[key];
+            }
+          }
+          return next;
+        });
+        setGlassSettings(record.glassSettings ?? {});
+        setBackgroundOpacity(record.backgroundOpacity);
+        setBackgroundBlur(record.backgroundBlur);
+        setProgressStyle(record.progressStyle);
+        setTextValues((prev) => {
+          const next = { ...prev };
+          for (const key of Object.keys(next)) {
+            if (record.textValues[key] !== undefined) {
+              next[key] = record.textValues[key];
+            }
+          }
+          return next;
+        });
+        setAudioClips(record.audioClips.map((c) => ({ ...c })));
+        setHiddenElements(new Set(record.hiddenElements));
+        setCurrentSec(record.currentSec ?? 0);
+      } catch {
+        // Gagal muat draft (mis. sudah kehapus/eviction browser) — biarin
+        // Editor tetap kebuka normal pakai default template, gak usah
+        // nge-block user dengan alert.
+      } finally {
+        if (!cancelled) hydratingDraftRef.current = false;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeDraftId]);
+
+  async function autosaveDraftNow() {
+    if (hydratingDraftRef.current) return;
+    try {
+      const thumbnail = canvasRef.current?.toDataURL("image/jpeg", 0.55) ?? null;
+      const record = await saveDraft(draftIdRef.current, {
+        template,
+        layerOpacity,
+        glassSettings,
+        backgroundOpacity,
+        backgroundBlur,
+        progressStyle,
+        textValues,
+        slotMedia,
+        customBackground,
+        audioClips,
+        hiddenElements,
+        currentSec,
+        thumbnail,
+      });
+      draftIdRef.current = record.id;
+      setDraftSavedFlash(true);
+      if (draftSavedFlashTimerRef.current) {
+        clearTimeout(draftSavedFlashTimerRef.current);
+      }
+      draftSavedFlashTimerRef.current = setTimeout(
+        () => setDraftSavedFlash(false),
+        1800,
+      );
+    } catch {
+      // Auto-save diam-diam gagal (mis. storage penuh/browser nolak) —
+      // jangan ganggu user dengan alert; Preset manual tetap ada sebagai
+      // cadangan buat nyimpen kerjaan pentingnya.
+    }
+  }
+
+  // Auto-save di-debounce ~1.5 detik tiap ada perubahan di state utama
+  // project — "ambil perubahan paling akhir aja", jadi tiap perubahan baru
+  // menunda (bukan menumpuk) penyimpanan sebelumnya.
+  useEffect(() => {
+    if (hydratingDraftRef.current) return;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      void autosaveDraftNow();
+    }, 1500);
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    slotMedia,
+    customBackground,
+    layerOpacity,
+    glassSettings,
+    backgroundOpacity,
+    backgroundBlur,
+    progressStyle,
+    textValues,
+    audioClips,
+    hiddenElements,
+  ]);
 
   const audioSlotDef = template.slots.find((s) => s.type === "audio");
   const audioMedia = audioSlotDef ? slotMedia[audioSlotDef.id] : undefined;
@@ -1548,8 +1708,18 @@ export default function Editor({
           <ArrowLeft size={20} />
         </button>
 
-        <span className="pointer-events-none absolute left-1/2 max-w-[55%] -translate-x-1/2 truncate text-sm font-semibold text-paper">
-          {template.name}
+        <span className="pointer-events-none absolute left-1/2 flex max-w-[55%] -translate-x-1/2 flex-col items-center">
+          <span className="truncate text-sm font-semibold text-paper">
+            {template.name}
+          </span>
+          <span
+            className={`mt-0.5 flex items-center gap-1 text-[9.5px] font-medium text-emerald-300 transition-opacity duration-500 ${
+              draftSavedFlash ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            <Check size={9} strokeWidth={3} />
+            Draft tersimpan
+          </span>
         </span>
 
         {template.baseAssetSrc ? (

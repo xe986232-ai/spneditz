@@ -7,6 +7,11 @@ import {
   ArrowRight,
   AudioWaveform,
   SlidersHorizontal,
+  LayoutGrid,
+  FolderClock,
+  Trash2,
+  Loader2,
+  FilePlus2,
 } from "lucide-react";
 import { TEMPLATES } from "../data/templates";
 import type { Template } from "../types";
@@ -14,6 +19,12 @@ import { subscribeTemplateUsage } from "../lib/exportLog";
 import { subscribeTemplateEnabled } from "../lib/templateFlags";
 import TemplateThumbnail, { ThumbnailSkeleton } from "./TemplateThumbnail";
 import { renderTemplateThumbnail } from "../lib/thumbnail";
+import {
+  listDrafts,
+  deleteDraft,
+  MAX_DRAFTS,
+  type DraftSummary,
+} from "../lib/drafts";
 
 // Id template yang dapet perlakuan khusus: thumbnail kolase 2 foto yang
 // dibelah miring, biar sekilas kelihatan template ini punya 2 gaya
@@ -175,6 +186,94 @@ function CollageThumbnail({
   );
 }
 
+// "5 menit lalu", "2 jam lalu", dst — dipakai buat label kapan draft
+// terakhir di-auto-save.
+function formatRelativeTime(ts: number): string {
+  const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (diffSec < 60) return "Baru saja";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} menit lalu`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} jam lalu`;
+  const diffDay = Math.floor(diffHour / 24);
+  return `${diffDay} hari lalu`;
+}
+
+function DraftCard({
+  draft,
+  onResume,
+  onDelete,
+  busy,
+}: {
+  draft: DraftSummary;
+  onResume: (draft: DraftSummary) => void;
+  onDelete: (draft: DraftSummary) => void;
+  busy: boolean;
+}) {
+  return (
+    <div className="group relative flex w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-editor-panel text-left shadow-[0_8px_28px_rgba(0,0,0,0.35)]">
+      <div className="pointer-events-none absolute inset-0 z-20 rounded-2xl ring-1 ring-inset ring-white/[0.06]" />
+      <button
+        onClick={() => onResume(draft)}
+        disabled={busy}
+        className="relative flex h-full flex-col overflow-hidden text-left transition active:scale-[0.97] disabled:opacity-60"
+      >
+        <div className="relative aspect-[9/16] w-full overflow-hidden bg-graphite">
+          {draft.thumbnail ? (
+            <img
+              src={draft.thumbnail}
+              alt={`Draft ${draft.templateName}`}
+              className="absolute inset-0 h-full w-full object-cover transition duration-500 group-active:scale-105"
+            />
+          ) : (
+            <ThumbnailSkeleton />
+          )}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/15" />
+          <span className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full border border-editor-accent/50 bg-editor-panel/85 px-2 py-0.5 text-[8.5px] font-semibold uppercase tracking-wide text-editor-accent backdrop-blur-sm">
+            <FolderClock size={9} strokeWidth={2.5} />
+            Draft
+          </span>
+
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-3 pb-2.5 pt-10">
+            <p className="truncate text-[13px] font-semibold leading-tight tracking-tight text-paper">
+              {draft.templateName}
+            </p>
+            <p className="mt-1 truncate text-[9.5px] text-editor-muted">
+              {formatRelativeTime(draft.updatedAt)}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-2 border-t border-white/[0.06] bg-black/20 px-3 py-2.5">
+          <span className="text-[11px] font-semibold tracking-wide text-paper/85">
+            Lanjutkan
+          </span>
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-editor-accent text-paper shadow-[0_2px_10px_rgba(124,108,255,0.5)] transition-transform duration-300 group-active:translate-x-0.5">
+            <ArrowRight size={12} strokeWidth={2.5} />
+          </span>
+        </div>
+      </button>
+
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete(draft);
+        }}
+        disabled={busy}
+        title="Hapus draft"
+        aria-label="Hapus draft"
+        className="absolute right-2.5 top-2.5 z-30 flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/60 text-paper/80 backdrop-blur-sm transition hover:text-rec active:scale-90 disabled:opacity-60"
+      >
+        {busy ? (
+          <Loader2 size={12} className="animate-spin" />
+        ) : (
+          <Trash2 size={12} />
+        )}
+      </button>
+    </div>
+  );
+}
+
 function TemplateCard({
   template,
   onSelect,
@@ -327,12 +426,68 @@ function TemplateCard({
 export default function TemplateGallery({
   onSelect,
 }: {
-  onSelect: (template: Template) => void;
+  /** draftId diisi kalau user melanjutkan draft lama dari tab "Draft" —
+   *  Editor bakal hydrate semua state project-nya dari draft itu. Kosong
+   *  (undefined) = project baru dari template polos seperti biasa. */
+  onSelect: (template: Template, draftId?: string) => void;
 }) {
   // Nama template yang lagi dicoba dipakai padahal nonaktif — kalau ada
   // isinya, modal alert muncul. null = modal ketutup.
   const [disabledAlertTemplate, setDisabledAlertTemplate] =
     useState<Template | null>(null);
+
+  // Tab bawah: "template" (galeri, default) atau "draft" (daftar project
+  // yang lagi dikerjain, auto-tersimpan — lihat lib/drafts.ts).
+  const [activeTab, setActiveTab] = useState<"draft" | "template">(
+    "template",
+  );
+  const [drafts, setDrafts] = useState<DraftSummary[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [draftBusyId, setDraftBusyId] = useState<string | null>(null);
+
+  function refreshDrafts() {
+    setDraftsLoading(true);
+    listDrafts()
+      .then(setDrafts)
+      .catch(() => setDrafts([]))
+      .finally(() => setDraftsLoading(false));
+  }
+
+  // Muat daftar draft begitu tab-nya dibuka (bukan langsung pas app mount,
+  // biar gak nunggu IndexedDB kalau usernya emang mau pilih Template aja).
+  useEffect(() => {
+    if (activeTab !== "draft") return;
+    refreshDrafts();
+  }, [activeTab]);
+
+  function handleResumeDraft(draft: DraftSummary) {
+    const template = TEMPLATES.find((t) => t.id === draft.templateId);
+    if (!template) {
+      // Template sumber draft ini udah gak ada lagi di daftar (mis. sudah
+      // dihapus dari katalog) — daripada nyangkut, draft-nya dianggap
+      // tidak bisa dilanjutkan.
+      window.alert(
+        "Template untuk draft ini sudah tidak tersedia lagi. Draft akan dihapus.",
+      );
+      void deleteDraft(draft.id).then(refreshDrafts);
+      return;
+    }
+    onSelect(template, draft.id);
+  }
+
+  async function handleDeleteDraft(draft: DraftSummary) {
+    if (draftBusyId) return;
+    if (!window.confirm(`Hapus draft "${draft.templateName}"? Tidak bisa dibatalkan.`)) {
+      return;
+    }
+    setDraftBusyId(draft.id);
+    try {
+      await deleteDraft(draft.id);
+      setDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+    } finally {
+      setDraftBusyId(null);
+    }
+  }
 
   return (
     <div className="relative flex h-[100dvh] w-screen flex-col overflow-hidden bg-editor-bg font-sans">
@@ -353,10 +508,12 @@ export default function TemplateGallery({
               Koleksi Template
             </div>
             <h1 className="text-xl font-bold tracking-tight text-paper">
-              Pilih Template
+              {activeTab === "draft" ? "Draft Project" : "Pilih Template"}
             </h1>
             <p className="mt-0.5 text-xs text-editor-muted">
-              Tinggal isi foto & audio, sisanya udah beres
+              {activeTab === "draft"
+                ? "Auto-tersimpan, tinggal lanjutin kapan aja"
+                : "Tinggal isi foto & audio, sisanya udah beres"}
             </p>
           </div>
           <button
@@ -368,16 +525,88 @@ export default function TemplateGallery({
         </div>
       </div>
 
-      {/* Grid template — dua berbanjar (2 kolom) */}
-      <div className="relative grid flex-1 auto-rows-min grid-cols-2 gap-3 overflow-y-auto p-4">
-        {TEMPLATES.map((template) => (
-          <TemplateCard
-            key={template.id}
-            template={template}
-            onSelect={onSelect}
-            onDisabledClick={setDisabledAlertTemplate}
-          />
-        ))}
+      {activeTab === "template" ? (
+        /* Grid template — dua berbanjar (2 kolom) */
+        <div className="relative grid flex-1 auto-rows-min grid-cols-2 gap-3 overflow-y-auto p-4 pb-2">
+          {TEMPLATES.map((template) => (
+            <TemplateCard
+              key={template.id}
+              template={template}
+              onSelect={onSelect}
+              onDisabledClick={setDisabledAlertTemplate}
+            />
+          ))}
+        </div>
+      ) : (
+        /* Daftar Draft Project — maksimal MAX_DRAFTS item, auto-save dari
+           Editor (lihat lib/drafts.ts), diurutkan terbaru diubah duluan. */
+        <div className="relative flex-1 overflow-y-auto p-4 pb-2">
+          {draftsLoading ? (
+            <div className="flex h-full items-center justify-center text-editor-muted">
+              <Loader2 size={20} className="animate-spin" />
+            </div>
+          ) : drafts.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/[0.06]">
+                <FilePlus2 size={20} className="text-editor-muted" />
+              </div>
+              <p className="text-sm font-semibold text-paper">
+                Belum ada draft
+              </p>
+              <p className="text-xs leading-relaxed text-editor-muted">
+                Mulai project dari tab Template — perubahannya bakal
+                ke-auto-save di sini, sampai maksimal {MAX_DRAFTS} project
+                sekaligus.
+              </p>
+              <button
+                onClick={() => setActiveTab("template")}
+                className="mt-1 rounded-full bg-editor-accent px-4 py-2 text-xs font-semibold text-paper shadow-[0_4px_16px_rgba(124,108,255,0.4)] transition hover:brightness-110 active:scale-[0.98]"
+              >
+                Pilih Template
+              </button>
+            </div>
+          ) : (
+            <div className="grid auto-rows-min grid-cols-2 gap-3">
+              {drafts.map((draft) => (
+                <DraftCard
+                  key={draft.id}
+                  draft={draft}
+                  onResume={handleResumeDraft}
+                  onDelete={handleDeleteDraft}
+                  busy={draftBusyId === draft.id}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab bar bawah — Draft (kiri) & Template (kanan), fixed nempel di
+          bawah layar, pola visual sama persis header (bg-editor-panel/80,
+          border-white/5, backdrop-blur) biar konsisten satu identitas. */}
+      <div className="relative z-30 flex shrink-0 items-center gap-2 border-t border-white/5 bg-editor-panel/90 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
+        <button
+          onClick={() => setActiveTab("draft")}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 text-xs font-semibold tracking-wide transition active:scale-[0.97] ${
+            activeTab === "draft"
+              ? "bg-editor-accent text-paper shadow-[0_2px_12px_rgba(124,108,255,0.45)]"
+              : "text-editor-muted hover:text-paper"
+          }`}
+        >
+          <FolderClock size={15} />
+          Draft Project
+        </button>
+        <button
+          onClick={() => setActiveTab("template")}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 text-xs font-semibold tracking-wide transition active:scale-[0.97] ${
+            activeTab === "template"
+              ? "bg-editor-accent text-paper shadow-[0_2px_12px_rgba(124,108,255,0.45)]"
+              : "text-editor-muted hover:text-paper"
+          }`}
+        >
+          <LayoutGrid size={15} />
+          Template
+        </button>
       </div>
 
       {/* Alert modal — dipasang ulang persis kayak modal export di Editor:

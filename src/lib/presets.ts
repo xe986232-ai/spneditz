@@ -1,5 +1,11 @@
 import type { Template } from "../types";
 import type { LayerOpacityState, SlotMediaEntry, SlotMediaState, TextValueState } from "./render";
+import {
+  ensurePersistentStorage,
+  readEntryAsBlob,
+  storedMediaToEntry,
+  type StoredMedia,
+} from "./mediaStorage";
 
 // ============================================================================
 // Preset = "jepretan" semua pengaturan project (opacity layer, blur/opacity
@@ -8,27 +14,20 @@ import type { LayerOpacityState, SlotMediaEntry, SlotMediaState, TextValueState 
 // foto/video bisa gede & localStorage limitnya cuma ~5-10MB per origin).
 // IndexedDB bisa nyimpen Blob langsung tanpa perlu diubah ke base64 dulu,
 // jadi lebih hemat & lebih cepat.
+//
+// Logic baca/tulis Blob-nya sendiri (ensurePersistentStorage, readEntryAsBlob,
+// storedMediaToEntry) sudah dipindah ke lib/mediaStorage.ts biar bisa dipakai
+// bareng sama lib/drafts.ts (auto-save draft) tanpa duplikasi kode. Preset di
+// sini tetap fitur TERPISAH dari draft: preset = disimpan manual oleh user
+// dengan nama sendiri & jumlahnya tidak dibatasi, draft = auto-save diam-diam
+// maksimal 3 slot (lihat lib/drafts.ts).
 // ============================================================================
+
+export { ensurePersistentStorage, storedMediaToEntry };
 
 const DB_NAME = "spneditz-presets";
 const DB_VERSION = 1;
 const STORE_NAME = "presets";
-
-// Minta browser JANGAN otomatis hapus storage situs ini pas low-storage
-// (Chrome suka "evict" IndexedDB/localStorage situs yang jarang dibuka /
-// belum "persistent" kalau HP kehabisan ruang). Ini best-effort — browser
-// boleh nolak, tapi kalau dikabulin, resiko preset "ilang sendiri" jauh
-// berkurang. Dipanggil sekali tiap kali modul ini dipakai.
-export async function ensurePersistentStorage(): Promise<boolean> {
-  try {
-    if (!navigator.storage?.persist) return false;
-    const already = await navigator.storage.persisted?.();
-    if (already) return true;
-    return await navigator.storage.persist();
-  } catch {
-    return false;
-  }
-}
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -68,14 +67,6 @@ function withStore<T>(
   );
 }
 
-/** Media tersimpan dalam preset — cuma yang kind "file" (upload user) yang
- *  beneran nyimpen Blob-nya; kind "sample" tidak disimpan (biar tidak nyoba
- *  restore path sample dari template lain yang beda). */
-type StoredMedia = {
-  blob: Blob;
-  mimeType: string;
-};
-
 export type PresetRecord = {
   id: string;
   name: string;
@@ -97,52 +88,6 @@ export type PresetSummary = Pick<
   PresetRecord,
   "id" | "name" | "createdAt" | "templateId" | "templateName"
 > & { hasMedia: boolean };
-
-// Blob URL (media.url) dicoba duluan buat baca isi file — biasanya lebih
-// stabil daripada baca object File langsung (lihat catatan sama di
-// src/lib/export.ts soal bug File jadi stale di Chrome Android). TAPI kalau
-// fetch ke blob URL itu sendiri yang gagal (misal "Failed to fetch" — bisa
-// kejadian juga di beberapa WebView/Android build), fallback ke baca
-// File-nya langsung sebelum benar-benar nyerah.
-async function readEntryAsBlob(entry: SlotMediaEntry): Promise<StoredMedia> {
-  let blob: Blob | null = null;
-  let lastErr: unknown;
-
-  // Coba fetch blob URL sampai 3x (kadang gagal sesaat doang, misal proses
-  // network internal Chrome lagi restart — umum kejadian intermiten di
-  // Android) sebelum nyerah & fallback ke File langsung.
-  for (let i = 0; i < 3 && !blob; i++) {
-    try {
-      const res = await fetch(entry.url);
-      if (!res.ok) throw new Error(`fetch blob URL gagal (status ${res.status})`);
-      blob = await res.blob();
-    } catch (e) {
-      lastErr = e;
-      if (i < 2) await new Promise((r) => setTimeout(r, 200 * (i + 1)));
-    }
-  }
-
-  if (!blob && entry.file) {
-    try {
-      blob = entry.file;
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-
-  if (!blob) {
-    throw new Error(
-      `Gagal membaca file untuk disimpan ke preset. (${
-        lastErr instanceof Error ? lastErr.message : String(lastErr)
-      })`,
-    );
-  }
-
-  return {
-    blob,
-    mimeType: entry.file?.type || blob.type || "application/octet-stream",
-  };
-}
 
 export async function savePreset(params: {
   name: string;
@@ -222,10 +167,3 @@ export async function deletePreset(id: string): Promise<void> {
   await withStore("readwrite", (store) => store.delete(id));
 }
 
-/** Ubah StoredMedia jadi SlotMediaEntry siap-pakai (bikin object URL +
- *  File baru dari Blob yang disimpan). */
-export function storedMediaToEntry(stored: StoredMedia, fileName: string): SlotMediaEntry {
-  const file = new File([stored.blob], fileName, { type: stored.mimeType });
-  const url = URL.createObjectURL(stored.blob);
-  return { kind: "file", url, file };
-}

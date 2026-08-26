@@ -35,6 +35,10 @@ export default function App() {
   const [editorInit, setEditorInit] = useState<PendingEditorInit | null>(
     null,
   );
+  // Diisi kalau user masuk Editor lewat tab "Draft Project" (lanjutin
+  // project lama, bukan mulai baru dari galeri Template) — lihat
+  // TemplateGallery.tsx & lib/drafts.ts.
+  const [resumeDraftId, setResumeDraftId] = useState<string | null>(null);
 
   // Sekali aja pas app pertama kali dibuka (di device siapa pun) — kalau
   // Firebase belum punya config/coverImages sama sekali, ke-seed otomatis
@@ -79,16 +83,23 @@ export default function App() {
   return window.location.pathname.replace(/\/+$/, "") === DASHBOARD_PATH ? (
     <AdminDashboard />
   ) : !selectedTemplate ? (
-    <TemplateGallery onSelect={setSelectedTemplate} />
+    <TemplateGallery
+      onSelect={(template, draftId) => {
+        setResumeDraftId(draftId ?? null);
+        setSelectedTemplate(template);
+      }}
+    />
   ) : (
     <Editor
       template={selectedTemplate}
       onBack={() => {
         setSelectedTemplate(null);
         setEditorInit(null);
+        setResumeDraftId(null);
       }}
       initialProgressStyle={editorInit?.progressStyle}
       initialDiscordGateState={editorInit?.gateState ?? null}
+      resumeDraftId={resumeDraftId}
     />
   );
 }
