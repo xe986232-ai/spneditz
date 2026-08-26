@@ -524,6 +524,18 @@ export const TEMPLATES: Template[] = [
         opacity: 10,
         adjustable: true,
       },
+      {
+        // Track volume yang keliatan jelas — ditaruh di atas layer
+        // "layout" biar nutupin track volume yang ikut ke-redupin di
+        // sana (opacity 10%). Posisi udah pas nempel sejajar sama
+        // track volume redup di bawahnya (full-canvas 1080x1920, sama
+        // kayak layer lain). Opacity full, nggak diredupin.
+        id: "volume",
+        label: "Volume bar",
+        assetSrc: "/templates/iphone-music-player-v4/volume.png",
+        order: "front",
+        adjustable: true,
+      },
     ],
     slots: [
       {
