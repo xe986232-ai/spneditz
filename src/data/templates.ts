@@ -534,6 +534,19 @@ export const TEMPLATES: Template[] = [
         order: "front",
         adjustable: true,
       },
+      {
+        // Asset baru yang misahin ikon star (favorit) + kedua ikon
+        // speaker (kiri/kanan) — batang volume-nya sendiri udah ada di
+        // layer "volume"/"layout" terpisah, jadi asset ini cuma isi
+        // star & speaker doang. Posisi sama persis (full-canvas
+        // 1080x1920). Opacity default 40%.
+        id: "starSpeaker",
+        label: "Star & Speaker",
+        assetSrc: "/templates/iphone-music-player-v4/star-speaker.png",
+        order: "front",
+        opacity: 40,
+        adjustable: true,
+      },
     ],
     slots: [
       {
