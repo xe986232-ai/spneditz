@@ -117,7 +117,7 @@ const SLOT_SHORT_LABEL: Record<SlotType, string> = {
 // biar reuse UI seleksi track yang sudah ada.
 const BACKGROUND_LAYER_ID = "__background__";
 // Batas max blur (px, dalam skala canvas asli 1080x1920).
-const MAX_BACKGROUND_BLUR = 40;
+const MAX_BACKGROUND_BLUR = 100;
 // Seberapa banyak background di-zoom (overscan, px per level blur) biar
 // pas di-blur nggak ada gradasi hitam di tepian — lihat drawImageCoverZoomed.
 const BACKGROUND_BLUR_OVERSCAN_FACTOR = 2;
