@@ -42,3 +42,18 @@ body {
   animation: skeleton-shimmer 1.4s ease-in-out infinite;
 }
 
+@keyframes hint-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.85) translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-hint-pop {
+  animation: hint-pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+

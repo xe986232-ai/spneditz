@@ -116,6 +116,9 @@ const SLOT_SHORT_LABEL: Record<SlotType, string> = {
 // "Background" di timeline — dipakai bareng selectedLayerId yang sama
 // biar reuse UI seleksi track yang sudah ada.
 const BACKGROUND_LAYER_ID = "__background__";
+// localStorage key buat nyimpen status "udah pernah liat hint bubble teks
+// AirPlay" — sekali di-dismiss, gak muncul lagi di browser yang sama.
+const AIRPLAY_HINT_DISMISSED_KEY = "spneditz_hint_airplay_device_dismissed";
 // Batas max blur (px, dalam skala canvas asli 1080x1920).
 const MAX_BACKGROUND_BLUR = 100;
 // Blur background default per template (px). Template v4 langsung full
@@ -270,6 +273,28 @@ export default function Editor({
   const [selectedTextLayerId, setSelectedTextLayerId] = useState<string | null>(
     null,
   );
+
+  // Hint bubble sekali-tampil ("teks ini bisa diubah") yang nunjuk ke
+  // textLayer nama perangkat AirPlay di canvas — cuma buat kasih tau user
+  // fitur custom text ini ada, ekornya nempel persis ke posisi teksnya.
+  // Muncul sekali per browser (disimpen di localStorage), hilang kalau
+  // di-tap silang atau kalau usernya udah masuk mode Teks & pilih track itu.
+  const airplayHintLayer = useMemo(
+    () => template.textLayers?.find((l) => l.id === "airplayDevice") ?? null,
+    [template],
+  );
+  const [showAirplayHint, setShowAirplayHint] = useState(false);
+  useEffect(() => {
+    setShowAirplayHint(false);
+    if (!airplayHintLayer) return;
+    if (localStorage.getItem(AIRPLAY_HINT_DISMISSED_KEY) === "1") return;
+    const showTimer = setTimeout(() => setShowAirplayHint(true), 700);
+    return () => clearTimeout(showTimer);
+  }, [airplayHintLayer]);
+  function dismissAirplayHint() {
+    setShowAirplayHint(false);
+    localStorage.setItem(AIRPLAY_HINT_DISMISSED_KEY, "1");
+  }
 
   // ---- Mesin render: state media tiap slot (diisi contoh dari internet
   // dulu via sampleSrc, user bisa ganti kapan saja) ----
@@ -1596,6 +1621,47 @@ export default function Editor({
             </button>
           )}
           <audio ref={audioElRef} src={audioMedia?.url} className="hidden" />
+
+          {/* Hint bubble sekali-tampil — nunjuk ke teks nama perangkat
+              AirPlay pakai ekor gelembung chat, posisinya ngikutin x/y
+              textLayer aslinya (persen relatif canvas, sama kayak dipakai
+              buat render teksnya sendiri). Tap di mana aja buat nutup. */}
+          {showAirplayHint && airplayHintLayer && (
+            <div
+              className="absolute inset-0 z-30"
+              onClick={dismissAirplayHint}
+            >
+              <div
+                className="absolute flex flex-col items-center"
+                style={{
+                  left: `${airplayHintLayer.x + 8}%`,
+                  top: `${airplayHintLayer.y}%`,
+                  transform: "translate(-50%, 0)",
+                }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="animate-hint-pop relative mt-3 w-max max-w-[190px] rounded-2xl bg-paper px-3.5 py-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.45)]"
+                >
+                  <button
+                    onClick={dismissAirplayHint}
+                    className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-graphite text-paper shadow-md active:scale-90"
+                    aria-label="Tutup pemberitahuan"
+                  >
+                    <X size={11} />
+                  </button>
+                  <p className="text-[11px] font-semibold leading-snug text-graphite">
+                    Teks ini bisa diganti
+                  </p>
+                  <p className="mt-0.5 text-[10px] leading-snug text-graphite/60">
+                    Buka panel Teks, lalu ketuk nama perangkatnya buat custom.
+                  </p>
+                  {/* Ekor gelembung, nunjuk lurus ke atas ke posisi teks */}
+                  <div className="absolute bottom-full left-1/2 h-0 w-0 -translate-x-1/2 border-x-[7px] border-x-transparent border-b-[8px] border-b-paper" />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Tombol Fullscreen — nempel di tepi kanan preview, re-style
@@ -1776,6 +1842,7 @@ export default function Editor({
                             setSelectedSlotId(null);
                             setSelectedLayerId(null);
                             setSelectedTextLayerId(layer.id);
+                            if (layer.id === "airplayDevice") dismissAirplayHint();
                           }}
                           className={`absolute inset-y-0.5 left-8 cursor-pointer overflow-hidden rounded border transition ${
                             isSelected
