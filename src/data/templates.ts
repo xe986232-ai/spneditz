@@ -542,6 +542,25 @@ export const TEMPLATES: Template[] = [
         align: "left",
         maxLength: 30,
       },
+      {
+        // Teks nama device di badge AirPlay (dulu "NyxVoid's" nempel
+        // permanen di icon.png). Sekarang textnya dipisah jadi textLayer
+        // sendiri biar bisa di-custom user — icon.png cuma nyisain pill +
+        // ikon AirPlay-nya aja (bagian teksnya sudah dibersihkan/dihapus
+        // dari asset). Posisi diukur dari bounding-box asli huruf
+        // "NyxVoid's" di icon.png (x mulai persis setelah ikon+jarak,
+        // y center sejajar tengah pill).
+        id: "airplayDevice",
+        label: "Nama Perangkat AirPlay",
+        defaultText: "NyxVoid's",
+        x: 46.5,
+        y: 82.86,
+        fontSize: 28,
+        fontWeight: 500,
+        color: "#FFFFFF",
+        align: "left",
+        maxLength: 20,
+      },
     ],
     durationLayer: {
       currentX: 16.2,
