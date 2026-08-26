@@ -503,12 +503,26 @@ export const TEMPLATES: Template[] = [
       {
         id: "musicplayer",
         label: "Kontrol",
-        // rewind/pause/fast-forward + ikon favorit (star) + volume —
-        // teks durasi & badge AirPlay sudah dibersihkan dari asset ini
-        // (dipisah ke durationLayer & layer "icon" sendiri2, biar nggak
-        // dobel/ketutupan pas dirender).
+        // Cuma rewind/pause/fast-forward — ikon star & volume sudah
+        // dipisah ke layer "layout" sendiri (lihat di bawah) biar
+        // opacity-nya bisa diatur terpisah dari tombol play/skip.
+        // Opacity default full (100%), nggak diubah.
         assetSrc: "/templates/iphone-music-player-v4/musicplayer.png",
         order: "front",
+      },
+      {
+        // Dulu jadi satu sama musicplayer.png (star + volume + tombol
+        // kontrol dalam 1 file). Sekarang dipecah biar ikon favorit
+        // (star) & slider volume bisa diredupin sendiri tanpa
+        // pengaruh ke tombol play/skip — bentuk & posisi sama persis
+        // (full-canvas 1080x1920), cuma opacity elemen ini yang
+        // diturunin ke 10%.
+        id: "layout",
+        label: "Star & Volume",
+        assetSrc: "/templates/iphone-music-player-v4/layout.png",
+        order: "front",
+        opacity: 10,
+        adjustable: true,
       },
     ],
     slots: [
