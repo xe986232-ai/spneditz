@@ -340,13 +340,13 @@ function TrackEyeButton({
       onClick={onToggle}
       title={title ?? (hidden ? "Tampilkan elemen" : "Sembunyikan elemen")}
       aria-label={hidden ? "Tampilkan elemen" : "Sembunyikan elemen"}
-      className={`sticky left-1 z-20 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition active:scale-90 ${
+      className={`sticky left-1 z-20 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition active:scale-90 ${
         hidden
           ? "border-mute/20 bg-graphite/80 text-mute"
           : "border-editor-accent/40 bg-editor-accent/15 text-editor-accent"
       }`}
     >
-      {hidden ? <EyeOff size={12} /> : <Eye size={12} />}
+      {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
     </button>
   );
 }
@@ -2271,7 +2271,7 @@ export default function Editor({
                     return (
                       <div
                         key={layer.id}
-                        className="relative flex h-7 items-center rounded-md border border-mute/10 bg-editor-track"
+                        className="relative flex h-11 items-center rounded-md border border-mute/10 bg-editor-track"
                       >
                         <TrackEyeButton
                           hidden={isTextHidden}
@@ -2289,7 +2289,7 @@ export default function Editor({
                             setSelectedTextLayerId(layer.id);
                             if (layer.id === "airplayDevice") dismissAirplayHint();
                           }}
-                          className={`absolute inset-y-0.5 left-8 cursor-pointer overflow-hidden rounded border transition ${
+                          className={`absolute inset-y-0.5 left-10 cursor-pointer overflow-hidden rounded border transition ${
                             isSelected
                               ? "border-paper ring-2 ring-paper bg-amber-400/20"
                               : "border-amber-400/40 bg-amber-400/15"
@@ -2298,11 +2298,11 @@ export default function Editor({
                           title={layer.label}
                         >
                           <div className="flex h-full items-center gap-1 px-1.5">
-                            <Type size={11} className="shrink-0 text-amber-200" />
-                            <span className="truncate text-[9px] font-medium text-paper">
+                            <Type size={12} className="shrink-0 text-amber-200" />
+                            <span className="truncate text-[10px] font-medium text-paper">
                               {layer.label}
                             </span>
-                            <span className="ml-auto max-w-[45%] shrink-0 truncate text-[8px] text-amber-200/80">
+                            <span className="ml-auto max-w-[45%] shrink-0 truncate text-[9px] text-amber-200/80">
                               {value}
                             </span>
                           </div>
@@ -2337,7 +2337,7 @@ export default function Editor({
                     Cuma nongol di tool "Media" — di tool "Audio" track ini
                     disembunyiin biar timeline-nya bersih cuma isi audio. */}
                 {customBackground && activeTool !== "audio" && (
-                  <div className="relative flex h-7 items-center rounded-md border border-mute/10 bg-editor-track">
+                  <div className="relative flex h-11 items-center rounded-md border border-mute/10 bg-editor-track">
                     <TrackEyeButton
                       hidden={hiddenElements.has(BACKGROUND_LAYER_ID)}
                       onToggle={(e) => toggleElementHidden(BACKGROUND_LAYER_ID, e)}
@@ -2347,7 +2347,7 @@ export default function Editor({
                         setSelectedSlotId(null);
                         setSelectedLayerId(BACKGROUND_LAYER_ID);
                       }}
-                      className={`absolute inset-y-0.5 left-8 cursor-pointer overflow-hidden rounded border transition ${
+                      className={`absolute inset-y-0.5 left-10 cursor-pointer overflow-hidden rounded border transition ${
                         isBackgroundLayerSelected
                           ? "border-paper ring-2 ring-paper bg-sky-400/20"
                           : "border-sky-400/40 bg-sky-400/15"
@@ -2355,12 +2355,25 @@ export default function Editor({
                       style={{ width: Math.max(28, DURATION * effectivePxPerSec - 4) }}
                       title="Background"
                     >
-                      <div className="flex h-full items-center gap-1 px-1.5">
-                        <Layers size={11} className="shrink-0 text-sky-200" />
-                        <span className="truncate text-[9px] font-medium text-paper">
+                      {/* Thumbnail asli foto background (bukan cuma blok
+                          warna polos), diulang ("tile") sepanjang durasi
+                          biar keliatan isinya kayak referensi CapCut. */}
+                      {customBackground?.url && (
+                        <div
+                          className="pointer-events-none absolute inset-0 bg-repeat-x opacity-70"
+                          style={{
+                            backgroundImage: `url(${customBackground.url})`,
+                            backgroundSize: "auto 100%",
+                          }}
+                        />
+                      )}
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                      <div className="relative flex h-full items-center gap-1 px-1.5">
+                        <Layers size={12} className="shrink-0 text-sky-200" />
+                        <span className="truncate text-[10px] font-medium text-paper">
                           Background
                         </span>
-                        <span className="ml-auto shrink-0 text-[8px] text-sky-200/80">
+                        <span className="ml-auto shrink-0 text-[9px] text-sky-200/80">
                           {Math.round(backgroundOpacity)}%
                           {backgroundBlur > 0 ? ` · Blur ${Math.round(backgroundBlur)}` : ""}
                         </span>
@@ -2416,7 +2429,7 @@ export default function Editor({
                           setSelectedLayerId(null);
                           setSelectedSlotId(slot.id);
                         }}
-                        className={`relative h-7 rounded-md border bg-black/20 transition ${
+                        className={`relative h-11 rounded-md border bg-black/20 transition ${
                           isSelected ? "border-paper/40" : "border-mute/10"
                         }`}
                       >
@@ -2561,7 +2574,8 @@ export default function Editor({
                   const start = slot.startSec ?? 0;
                   const end = slot.endSec ?? DURATION;
                   const isSlotHidden = hiddenElements.has(slot.id);
-                  const clipLeft = start * effectivePxPerSec + 34;
+                  const slotMediaEntry = slotMedia[slot.id];
+                  const clipLeft = start * effectivePxPerSec + 40;
                   const clipWidth = Math.max(
                     28,
                     (end - start) * effectivePxPerSec - 4,
@@ -2569,7 +2583,7 @@ export default function Editor({
                   return (
                     <div
                       key={slot.id}
-                      className="relative flex h-7 items-center rounded-md border border-mute/10 bg-editor-track"
+                      className="relative flex h-11 items-center rounded-md border border-mute/10 bg-editor-track"
                     >
                       <TrackEyeButton
                         hidden={isSlotHidden}
@@ -2597,13 +2611,39 @@ export default function Editor({
                         style={{ left: clipLeft, width: clipWidth }}
                         title={slot.label}
                       >
-                        <div className="flex h-full items-center gap-1 px-1.5">
+                        {/* Thumbnail asli isi klip (foto/frame video),
+                            diulang ("tile") sepanjang durasi slot — biar
+                            kelihatan isinya beneran kayak track media di
+                            CapCut, bukan cuma blok warna polos. */}
+                        {filled && slotMediaEntry && slot.type === "image" && (
+                          <div
+                            className="pointer-events-none absolute inset-0 bg-repeat-x"
+                            style={{
+                              backgroundImage: `url(${slotMediaEntry.url})`,
+                              backgroundSize: "auto 100%",
+                            }}
+                          />
+                        )}
+                        {filled && slotMediaEntry && slot.type === "video" && (
+                          <video
+                            key={slotMediaEntry.url}
+                            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+                            src={`${slotMediaEntry.url}#t=0.1`}
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
+                        )}
+                        {filled && (
+                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/5 to-transparent" />
+                        )}
+                        <div className="relative flex h-full items-center gap-1 px-1.5">
                           <Icon
-                            size={11}
+                            size={12}
                             className={`shrink-0 ${filled ? "text-sky-200" : "text-mute"}`}
                           />
                           <span
-                            className={`truncate text-[9px] font-medium ${
+                            className={`truncate text-[10px] font-medium ${
                               filled ? "text-paper" : "text-mute"
                             }`}
                           >
@@ -2628,7 +2668,7 @@ export default function Editor({
                   return (
                     <div
                       key={layer.id}
-                      className="relative flex h-7 items-center rounded-md border border-mute/10 bg-editor-track"
+                      className="relative flex h-11 items-center rounded-md border border-mute/10 bg-editor-track"
                     >
                       <TrackEyeButton
                         hidden={isLayerHidden}
@@ -2644,7 +2684,7 @@ export default function Editor({
                           setSelectedSlotId(null);
                           setSelectedLayerId(layer.id);
                         }}
-                        className={`absolute inset-y-0.5 left-8 cursor-pointer overflow-hidden rounded border transition ${
+                        className={`absolute inset-y-0.5 left-10 cursor-pointer overflow-hidden rounded border transition ${
                           isSelected
                             ? "border-paper ring-2 ring-paper bg-violet-400/20"
                             : "border-violet-400/40 bg-violet-400/15"
@@ -2652,12 +2692,27 @@ export default function Editor({
                         style={{ width: Math.max(28, DURATION * effectivePxPerSec - 4) }}
                         title={layer.label}
                       >
-                        <div className="flex h-full items-center gap-1 px-1.5">
-                          <SlidersHorizontal size={11} className="shrink-0 text-violet-200" />
-                          <span className="truncate text-[9px] font-medium text-paper">
+                        {/* Thumbnail asset PNG asli layer ini (kartu
+                            player/AirPlay, volume bar, dst), diulang
+                            sepanjang track — bukan cuma blok warna ungu
+                            polos. */}
+                        {layer.assetSrc && (
+                          <div
+                            className="pointer-events-none absolute inset-0 bg-repeat-x bg-graphite/60"
+                            style={{
+                              backgroundImage: `url(${layer.assetSrc})`,
+                              backgroundSize: "auto 90%",
+                              backgroundPosition: "center",
+                            }}
+                          />
+                        )}
+                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                        <div className="relative flex h-full items-center gap-1 px-1.5">
+                          <SlidersHorizontal size={12} className="shrink-0 text-violet-200" />
+                          <span className="truncate text-[10px] font-medium text-paper">
                             {layer.label}
                           </span>
-                          <span className="ml-auto shrink-0 text-[8px] text-violet-200/80">
+                          <span className="ml-auto shrink-0 text-[9px] text-violet-200/80">
                             {Math.round(op)}%
                           </span>
                         </div>
