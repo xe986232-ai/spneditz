@@ -244,7 +244,7 @@ export default function Editor({
    *  DAN auto-save berikutnya nimpa draft yang sama (bukan bikin baru). */
   resumeDraftId?: string | null;
 }) {
-  const [activeTool, setActiveTool] = useState<string>("text");
+  const [activeTool, setActiveTool] = useState<string>("media");
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentSec, setCurrentSec] = useState(0);
   // Slot yang lagi diketuk/terseleksi di timeline atau canvas — kalau ada
@@ -1992,7 +1992,7 @@ export default function Editor({
                  sejumlah textLayers template ini. Klik salah satu track buat
                  munculin input edit teks khusus layer itu di toolbar bawah. */
               template.textLayers?.length ? (
-                <div style={{ width: TRACK_WIDTH }} className="flex flex-col gap-1 pb-1">
+                <div style={{ width: TRACK_WIDTH }} className="flex flex-col gap-0.5 pb-1">
                   {template.textLayers.map((layer) => {
                     const isSelected = selectedTextLayerId === layer.id;
                     const value = textValues[layer.id] || layer.defaultText;
@@ -2000,7 +2000,7 @@ export default function Editor({
                     return (
                       <div
                         key={layer.id}
-                        className="relative flex h-9 items-center rounded-md border border-mute/10 bg-editor-track"
+                        className="relative flex h-7 items-center rounded-md border border-mute/10 bg-editor-track"
                       >
                         <TrackEyeButton
                           hidden={isTextHidden}
@@ -2053,7 +2053,7 @@ export default function Editor({
                  baris/track sendiri, kayak editor video beneran. Klik
                  buat SELECT (bukan langsung buka file picker) — ganti
                  media dilakukan lewat tombol "Ganti" di toolbar bawah. */
-              <div style={{ width: TRACK_WIDTH }} className="flex flex-col gap-1 pb-1">
+              <div style={{ width: TRACK_WIDTH }} className="flex flex-col gap-0.5 pb-1">
                 {/* Pilihan tampilan progress lagu dipindah ke toolbar
                     bawah (muncul pas tab "Audio" aktif) — lihat
                     activeTool === "audio" di bagian toolbar. */}
@@ -2066,7 +2066,7 @@ export default function Editor({
                     Cuma nongol di tool "Media" — di tool "Audio" track ini
                     disembunyiin biar timeline-nya bersih cuma isi audio. */}
                 {customBackground && activeTool !== "audio" && (
-                  <div className="relative flex h-9 items-center rounded-md border border-mute/10 bg-editor-track">
+                  <div className="relative flex h-7 items-center rounded-md border border-mute/10 bg-editor-track">
                     <TrackEyeButton
                       hidden={hiddenElements.has(BACKGROUND_LAYER_ID)}
                       onToggle={(e) => toggleElementHidden(BACKGROUND_LAYER_ID, e)}
@@ -2145,7 +2145,7 @@ export default function Editor({
                           setSelectedLayerId(null);
                           setSelectedSlotId(slot.id);
                         }}
-                        className={`relative h-9 rounded-md border bg-black/20 transition ${
+                        className={`relative h-7 rounded-md border bg-black/20 transition ${
                           isSelected ? "border-paper/40" : "border-mute/10"
                         }`}
                       >
@@ -2270,7 +2270,7 @@ export default function Editor({
                   return (
                     <div
                       key={slot.id}
-                      className="relative flex h-9 items-center rounded-md border border-mute/10 bg-editor-track"
+                      className="relative flex h-7 items-center rounded-md border border-mute/10 bg-editor-track"
                     >
                       <TrackEyeButton
                         hidden={isSlotHidden}
@@ -2329,7 +2329,7 @@ export default function Editor({
                   return (
                     <div
                       key={layer.id}
-                      className="relative flex h-9 items-center rounded-md border border-mute/10 bg-editor-track"
+                      className="relative flex h-7 items-center rounded-md border border-mute/10 bg-editor-track"
                     >
                       <TrackEyeButton
                         hidden={isLayerHidden}
