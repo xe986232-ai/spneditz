@@ -2021,7 +2021,7 @@ export default function Editor({
             filter: "blur(40px)",
           }}
         />
-        <div className="relative h-full w-full overflow-hidden bg-black">
+        <div className="relative mx-auto aspect-[9/16] h-full max-h-full max-w-full overflow-hidden bg-black">
           {template.baseAssetSrc ? (
             <canvas
               ref={canvasRef}
