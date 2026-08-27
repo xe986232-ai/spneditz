@@ -212,14 +212,29 @@ export function drawDurationLayer(
   ctx.textBaseline = "middle";
 
   ctx.textAlign = "left";
+  // currentWhole = detik BULAT yang lagi ditampilin kiri (formatClock
+  // internal-nya juga Math.floor, disamain di sini biar konsisten satu
+  // sumber angka yang sama).
+  const currentWhole = Math.floor(Math.max(0, currentSec));
   ctx.fillText(
     formatClock(currentSec),
     (durationLayer.currentX / 100) * canvasW,
     (durationLayer.currentY / 100) * canvasH,
   );
 
+  // PENTING soal sinkronisasi: sisa waktu DIHITUNG DARI SELISIH DUA
+  // BILANGAN BULAT DETIK (totalWhole - currentWhole), BUKAN dari
+  // Math.floor(totalSec - currentSec) langsung. totalSec biasanya
+  // desimal (mis. 74.357, bukan pas 74.000) — kalau langsung
+  // dikurangin lalu di-floor, titik "loncat" angka kanan jadi geser
+  // beberapa ratus milidetik dari titik loncat angka kiri (yang
+  // floor-nya dari currentSec doang), jadi kelihatan gak barengan pas
+  // ganti detik. Dengan currentWhole yang SAMA PERSIS dipakai buat kiri
+  // & kanan, keduanya dijamin ganti di momen yang sama persis.
+  const totalWhole = Math.floor(Math.max(0, totalSec));
+  const remaining = Math.max(0, totalWhole - currentWhole);
   const rightText = durationLayer.countdown
-    ? `-${formatClock(Math.max(0, totalSec - currentSec))}`
+    ? `-${formatClock(remaining)}`
     : formatClock(totalSec);
 
   ctx.textAlign = "right";
