@@ -248,8 +248,8 @@ function DraftCard({
           <span className="text-[11px] font-semibold tracking-wide text-paper/85">
             Lanjutkan
           </span>
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-editor-accent text-paper shadow-[0_2px_10px_rgba(124,108,255,0.5)] transition-transform duration-300 group-active:translate-x-0.5">
-            <ArrowRight size={12} strokeWidth={2.5} />
+          <span className="flex h-6 items-center justify-center rounded-full bg-editor-accent px-2.5 text-[10px] font-semibold tracking-wide text-paper shadow-[0_2px_10px_rgba(124,108,255,0.5)] transition-transform duration-300 group-active:translate-x-0.5">
+            Edit
           </span>
         </div>
       </button>
