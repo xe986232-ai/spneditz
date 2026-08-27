@@ -30,6 +30,7 @@ import {
   EyeOff,
   Sparkles,
   Check,
+  Zap,
 } from "lucide-react";
 import { getDominantColor } from "../lib/color";
 import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../types";import {
@@ -54,7 +55,7 @@ import {
   resolveLiquidGlassRectPx,
   DEFAULT_LIQUID_GLASS_SETTINGS,
 } from "../lib/liquidGlass";
-import { exportTemplateVideoAuto, ExportCancelledError, type ExportProgress, type ExportEngine } from "../lib/engine";
+import { exportTemplateVideoAuto, ExportCancelledError, type ExportProgress, type ExportEngine, type ExportQuality } from "../lib/engine";
 import { analyzeAudio, type AudioAnalysis } from "../lib/waveform";
 import { logExportEvent } from "../lib/exportLog";
 import { subscribeWaveformEnabled } from "../lib/premiumFlags";
@@ -511,6 +512,11 @@ export default function Editor({
   const [exportResultUrl, setExportResultUrl] = useState<string | null>(null);
   const [exportEngineUsed, setExportEngineUsed] = useState<ExportEngine | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  // Modal "Pilih Kualitas" — muncul begitu tombol Export di top bar
+  // dipencet, SEBELUM render beneran mulai. User pilih SD/HD dulu di
+  // sini, baru handleExport(quality) jalan.
+  const [showQualityPicker, setShowQualityPicker] = useState(false);
+  const [exportQuality, setExportQuality] = useState<ExportQuality>("hd");
 
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -1648,7 +1654,7 @@ export default function Editor({
     }
   }
 
-  async function handleExport() {
+  async function handleExport(quality: ExportQuality) {
     if (!template.baseAssetSrc) return;
     // Gaya "Waveform berjalan" boleh dipilih & di-preview bebas, tapi
     // EXPORT-nya dikunci selama config/waveformEnabled di Firebase belum
@@ -1729,6 +1735,7 @@ export default function Editor({
         })),
         progressStyle,
         audioInfo?.bassPeaks?.length ? audioInfo.bassPeaks : FALLBACK_PEAKS,
+        quality,
       );
       setExportResultUrl(URL.createObjectURL(blob));
       setExportEngineUsed(engine);
@@ -1795,7 +1802,7 @@ export default function Editor({
 
         {template.baseAssetSrc ? (
           <button
-            onClick={handleExport}
+            onClick={() => setShowQualityPicker(true)}
             disabled={isExporting}
             className="flex h-9 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 text-paper transition active:scale-90 disabled:opacity-60"
             title={isExporting ? "Merender…" : "Ekspor video"}
@@ -3076,6 +3083,104 @@ export default function Editor({
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal "Pilih Kualitas" — muncul pas tombol Export di top bar
+          dipencet, SEBELUM render mulai. Sengaja pakai gaya modal gelap
+          senada sama modal export di bawah (editor-bg/editor-panel +
+          aksen editor-accent) biar terasa satu alur, bukan popup asing. */}
+      {showQualityPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm">
+          <div className="relative w-full max-w-xs overflow-hidden rounded-3xl border border-white/10 bg-editor-panel p-5 shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
+            <div className="pointer-events-none absolute -top-24 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-editor-accent/25 blur-3xl" />
+            <div className="relative flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-paper">Pilih Kualitas</h2>
+              <button
+                onClick={() => setShowQualityPicker(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-paper/60 transition hover:bg-white/10 hover:text-paper active:scale-95"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="relative mt-1 text-[11px] text-paper/55">
+              Pilih dulu kualitas video sebelum export.
+            </p>
+
+            <div className="relative mt-4 flex flex-col gap-2.5">
+              <button
+                onClick={() => setExportQuality("hd")}
+                className={`flex items-center gap-3 rounded-2xl border px-3.5 py-3 text-left transition active:scale-[0.98] ${
+                  exportQuality === "hd"
+                    ? "border-editor-accent bg-editor-accent/15"
+                    : "border-white/10 bg-white/5 hover:bg-white/10"
+                }`}
+              >
+                <span
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                    exportQuality === "hd"
+                      ? "bg-editor-accent/25 text-editor-accent"
+                      : "bg-white/10 text-paper/60"
+                  }`}
+                >
+                  <Sparkles size={17} />
+                </span>
+                <span className="flex-1">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-paper">
+                    HD
+                    <span className="rounded-full bg-editor-accent/20 px-1.5 py-0.5 text-[9px] font-medium text-editor-accent">
+                      Direkomendasikan
+                    </span>
+                  </span>
+                  <span className="mt-0.5 block text-[10.5px] text-paper/55">
+                    Resolusi & bitrate penuh — hasil paling tajam, ukuran file lebih besar.
+                  </span>
+                </span>
+                {exportQuality === "hd" && (
+                  <Check size={16} className="shrink-0 text-editor-accent" />
+                )}
+              </button>
+
+              <button
+                onClick={() => setExportQuality("sd")}
+                className={`flex items-center gap-3 rounded-2xl border px-3.5 py-3 text-left transition active:scale-[0.98] ${
+                  exportQuality === "sd"
+                    ? "border-editor-accent bg-editor-accent/15"
+                    : "border-white/10 bg-white/5 hover:bg-white/10"
+                }`}
+              >
+                <span
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                    exportQuality === "sd"
+                      ? "bg-editor-accent/25 text-editor-accent"
+                      : "bg-white/10 text-paper/60"
+                  }`}
+                >
+                  <Zap size={17} />
+                </span>
+                <span className="flex-1">
+                  <span className="text-xs font-semibold text-paper">SD</span>
+                  <span className="mt-0.5 block text-[10.5px] text-paper/55">
+                    Resolusi diturunkan — render lebih cepat, file lebih kecil, cocok koneksi pas-pasan.
+                  </span>
+                </span>
+                {exportQuality === "sd" && (
+                  <Check size={16} className="shrink-0 text-editor-accent" />
+                )}
+              </button>
+            </div>
+
+            <button
+              onClick={() => {
+                setShowQualityPicker(false);
+                handleExport(exportQuality);
+              }}
+              className="relative mt-4 flex w-full items-center justify-center gap-1.5 rounded-full bg-editor-accent px-4 py-2.5 text-sm font-semibold text-white transition active:scale-95"
+            >
+              <Download size={16} strokeWidth={2.4} />
+              Export {exportQuality === "hd" ? "HD" : "SD"}
+            </button>
           </div>
         </div>
       )}
