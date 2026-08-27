@@ -2062,8 +2062,10 @@ export default function Editor({
                     karena foto sampul sekarang OTOMATIS jadi background
                     juga (lihat handleFileChange), gak perlu transfer manual
                     lagi. Klik buat munculin slider opacity & blur di
-                    toolbar bawah. */}
-                {customBackground && (
+                    toolbar bawah.
+                    Cuma nongol di tool "Media" — di tool "Audio" track ini
+                    disembunyiin biar timeline-nya bersih cuma isi audio. */}
+                {customBackground && activeTool !== "audio" && (
                   <div className="relative flex h-9 items-center rounded-md border border-mute/10 bg-editor-track">
                     <TrackEyeButton
                       hidden={hiddenElements.has(BACKGROUND_LAYER_ID)}
@@ -2097,8 +2099,10 @@ export default function Editor({
                 )}
 
                 {/* Tombol "+" ungu di ujung kiri baris klip — shortcut
-                    nambah/ganti klip media (buka file picker yang sama). */}
-                {mediaSlotDef && (
+                    nambah/ganti klip media (buka file picker yang sama).
+                    Cuma di tool "Media", biar nggak nyampur sama tool
+                    Audio. */}
+                {mediaSlotDef && activeTool !== "audio" && (
                   <div className="flex items-center gap-2 pb-0.5">
                     <button
                       onClick={() => openPicker(mediaSlotDef)}
@@ -2117,6 +2121,12 @@ export default function Editor({
                 {visibleSlots.map((slot) => {
 
                   const isAudio = slot.type === "audio";
+                  // Isolasi per tool: tool "Audio" cuma nampilin track
+                  // audio, tool lain (Media/Gaya/dll) cuma nampilin track
+                  // non-audio (foto/video) — biar nggak nyampur kayak
+                  // sebelumnya.
+                  if (isAudio && activeTool !== "audio") return null;
+                  if (!isAudio && activeTool === "audio") return null;
                   const filled = Boolean(slotMedia[slot.id]);
                   const isSelected = selectedSlotId === slot.id;
                   const Icon = SLOT_ICON[slot.type];
@@ -2310,8 +2320,9 @@ export default function Editor({
                     Card Player) — beda dari slot foto/video/audio karena
                     isinya statis dari awal sampai akhir & klik-nya cuma
                     buat munculin slider opacity di toolbar bawah, bukan
-                    buka file picker. */}
-                {adjustableLayers.map((layer) => {
+                    buka file picker. Disembunyiin pas tool "Audio" aktif
+                    (ini elemen visual, bukan audio). */}
+                {activeTool !== "audio" && adjustableLayers.map((layer) => {
                   const isSelected = selectedLayerId === layer.id;
                   const op = layerOpacity[layer.id] ?? layer.opacity ?? 100;
                   const isLayerHidden = hiddenElements.has(layer.id);
