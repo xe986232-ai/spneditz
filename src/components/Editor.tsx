@@ -21,7 +21,6 @@ import {
   AudioWaveform,
   Bookmark,
   Save,
-  Lock,
   Maximize2,
   Minimize2,
   Download,
@@ -57,14 +56,6 @@ import {
 import { exportTemplateVideoAuto, ExportCancelledError, type ExportProgress, type ExportEngine } from "../lib/engine";
 import { analyzeAudio, type AudioAnalysis } from "../lib/waveform";
 import { logExportEvent } from "../lib/exportLog";
-import { subscribeWaveformEnabled } from "../lib/premiumFlags";
-import {
-  fetchDiscordSession,
-  savePendingWaveformExport,
-} from "../lib/discordSession";
-import DiscordExportGate, {
-  type DiscordExportGateState,
-} from "./DiscordExportGate";
 import { subscribeCoverImages, type CoverImageEntry } from "../lib/coverImages";
 import {
   savePreset,
@@ -260,18 +251,13 @@ export default function Editor({
   template,
   onBack,
   initialProgressStyle,
-  initialDiscordGateState,
   resumeDraftId,
 }: {
   template: Template;
   onBack: () => void;
-  /** Diisi App.tsx pas mount HASIL balik dari redirect OAuth Discord —
-   *  supaya user langsung kembali ke gaya "Waveform berjalan" yang lagi
-   *  dicoba di-export tadi, bukan balik ke "Standar". */
+  /** Diisi App.tsx kalau butuh buka Editor langsung dengan gaya progress
+   *  bar tertentu (mis. deep-link). */
   initialProgressStyle?: "bar" | "waveform";
-  /** Sama kayak di atas — kalau OAuth-nya balik dengan status "belum join"
-   *  atau error, modal gate-nya langsung ke-tampil lagi otomatis. */
-  initialDiscordGateState?: DiscordExportGateState | null;
   /** Diisi kalau user masuk Editor lewat tab "Draft" (lanjutin project
    *  lama) — bukan lewat pilih Template baru dari galeri. Kalau ada
    *  isinya, semua state di bawah di-hydrate dari draft ini pas mount,
@@ -527,22 +513,6 @@ export default function Editor({
   const [progressStyle, setProgressStyle] = useState<"bar" | "waveform">(
     initialProgressStyle ?? "bar",
   );
-  // ---- Modal "harus join Discord dulu", cuma dipicu pas user pencet
-  // Export dengan progressStyle "waveform" (lihat handleExport). null berarti
-  // gak ada modal yang lagi ditampilin. ----
-  const [discordGateState, setDiscordGateState] =
-    useState<DiscordExportGateState | null>(initialDiscordGateState ?? null);
-  // ---- Status fitur premium "Waveform berjalan" — dengerin real-time
-  // dari Firebase Realtime Database (config/waveformEnabled). Selama belum
-  // kebaca (null), anggap terkunci dulu (fail-safe) biar nggak sempat
-  // kebuka keliru sebelum datanya sampai. ----
-  const [waveformEnabled, setWaveformEnabled] = useState<boolean | null>(
-    null,
-  );
-  useEffect(() => {
-    const unsubscribe = subscribeWaveformEnabled(setWaveformEnabled);
-    return unsubscribe;
-  }, []);
   // ---- Daftar foto default (Unsplash) template ini — dengerin real-time
   // dari Firebase (config/coverImages/{templateId}), lihat lib/coverImages.ts.
   // Begitu daftarnya nyampe, foto sampul yang masih "sample" (belum diganti
@@ -1650,25 +1620,6 @@ export default function Editor({
 
   async function handleExport() {
     if (!template.baseAssetSrc) return;
-    // Gaya "Waveform berjalan" boleh dipilih & di-preview bebas, tapi
-    // EXPORT-nya dikunci selama config/waveformEnabled di Firebase belum
-    // true — badge "Premium" di tombolnya sudah ngasih tau ini dari awal.
-    if (progressStyle === "waveform" && !waveformEnabled) {
-      setExportError(
-        "Gaya \"Waveform berjalan\" masih Premium — belum bisa dipakai buat export. Ganti dulu ke gaya \"Standar\", atau tunggu fiturnya diaktifkan.",
-      );
-      return;
-    }
-    // Gaya "Waveform berjalan" juga butuh login + jadi member server
-    // Discord kami. Dicek di sini (pas Export dipencet), BUKAN dari awal
-    // buka app — biar user bebas eksplor editor lain-lainnya tanpa gate.
-    if (progressStyle === "waveform") {
-      const status = await fetchDiscordSession();
-      if (status !== "authed") {
-        setDiscordGateState("unauthed");
-        return;
-      }
-    }
     setIsExporting(true);
     setExportError(null);
     setExportResultUrl(null);
@@ -2866,18 +2817,6 @@ export default function Editor({
                     : "border-mute/15 bg-graphite/40"
                 }`}
               >
-                {/* Badge "Premium" — muncul selama config/waveformEnabled
-                    di Firebase belum di-set true. Gaya ini tetap BOLEH
-                    dipilih di sini (cuma preview), tapi export-nya nanti
-                    diblokir di handleExport kalau masih terkunci. Ilang
-                    otomatis (real-time) begitu diaktifkan lewat dashboard
-                    /sawadikap. */}
-                {!waveformEnabled && (
-                  <span className="absolute -top-2 right-1 flex items-center gap-0.5 rounded-full bg-amber-400 px-1.5 py-0.5 text-[8px] font-bold text-graphite shadow-sm">
-                    <Lock size={8} strokeWidth={3} />
-                    Premium haha🗿
-                  </span>
-                )}
                 <div className="flex h-6 w-24 items-end justify-center gap-[2px] rounded-full bg-black/50 px-1.5 py-1">
                   {[5, 10, 7, 14, 8, 12, 6, 5, 9, 5, 7, 4].map((h, i) => (
                     <div
@@ -3202,16 +3141,6 @@ export default function Editor({
             )}
           </div>
         </div>
-      )}
-      {discordGateState && (
-        <DiscordExportGate
-          state={discordGateState}
-          onClose={() => setDiscordGateState(null)}
-          onLogin={() => {
-            savePendingWaveformExport(template.id);
-            window.location.href = "/api/discord-login";
-          }}
-        />
       )}
     </div>
   );

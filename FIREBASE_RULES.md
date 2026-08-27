@@ -30,11 +30,6 @@ Realtime Database → Rules** ke:
       }
     },
     "config": {
-      "waveformEnabled": {
-        ".read": true,
-        ".write": true,
-        ".validate": "newData.isBoolean()"
-      },
       "templates": {
         "$templateId": {
           "enabled": {
@@ -87,25 +82,23 @@ Kenapa gini:
   kebutuhan "sekadar liat jumlah export" ini oke — datanya nggak sensitif.
 - `byTemplate` tetap `.read: true` → dipakai juga buat badge "X kali
   digunakan" di halaman pilih template.
-- `config/waveformEnabled` sekarang **`.write: true`** juga → supaya toggle
-  di dashboard admin beneran nyimpen ke database. Karena Realtime Database
-  Rules nggak tau "siapa yang mengetik dari halaman /sawadikap dengan
-  password yang benar" (itu cuma pengecekan di sisi aplikasi/JS, bukan di
-  Rules), siapa pun yang tau URL Firebase kamu **secara teknis** bisa nulis
-  ke path ini langsung tanpa lewat dashboard/password sama sekali.
-  Password & nama halaman yang susah ditebak (`/sawadikap`) di sini
-  fungsinya cuma "penghalang casual" (security by obscurity), BUKAN
-  proteksi yang kuat. Kalau nanti butuh beneran aman, perlu ditambah
-  Firebase Authentication + rule `auth != null` (bisa dibantu kalau mau).
-- `config/templates/$templateId/enabled` sama kayak `waveformEnabled` di
-  atas (`.write: true`, batas keamanannya sama juga) — dipakai buat
+- `config/templates/$templateId/enabled` (`.write: true`, batas keamanannya
+  sama kayak path lain di sini) — dipakai buat
   nyala/matiin tiap template satu-satu lewat panel "Kelola Template" di
   dashboard admin. Kalau `enabled` di-set `false`, template itu tetap
   muncul di galeri (biar nggak bikin bingung "kok hilang") tapi tombol
   "Gunakan"-nya munculin alert, bukan lanjut ke editor. Kalau path ini
   belum pernah di-set sama sekali (belum pernah disentuh dari dashboard),
   aplikasi nganggep template itu AKTIF (fail-open) — jadi template baru
-  otomatis kepake tanpa perlu di-toggle manual dulu.
+  otomatis kepake tanpa perlu di-toggle manual dulu. Karena Realtime
+  Database Rules nggak tau "siapa yang mengetik dari halaman /sawadikap
+  dengan password yang benar" (itu cuma pengecekan di sisi aplikasi/JS,
+  bukan di Rules), siapa pun yang tau URL Firebase kamu **secara teknis**
+  bisa nulis ke path ini langsung tanpa lewat dashboard/password sama
+  sekali. Password & nama halaman yang susah ditebak (`/sawadikap`) di sini
+  fungsinya cuma "penghalang casual" (security by obscurity), BUKAN
+  proteksi yang kuat. Kalau nanti butuh beneran aman, perlu ditambah
+  Firebase Authentication + rule `auth != null` (bisa dibantu kalau mau).
 - `config/coverImages/$templateId/$entryId` — daftar foto default
   (Unsplash) yang otomatis ngisi slot sampul & background tiap template
   sebelum user upload foto sendiri (lihat `src/lib/coverImages.ts`).
@@ -132,8 +125,6 @@ konstanta `DASHBOARD_PASSWORD` — **ganti sendiri** ke password pilihan
 kamu). Di situ kamu bisa:
 
 - Lihat total export & breakdown per hari/template.
-- Toggle badge Premium buat gaya "Waveform berjalan" (nyalain =
-  `config/waveformEnabled` jadi `true`, semua orang boleh pakai).
 - Nyala/matiin tiap template lewat panel "Kelola Template" — kalau
   dimatiin, template tetap kelihatan di galeri (ditandai badge "Nonaktif" +
   gambar jadi grayscale) tapi tombol "Gunakan" munculin alert modal,

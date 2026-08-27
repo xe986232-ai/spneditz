@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ref, onValue, off, update } from "firebase/database";
+import { ref, onValue, off } from "firebase/database";
 import { Lock, Eye, EyeOff, ShieldCheck, ImagePlus, Trash2 } from "lucide-react";
 import { db } from "../lib/firebase";
 import { TEMPLATES } from "../data/templates";
@@ -30,10 +30,6 @@ export default function AdminDashboard() {
   const [wrongPassword, setWrongPassword] = useState(false);
 
   const [data, setData] = useState<ExportsData | null>(null);
-  const [waveformEnabled, setWaveformEnabledState] = useState<boolean | null>(
-    null,
-  );
-  const [savingFlag, setSavingFlag] = useState(false);
 
   // Status aktif/nonaktif tiap template, key-nya template.id. null = masih
   // dimuat. Dipakai buat toggle di panel "Kelola Template" di bawah.
@@ -62,7 +58,6 @@ export default function AdminDashboard() {
     if (!unlocked) return;
 
     const exportsRef = ref(db, "exports");
-    const flagRef = ref(db, "config/waveformEnabled");
 
     const unsubExports = onValue(exportsRef, (snapshot) => {
       const val = snapshot.val() ?? {};
@@ -73,13 +68,8 @@ export default function AdminDashboard() {
       });
     });
 
-    const unsubFlag = onValue(flagRef, (snapshot) => {
-      setWaveformEnabledState(snapshot.val() === true);
-    });
-
     return () => {
       off(exportsRef, "value", unsubExports);
-      off(flagRef, "value", unsubFlag);
     };
   }, [unlocked]);
 
@@ -166,18 +156,6 @@ export default function AdminDashboard() {
     }
   }
 
-  async function toggleWaveformPremium() {
-    if (waveformEnabled === null) return;
-    setSavingFlag(true);
-    try {
-      await update(ref(db), {
-        "config/waveformEnabled": !waveformEnabled,
-      });
-    } finally {
-      setSavingFlag(false);
-    }
-  }
-
   async function toggleTemplateEnabled(templateId: string) {
     const current = templateEnabledMap[templateId];
     if (current === null || current === undefined) return;
@@ -256,35 +234,6 @@ export default function AdminDashboard() {
           <p className="mt-1 text-4xl font-bold">
             {data ? data.total.toLocaleString("id-ID") : "…"}
           </p>
-        </div>
-
-        {/* Toggle badge Premium */}
-        <div className="mb-4 rounded-2xl border border-mute/15 bg-panel p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold">Gaya "Waveform berjalan"</p>
-              <p className="mt-0.5 text-xs text-mute">
-                {waveformEnabled === null
-                  ? "Memuat status…"
-                  : waveformEnabled
-                    ? "Aktif — semua orang boleh pakai, badge Premium hilang."
-                    : "Terkunci — muncul badge Premium di editor."}
-              </p>
-            </div>
-            <button
-              onClick={toggleWaveformPremium}
-              disabled={waveformEnabled === null || savingFlag}
-              className={`relative h-7 w-12 shrink-0 rounded-full transition ${
-                waveformEnabled ? "bg-emerald-500" : "bg-mute/30"
-              } ${savingFlag ? "opacity-50" : ""}`}
-            >
-              <span
-                className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                  waveformEnabled ? "translate-x-6" : "translate-x-1"
-                }`}
-              />
-            </button>
-          </div>
         </div>
 
         {/* Kelola Template — nyala/matiin tiap template satu-satu */}
