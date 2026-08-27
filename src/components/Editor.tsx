@@ -395,28 +395,27 @@ export default function Editor({
   const [isPlaying, setIsPlaying] = useState(false);
 
   // Kontrol mengambang (label waktu + tombol play/pause) di preview —
-  // ini murni perilaku EDITOR, bukan bagian dari template. Nongol duluan
-  // pas editor kebuka, terus turun OTOMATIS sekali doang (berpatokan
-  // waktu, dipercepat dikit). Setelah itu murni toggle: tap preview buat
-  // naikin, tap lagi buat nurunin — nggak ada timer otomatis lagi.
+  // ini murni perilaku EDITOR, bukan bagian dari template. DUA logic
+  // jalan bareng:
+  // 1) Auto-hide berbasis WAKTU — jalan tiap kali kontrolnya lagi
+  //    "naik"/tampil (bukan cuma sekali di awal), otomatis turun sendiri
+  //    abis beberapa saat kalau dibiarin.
+  // 2) Toggle MANUAL — tap di preview kapan aja buat naikin/nurunin
+  //    langsung, independen dari si timer auto-hide.
+  const FLOAT_CONTROLS_AUTO_HIDE_MS = 1500; // dipercepat dari sebelumnya
   const [showFloatingControls, setShowFloatingControls] = useState(true);
-  const initialHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    initialHideTimerRef.current = setTimeout(() => {
+    // Cuma jalan pas showFloatingControls === true (baik dari mount
+    // pertama, maupun abis di-toggle naik lagi). Kalau di-tap turun
+    // manual duluan sebelum timer ini nembak, cleanup di bawah bakal
+    // otomatis batalin timernya.
+    if (!showFloatingControls) return;
+    const timer = setTimeout(() => {
       setShowFloatingControls(false);
-      initialHideTimerRef.current = null;
-    }, 1500); // durasi kemunculan pertama — dipercepat dari sebelumnya
-    return () => {
-      if (initialHideTimerRef.current) clearTimeout(initialHideTimerRef.current);
-    };
-  }, []);
+    }, FLOAT_CONTROLS_AUTO_HIDE_MS);
+    return () => clearTimeout(timer);
+  }, [showFloatingControls]);
   const toggleFloatingControls = useCallback(() => {
-    // Sekali di-tap, mode auto-hide berbasis waktu langsung nonaktif —
-    // selanjutnya murni toggle naik/turun ngikutin tap user.
-    if (initialHideTimerRef.current) {
-      clearTimeout(initialHideTimerRef.current);
-      initialHideTimerRef.current = null;
-    }
     setShowFloatingControls((v) => !v);
   }, []);
   const [currentSec, setCurrentSec] = useState(0);
@@ -2053,7 +2052,7 @@ export default function Editor({
           gradient fade di bawah biar nyambung ke background gelap. */}
       <div
         className={`relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-editor-bg transition-[padding] duration-300 ${
-          isFullscreen ? "" : "px-4 py-5 sm:px-8 sm:py-8"
+          isFullscreen ? "" : "px-4 sm:px-8"
         }`}
       >
         {/* Ambient glow — warnanya ngikutin warna dominan foto sampul user,
