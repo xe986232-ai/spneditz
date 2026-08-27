@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Video,
@@ -137,6 +137,137 @@ function NavAction({
       <Icon size={20} strokeWidth={active ? 2.2 : 1.8} />
       <span className="text-[9px] font-medium leading-none">{label}</span>
     </button>
+  );
+}
+
+// Durasi animasi slide keluar/masuk (ms) — HARUS SAMA dengan durasi
+// keyframe .animate-nav-slide-down-out / .animate-nav-slide-up-in di
+// index.css, soalnya dipakai juga buat nge-timing setTimeout di bawah.
+const NAV_CARD_EXIT_MS = 200;
+const NAV_CARD_ENTER_MS = 240;
+
+// Card nav bawah — SATU-SATUNYA container tetap buat semua toolbar
+// kontekstual (menu utama Media/Audio/Teks, pengaturan Background,
+// Liquid Glass, opacity layer, ganti slot, edit teks, dst). Yang boleh
+// ganti cuma ISI di dalamnya lewat prop `panelKey`: begitu panelKey
+// beda dari sebelumnya, konten lama dianimasikan "turun" keluar lalu
+// konten baru "naik" masuk — card-nya sendiri (posisi, border, rounded,
+// shadow) TIDAK PERNAH unmount/berganti, cuma tingginya yang meluncur
+// mengikuti isi baru. Ini sengaja dipisah dari komponen lain biar semua
+// panel kontekstual otomatis konsisten satu sama lain tanpa perlu
+// diulang-ulang tiap tempat.
+function BottomNavCard({
+  panelKey,
+  height,
+  children,
+}: {
+  // Identitas konten yang lagi ditampilkan (mis. "default" | "slot" |
+  // "text" | dst) — dipakai buat ndeteksi kapan harus animasi swap.
+  panelKey: string;
+  // Tinggi eksplisit (px) buat panel yang bisa di-drag manual (Background
+  // & Liquid Glass pakai sheetHeight). Kalau undefined, tinggi ngikutin
+  // konten aslinya (diukur otomatis & dianimasikan tiap berubah).
+  height?: number;
+  children: ReactNode;
+}) {
+  const [phase, setPhase] = useState<"idle" | "exit" | "enter">("idle");
+  const [shown, setShown] = useState<{ key: string; node: ReactNode }>({
+    key: panelKey,
+    node: children,
+  });
+  const [pending, setPending] = useState<{ key: string; node: ReactNode } | null>(
+    null,
+  );
+  const [cardHeight, setCardHeight] = useState<number | "auto">(height ?? "auto");
+  const contentRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
+
+  // panelKey berubah -> mulai fase "exit": konten lama tetap ditampilkan
+  // sebentar sambil animasi turun, konten baru disimpan sbg pending buat
+  // diukur tingginya dulu (lewat measureRef, dirender tersembunyi).
+  useEffect(() => {
+    if (panelKey === shown.key) {
+      // Key sama, cuma isi di dalamnya berubah (mis. slider ditarik) —
+      // update langsung tanpa animasi swap.
+      if (phase === "idle") setShown({ key: panelKey, node: children });
+      return;
+    }
+    setPending({ key: panelKey, node: children });
+    setPhase("exit");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelKey, children]);
+
+  // Selama idle: ikuti tinggi eksplisit (drag) kalau ada, atau ukur
+  // tinggi konten asli & pantau perubahannya (ResizeObserver) biar card
+  // tetap pas walau isi dalamnya berubah tanpa ganti panelKey.
+  useEffect(() => {
+    if (phase !== "idle") return;
+    if (height !== undefined) {
+      setCardHeight(height);
+      return;
+    }
+    const el = contentRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setCardHeight(el.scrollHeight));
+    ro.observe(el);
+    setCardHeight(el.scrollHeight);
+    return () => ro.disconnect();
+  }, [height, phase, shown.key]);
+
+  // Fase exit: ukur tinggi konten BARU (dari elemen tersembunyi), animasikan
+  // tinggi card ke situ bareng konten lama turun, lalu pindah ke fase enter.
+  useEffect(() => {
+    if (phase !== "exit" || !pending) return;
+    const target = height ?? measureRef.current?.scrollHeight ?? cardHeight;
+    setCardHeight(target);
+    const t = setTimeout(() => {
+      setShown(pending);
+      setPending(null);
+      setPhase("enter");
+    }, NAV_CARD_EXIT_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, pending, height]);
+
+  // Fase enter: konten baru sudah tampil & animasi naik jalan, tunggu
+  // animasinya kelar lalu balik idle.
+  useEffect(() => {
+    if (phase !== "enter") return;
+    const t = setTimeout(() => setPhase("idle"), NAV_CARD_ENTER_MS);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  return (
+    <div
+      className="relative z-30 flex shrink-0 flex-col overflow-hidden rounded-t-2xl border border-mute/10 bg-panel shadow-[0_-8px_30px_rgba(0,0,0,0.35)] transition-[height] duration-300 ease-out"
+      style={{ height: cardHeight }}
+    >
+      {/* Elemen ukur tersembunyi: render konten yang akan datang di luar
+          layar buat tau tinggi aslinya SEBELUM benar-benar ditampilkan,
+          biar transisi tinggi card mulus & gak "kagetan". */}
+      {pending && height === undefined && (
+        <div
+          ref={measureRef}
+          aria-hidden
+          className="pointer-events-none invisible absolute inset-x-0 top-0 flex flex-col"
+        >
+          {pending.node}
+        </div>
+      )}
+      <div
+        ref={contentRef}
+        key={shown.key}
+        className={`flex flex-1 flex-col ${
+          phase === "exit"
+            ? "animate-nav-slide-down-out"
+            : phase === "enter"
+              ? "animate-nav-slide-up-in"
+              : ""
+        }`}
+      >
+        {shown.node}
+      </div>
+    </div>
   );
 }
 
@@ -2533,67 +2664,92 @@ export default function Editor({
       </div>
       )}
 
-      {/* Toolbar bawah — kontekstual: default cuma Audio & Teks, tapi
-          begitu ada slot yang diketuk/terseleksi, berubah jadi satu
-          tombol besar "Ganti" buat slot itu. */}
-      {!isFullscreen && (isBackgroundLayerSelected ? (
-        <div
-          className="absolute inset-x-0 bottom-0 z-30 flex flex-col rounded-t-2xl border border-mute/10 bg-panel shadow-[0_-8px_30px_rgba(0,0,0,0.35)]"
-          style={{ height: sheetHeight }}
-        >
-          <SheetDragHandle />
-          <div className="shrink-0 px-3 pb-2">
-            <span className="text-xs font-semibold text-paper">
-              Pengaturan Background
-            </span>
-          </div>
-          <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 pb-2">
-            <div className="flex items-center gap-3">
-              <span className="w-14 shrink-0 text-xs font-medium text-paper">
-                Opacity
-              </span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={1}
-                value={backgroundOpacity}
-                onChange={(e) => setBackgroundOpacity(Number(e.target.value))}
-                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
-                style={{ accentColor: "#ECEAE4" }}
-                title="Opacity background"
-              />
-              <span className="w-9 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
-                {Math.round(backgroundOpacity)}%
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="w-14 shrink-0 text-xs font-medium text-paper">
-                Blur
-              </span>
-              <input
-                type="range"
-                min={0}
-                max={MAX_BACKGROUND_BLUR}
-                step={1}
-                value={backgroundBlur}
-                onChange={(e) => setBackgroundBlur(Number(e.target.value))}
-                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
-                style={{ accentColor: "#ECEAE4" }}
-                title="Blur background"
-              />
-              <span className="w-9 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
-                {Math.round(backgroundBlur)}px
-              </span>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center justify-center gap-6 border-t border-white/5 px-3 pb-3 pt-2">
-            <NavAction icon={X} label="Selesai" onClick={() => setSelectedLayerId(null)} />
-            <NavAction icon={RotateCcw} label="Reset" onClick={handleResetBackground} />
-          </div>
-        </div>
-      ) : selectedLayer?.liquidGlass ? (
-        (() => {
+      {/* Toolbar bawah — SATU card nav yang selalu sama (posisi, border,
+          rounded, shadow); yang berubah cuma ISI di dalamnya sesuai
+          konteks (menu utama Media/Audio/Teks, pengaturan Background,
+          Liquid Glass, opacity layer, ganti slot, edit teks). Pergantian
+          isi dianimasikan lewat BottomNavCard: konten lama "turun" keluar,
+          konten baru "naik" masuk — bukan card baru yang muncul/ilang. */}
+      {!isFullscreen && (() => {
+        const panelMode = isBackgroundLayerSelected
+          ? "background"
+          : selectedLayer?.liquidGlass
+            ? "glass"
+            : selectedLayer
+              ? "layer"
+              : selectedSlot
+                ? "slot"
+                : selectedTextLayer
+                  ? "text"
+                  : "default";
+
+        // Cuma panel Background & Liquid Glass yang tingginya bisa
+        // di-drag manual (sheetHeight); sisanya menyesuaikan isi
+        // kontennya sendiri (diukur & dianimasikan otomatis oleh
+        // BottomNavCard).
+        const panelHeight =
+          panelMode === "background" || panelMode === "glass"
+            ? sheetHeight
+            : undefined;
+
+        let content: ReactNode;
+
+        if (panelMode === "background") {
+          content = (
+            <>
+              <SheetDragHandle />
+              <div className="shrink-0 px-3 pb-2">
+                <span className="text-xs font-semibold text-paper">
+                  Pengaturan Background
+                </span>
+              </div>
+              <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 pb-2">
+                <div className="flex items-center gap-3">
+                  <span className="w-14 shrink-0 text-xs font-medium text-paper">
+                    Opacity
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={backgroundOpacity}
+                    onChange={(e) => setBackgroundOpacity(Number(e.target.value))}
+                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
+                    style={{ accentColor: "#ECEAE4" }}
+                    title="Opacity background"
+                  />
+                  <span className="w-9 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
+                    {Math.round(backgroundOpacity)}%
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="w-14 shrink-0 text-xs font-medium text-paper">
+                    Blur
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={MAX_BACKGROUND_BLUR}
+                    step={1}
+                    value={backgroundBlur}
+                    onChange={(e) => setBackgroundBlur(Number(e.target.value))}
+                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
+                    style={{ accentColor: "#ECEAE4" }}
+                    title="Blur background"
+                  />
+                  <span className="w-9 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
+                    {Math.round(backgroundBlur)}px
+                  </span>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center justify-center gap-6 border-t border-white/5 px-3 pb-3 pt-2">
+                <NavAction icon={X} label="Selesai" onClick={() => setSelectedLayerId(null)} />
+                <NavAction icon={RotateCcw} label="Reset" onClick={handleResetBackground} />
+              </div>
+            </>
+          );
+        } else if (panelMode === "glass" && selectedLayer) {
           const layer = selectedLayer;
           const glass = layer.liquidGlass!;
           const effective = getEffectiveGlassSettings(layer);
@@ -2608,11 +2764,8 @@ export default function Editor({
             { value: "prominent", label: "Prominent" },
             { value: "shader", label: "Shader" },
           ];
-          return (
-            <div
-              className="absolute inset-x-0 bottom-0 z-30 flex flex-col rounded-t-2xl border border-mute/10 bg-panel shadow-[0_-8px_30px_rgba(0,0,0,0.35)]"
-              style={{ height: sheetHeight }}
-            >
+          content = (
+            <>
               <SheetDragHandle />
               <div className="shrink-0 px-3 pb-2">
                 <span className="truncate text-xs font-semibold text-paper">
@@ -2807,238 +2960,239 @@ export default function Editor({
                   }
                 />
               </div>
-            </div>
+            </>
           );
-        })()
-      ) : selectedLayer ? (
-        <div className="flex shrink-0 flex-col border-t border-white/5 bg-editor-panel">
-          <div className="flex items-center gap-3 px-3 pb-2 pt-2.5">
-            <span className="shrink-0 text-xs font-medium text-paper">
-              Opacity
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={layerOpacity[selectedLayer.id] ?? selectedLayer.opacity ?? 100}
-              onChange={(e) =>
-                setLayerOpacity((prev) => ({
-                  ...prev,
-                  [selectedLayer.id]: Number(e.target.value),
-                }))
-              }
-              className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
-              style={{ accentColor: "#ECEAE4" }}
-              title={`Opacity ${selectedLayer.label}`}
-            />
-            <span className="w-9 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
-              {Math.round(layerOpacity[selectedLayer.id] ?? selectedLayer.opacity ?? 100)}%
-            </span>
-          </div>
-          <div className="flex items-center justify-center gap-1 px-3 pb-3 pt-1">
-            <NavAction icon={X} label="Selesai" onClick={() => setSelectedLayerId(null)} />
-          </div>
-        </div>
-      ) : selectedSlot ? (
-        <div className="flex shrink-0 flex-col border-t border-white/5 bg-editor-panel">
-          <div className="flex items-center justify-center gap-6 px-3 pb-3 pt-2">
-            <NavAction
-              icon={X}
-              label="Batal"
-              onClick={() => {
-                setSelectedSlotId(null);
-                setSelectedAudioClipId(null);
-              }}
-            />
-            <NavAction
-              icon={RefreshCcw}
-              label={`Ganti ${SLOT_SHORT_LABEL[selectedSlot.type]}`}
-              active
-              onClick={() => openPicker(selectedSlot)}
-            />
-            {/* Cuma slot foto yang bisa di-crop ulang — video/audio gak
-                relevan buat crop gambar. */}
-            {selectedSlot.type === "image" && (
-              <NavAction
-                icon={Crop}
-                label="Crop"
-                onClick={() => handleOpenCropForSlot(selectedSlot)}
-              />
-            )}
-          </div>
-        </div>
-      ) : selectedTextLayer ? (
-        <div className="flex shrink-0 flex-col border-t border-white/5 bg-editor-panel">
-          <div className="flex flex-col gap-1 px-3 pb-2 pt-2.5">
-            <span className="text-[10px] font-medium text-mute">
-              {selectedTextLayer.label}
-            </span>
-            <input
-              type="text"
-              autoFocus
-              value={textValues[selectedTextLayer.id] ?? ""}
-              maxLength={selectedTextLayer.maxLength}
-              onChange={(e) =>
-                setTextValues((prev) => ({
-                  ...prev,
-                  [selectedTextLayer.id]: e.target.value,
-                }))
-              }
-              placeholder={selectedTextLayer.defaultText}
-              className="w-full rounded-lg border border-mute/20 bg-graphite px-3 py-2 text-sm text-paper outline-none transition focus:border-paper/50"
-            />
-          </div>
-          <div className="flex items-center justify-center gap-1 px-3 pb-3 pt-1">
-            <NavAction icon={X} label="Selesai" onClick={() => setSelectedTextLayerId(null)} />
-          </div>
-        </div>
-      ) : (
-        <div className="flex shrink-0 flex-col border-t border-white/5 bg-editor-panel">
-
-          {/* Muncul cuma pas tombol "Media" lagi aktif — tombol buat buka
-              file picker slot foto/video. Sama pola kayak "Tambah Audio"
-              di atas: nav bawah (Media/Audio/Teks) tetap keliatan &
-              gampang dipindah-pindah, nggak ketutupan panel lain. */}
-          {activeTool === "media" && (
-            <div className="flex items-center justify-center border-b border-mute/10 px-3 py-2">
-              <button
-                onClick={() => mediaSlotDef && openPicker(mediaSlotDef)}
-                className="flex items-center gap-1.5 rounded-full bg-paper px-3.5 py-1.5 text-[11px] font-semibold text-graphite transition active:scale-95"
-              >
-                <RefreshCcw size={13} />
-                Ganti {mediaSlotDef ? SLOT_SHORT_LABEL[mediaSlotDef.type] : "Media"}
-              </button>
-            </div>
-          )}
-          {/* Muncul cuma pas tombol "Audio" lagi aktif — tombol kecil buat
-              beneran buka file picker. Sengaja dipisah dari tombol "Audio"
-              di bawah biar klik "Audio" nggak langsung lompat ke pemilihan
-              file, tapi mampir dulu ke sini. */}
-          {activeTool === "audio" && (
-            <div className="flex items-center justify-center border-b border-mute/10 px-3 py-2">
-              <button
-                onClick={() => audioSlotDef && openPicker(audioSlotDef)}
-                className="flex items-center gap-1.5 rounded-full bg-paper px-3.5 py-1.5 text-[11px] font-semibold text-graphite transition active:scale-95"
-              >
-                <Plus size={13} />
-                Tambah Audio
-              </button>
-            </div>
-          )}
-          {/* Tab "Gaya" — preview visual tiap opsi progress bar SEBELUM
-              dipilih (bukan cuma teks label doang), biar user kebayang
-              hasilnya bakal kayak gimana. Preview-nya CSS ringan aja
-              (bukan render canvas asli) biar responsif & gak berat. */}
-          {activeTool === "progress" && template.progressLayer && (
-            <div className="flex items-center justify-center gap-3 border-b border-mute/10 px-3 py-3">
-              <button
-                onClick={() => setProgressStyle("bar")}
-                className={`flex flex-col items-center gap-1.5 rounded-xl border px-3.5 py-2.5 transition active:scale-95 ${
-                  progressStyle === "bar"
-                    ? "border-paper bg-paper/10"
-                    : "border-mute/15 bg-graphite/40"
-                }`}
-              >
-                <div className="flex h-6 w-24 items-center rounded-full bg-black/50 px-1">
-                  <div className="h-1.5 w-1/2 rounded-full bg-white" />
-                </div>
-                <span
-                  className={`text-[10px] font-medium ${
-                    progressStyle === "bar" ? "text-paper" : "text-mute"
-                  }`}
-                >
-                  Standar
+        } else if (panelMode === "layer" && selectedLayer) {
+          content = (
+            <>
+              <div className="flex items-center gap-3 px-3 pb-2 pt-2.5">
+                <span className="shrink-0 text-xs font-medium text-paper">
+                  Opacity
                 </span>
-              </button>
-              <button
-                onClick={() => setProgressStyle("waveform")}
-                className={`relative flex flex-col items-center gap-1.5 rounded-xl border px-3.5 py-2.5 transition active:scale-95 ${
-                  progressStyle === "waveform"
-                    ? "border-paper bg-paper/10"
-                    : "border-mute/15 bg-graphite/40"
-                }`}
-              >
-                <div className="flex h-6 w-24 items-end justify-center gap-[2px] rounded-full bg-black/50 px-1.5 py-1">
-                  {[5, 10, 7, 14, 8, 12, 6, 5, 9, 5, 7, 4].map((h, i) => (
-                    <div
-                      key={i}
-                      className="w-[2px] rounded-full bg-white"
-                      style={{ height: h, opacity: i < 6 ? 1 : 0.32 }}
-                    />
-                  ))}
-                </div>
-                <span
-                  className={`text-[10px] font-medium ${
-                    progressStyle === "waveform" ? "text-paper" : "text-mute"
-                  }`}
-                >
-                  Waveform berjalan
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={layerOpacity[selectedLayer.id] ?? selectedLayer.opacity ?? 100}
+                  onChange={(e) =>
+                    setLayerOpacity((prev) => ({
+                      ...prev,
+                      [selectedLayer.id]: Number(e.target.value),
+                    }))
+                  }
+                  className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
+                  style={{ accentColor: "#ECEAE4" }}
+                  title={`Opacity ${selectedLayer.label}`}
+                />
+                <span className="w-9 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
+                  {Math.round(layerOpacity[selectedLayer.id] ?? selectedLayer.opacity ?? 100)}%
                 </span>
-              </button>
-            </div>
-          )}
-          {/* Toolbar bawah gaya baru: ikon + label kecil di bawahnya
-              (Audio, Media, Teks, dst), compact mirip CapCut/VN.
-              Undo/Redo/Preset dipindah ke sini dari top bar biar top
-              bar tetap bersih. */}
-          <div className="flex items-center justify-between gap-1 px-3 pb-3 pt-2">
-            {visibleTools.map(({ id, label, icon: Icon }) => (
+              </div>
+              <div className="flex items-center justify-center gap-1 px-3 pb-3 pt-1">
+                <NavAction icon={X} label="Selesai" onClick={() => setSelectedLayerId(null)} />
+              </div>
+            </>
+          );
+        } else if (panelMode === "slot" && selectedSlot) {
+          content = (
+            <div className="flex items-center justify-center gap-6 px-3 pb-3 pt-2">
               <NavAction
-                key={id}
-                icon={Icon}
-                label={label}
-                active={activeTool === id}
+                icon={X}
+                label="Batal"
                 onClick={() => {
-                  setActiveTool(id);
-                  if (id === "media") {
-                    setIsTextMode(false);
-                    setSelectedTextLayerId(null);
-                    setSelectedLayerId(null);
-                    setSelectedAudioClipId(null);
-                    // Sengaja NNGGAK langsung setSelectedSlotId di sini —
-                    // itu bikin toolbar "nyasar" ke mode "Ganti Foto"
-                    // (nav Media/Audio/Teks ikut ilang/ketutupan).
-                    // Slot beneran dipilih lewat tombol "Ganti Media"
-                    // di bawah nav (lihat activeTool === "media" di
-                    // panel bawah), sama kayak pola tombol "Tambah
-                    // Audio" buat tool Audio.
-                    setSelectedSlotId(null);
-                  }
-                  if (id === "audio") {
-                    setIsTextMode(false);
-                    setSelectedTextLayerId(null);
-                    setSelectedSlotId(null);
-                    setSelectedLayerId(null);
-                    setSelectedAudioClipId(null);
-                  }
-                  if (id === "text") {
-                    setSelectedSlotId(null);
-                    setSelectedLayerId(null);
-                    setSelectedAudioClipId(null);
-                    setIsTextMode(true);
-                  }
-                  if (id === "progress") {
-                    setIsTextMode(false);
-                    setSelectedTextLayerId(null);
-                    setSelectedSlotId(null);
-                    setSelectedLayerId(null);
-                    setSelectedAudioClipId(null);
-                  }
+                  setSelectedSlotId(null);
+                  setSelectedAudioClipId(null);
                 }}
               />
-            ))}
+              <NavAction
+                icon={RefreshCcw}
+                label={`Ganti ${SLOT_SHORT_LABEL[selectedSlot.type]}`}
+                active
+                onClick={() => openPicker(selectedSlot)}
+              />
+              {/* Cuma slot foto yang bisa di-crop ulang — video/audio gak
+                  relevan buat crop gambar. */}
+              {selectedSlot.type === "image" && (
+                <NavAction
+                  icon={Crop}
+                  label="Crop"
+                  onClick={() => handleOpenCropForSlot(selectedSlot)}
+                />
+              )}
+            </div>
+          );
+        } else if (panelMode === "text" && selectedTextLayer) {
+          content = (
+            <>
+              <div className="flex flex-col gap-1 px-3 pb-2 pt-2.5">
+                <span className="text-[10px] font-medium text-mute">
+                  {selectedTextLayer.label}
+                </span>
+                <input
+                  type="text"
+                  autoFocus
+                  value={textValues[selectedTextLayer.id] ?? ""}
+                  maxLength={selectedTextLayer.maxLength}
+                  onChange={(e) =>
+                    setTextValues((prev) => ({
+                      ...prev,
+                      [selectedTextLayer.id]: e.target.value,
+                    }))
+                  }
+                  placeholder={selectedTextLayer.defaultText}
+                  className="w-full rounded-lg border border-mute/20 bg-graphite px-3 py-2 text-sm text-paper outline-none transition focus:border-paper/50"
+                />
+              </div>
+              <div className="flex items-center justify-center gap-1 px-3 pb-3 pt-1">
+                <NavAction icon={X} label="Selesai" onClick={() => setSelectedTextLayerId(null)} />
+              </div>
+            </>
+          );
+        } else {
+          content = (
+            <>
+              {/* Muncul cuma pas tombol "Media" lagi aktif — tombol buat
+                  buka file picker slot foto/video. */}
+              {activeTool === "media" && (
+                <div className="flex items-center justify-center border-b border-mute/10 px-3 py-2">
+                  <button
+                    onClick={() => mediaSlotDef && openPicker(mediaSlotDef)}
+                    className="flex items-center gap-1.5 rounded-full bg-paper px-3.5 py-1.5 text-[11px] font-semibold text-graphite transition active:scale-95"
+                  >
+                    <RefreshCcw size={13} />
+                    Ganti {mediaSlotDef ? SLOT_SHORT_LABEL[mediaSlotDef.type] : "Media"}
+                  </button>
+                </div>
+              )}
+              {/* Muncul cuma pas tombol "Audio" lagi aktif — tombol kecil
+                  buat beneran buka file picker. */}
+              {activeTool === "audio" && (
+                <div className="flex items-center justify-center border-b border-mute/10 px-3 py-2">
+                  <button
+                    onClick={() => audioSlotDef && openPicker(audioSlotDef)}
+                    className="flex items-center gap-1.5 rounded-full bg-paper px-3.5 py-1.5 text-[11px] font-semibold text-graphite transition active:scale-95"
+                  >
+                    <Plus size={13} />
+                    Tambah Audio
+                  </button>
+                </div>
+              )}
+              {/* Tab "Gaya" — preview visual tiap opsi progress bar SEBELUM
+                  dipilih (bukan cuma teks label doang). */}
+              {activeTool === "progress" && template.progressLayer && (
+                <div className="flex items-center justify-center gap-3 border-b border-mute/10 px-3 py-3">
+                  <button
+                    onClick={() => setProgressStyle("bar")}
+                    className={`flex flex-col items-center gap-1.5 rounded-xl border px-3.5 py-2.5 transition active:scale-95 ${
+                      progressStyle === "bar"
+                        ? "border-paper bg-paper/10"
+                        : "border-mute/15 bg-graphite/40"
+                    }`}
+                  >
+                    <div className="flex h-6 w-24 items-center rounded-full bg-black/50 px-1">
+                      <div className="h-1.5 w-1/2 rounded-full bg-white" />
+                    </div>
+                    <span
+                      className={`text-[10px] font-medium ${
+                        progressStyle === "bar" ? "text-paper" : "text-mute"
+                      }`}
+                    >
+                      Standar
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setProgressStyle("waveform")}
+                    className={`relative flex flex-col items-center gap-1.5 rounded-xl border px-3.5 py-2.5 transition active:scale-95 ${
+                      progressStyle === "waveform"
+                        ? "border-paper bg-paper/10"
+                        : "border-mute/15 bg-graphite/40"
+                    }`}
+                  >
+                    <div className="flex h-6 w-24 items-end justify-center gap-[2px] rounded-full bg-black/50 px-1.5 py-1">
+                      {[5, 10, 7, 14, 8, 12, 6, 5, 9, 5, 7, 4].map((h, i) => (
+                        <div
+                          key={i}
+                          className="w-[2px] rounded-full bg-white"
+                          style={{ height: h, opacity: i < 6 ? 1 : 0.32 }}
+                        />
+                      ))}
+                    </div>
+                    <span
+                      className={`text-[10px] font-medium ${
+                        progressStyle === "waveform" ? "text-paper" : "text-mute"
+                      }`}
+                    >
+                      Waveform berjalan
+                    </span>
+                  </button>
+                </div>
+              )}
+              {/* Toolbar bawah gaya baru: ikon + label kecil di bawahnya
+                  (Audio, Media, Teks, dst), compact mirip CapCut/VN. */}
+              <div className="flex items-center justify-between gap-1 px-3 pb-3 pt-2">
+                {visibleTools.map(({ id, label, icon: Icon }) => (
+                  <NavAction
+                    key={id}
+                    icon={Icon}
+                    label={label}
+                    active={activeTool === id}
+                    onClick={() => {
+                      setActiveTool(id);
+                      if (id === "media") {
+                        setIsTextMode(false);
+                        setSelectedTextLayerId(null);
+                        setSelectedLayerId(null);
+                        setSelectedAudioClipId(null);
+                        // Sengaja NGGAK langsung setSelectedSlotId di sini —
+                        // itu bikin toolbar "nyasar" ke mode "Ganti Foto".
+                        // Slot beneran dipilih lewat tombol "Ganti Media"
+                        // di atas (activeTool === "media"), sama kayak pola
+                        // tombol "Tambah Audio" buat tool Audio.
+                        setSelectedSlotId(null);
+                      }
+                      if (id === "audio") {
+                        setIsTextMode(false);
+                        setSelectedTextLayerId(null);
+                        setSelectedSlotId(null);
+                        setSelectedLayerId(null);
+                        setSelectedAudioClipId(null);
+                      }
+                      if (id === "text") {
+                        setSelectedSlotId(null);
+                        setSelectedLayerId(null);
+                        setSelectedAudioClipId(null);
+                        setIsTextMode(true);
+                      }
+                      if (id === "progress") {
+                        setIsTextMode(false);
+                        setSelectedTextLayerId(null);
+                        setSelectedSlotId(null);
+                        setSelectedLayerId(null);
+                        setSelectedAudioClipId(null);
+                      }
+                    }}
+                  />
+                ))}
 
-            <NavAction icon={Undo2} label="Urungkan" />
-            <NavAction icon={Redo2} label="Ulangi" />
-            <NavAction
-              icon={Bookmark}
-              label="Preset"
-              onClick={() => setShowPresetPanel(true)}
-            />
-          </div>
-        </div>
-      ))}
+                <NavAction icon={Undo2} label="Urungkan" />
+                <NavAction icon={Redo2} label="Ulangi" />
+                <NavAction
+                  icon={Bookmark}
+                  label="Preset"
+                  onClick={() => setShowPresetPanel(true)}
+                />
+              </div>
+            </>
+          );
+        }
+
+        return (
+          <BottomNavCard panelKey={panelMode} height={panelHeight}>
+            {content}
+          </BottomNavCard>
+        );
+      })()}
 
 
       {/* Modal Preset — simpan pengaturan sekarang jadi preset baru, atau
