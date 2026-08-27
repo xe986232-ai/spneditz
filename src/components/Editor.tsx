@@ -2051,18 +2051,37 @@ export default function Editor({
       {/* Canvas / preview area — takes remaining space, keeps 9:16 ratio */}
       {/* Preview full-bleed — canvas nutup lebar penuh (cover), plus
           gradient fade di bawah biar nyambung ke background gelap. */}
-      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-editor-bg">
-        {/* Ambient glow — warnanya ngikutin warna dominan foto user. */}
+      <div
+        className={`relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-editor-bg transition-[padding] duration-300 ${
+          isFullscreen ? "" : "px-4 py-5 sm:px-8 sm:py-8"
+        }`}
+      >
+        {/* Ambient glow — warnanya ngikutin warna dominan foto sampul user,
+            di-refresh otomatis tiap foto sampul ganti (lihat efek yang
+            manggil getDominantColor). Dua lapis: satu radial lebar buat
+            ngisi seluruh area belakang canvas, satu lagi lebih rapat/pekat
+            biar ada "inti" cahaya persis di belakang bodi canvas-nya. */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 transition-[background] duration-700 ease-out"
           style={{
-            background: `radial-gradient(60% 55% at 50% 45%, rgba(${dominantColor}, 0.45), rgba(${dominantColor}, 0.14) 45%, rgba(${dominantColor}, 0) 75%)`,
-            filter: "blur(40px)",
+            background: `radial-gradient(75% 70% at 50% 42%, rgba(${dominantColor}, 0.65), rgba(${dominantColor}, 0.3) 40%, rgba(${dominantColor}, 0.08) 65%, rgba(${dominantColor}, 0) 85%)`,
+            filter: "blur(50px)",
           }}
         />
         <div
-          className="relative mx-auto aspect-[9/16] h-full max-h-full max-w-full overflow-hidden bg-black"
+          aria-hidden
+          className="pointer-events-none absolute inset-0 transition-[background] duration-700 ease-out"
+          style={{
+            background: `radial-gradient(45% 42% at 50% 46%, rgba(${dominantColor}, 0.55), rgba(${dominantColor}, 0) 70%)`,
+            filter: "blur(24px)",
+          }}
+        />
+        <div
+          className="relative mx-auto aspect-[9/16] h-full max-h-full max-w-full overflow-hidden bg-black transition-[box-shadow] duration-700 ease-out"
+          style={{
+            boxShadow: `0 25px 70px -18px rgba(${dominantColor}, 0.65), 0 0 90px -10px rgba(${dominantColor}, 0.45)`,
+          }}
           onPointerDown={toggleFloatingControls}
         >
           {template.baseAssetSrc ? (
