@@ -236,10 +236,13 @@ const BACKGROUND_LAYER_ID = "__background__";
 const AIRPLAY_HINT_DISMISSED_KEY = "spneditz_hint_airplay_device_dismissed";
 // Batas max blur (px, dalam skala canvas asli 1080x1920).
 const MAX_BACKGROUND_BLUR = 100;
-// Blur background default per template (px). Template v4 langsung full
-// blur (100px) begitu dibuka/direset, template lain tetap 0 (tajam).
+// Blur background default per template (px). Template v4 & v5 (klon v4)
+// langsung full blur (100px) begitu dibuka/direset, template lain tetap 0 (tajam).
 function defaultBackgroundBlurFor(templateId: string): number {
-  return templateId === "iphone-music-player-v4" ? 100 : 0;
+  return templateId === "iphone-music-player-v4" ||
+    templateId === "iphone-music-player-v5"
+    ? 100
+    : 0;
 }
 // Downsample sebuah array titik amplitude ke jumlah bar target, dengan
 // ambil nilai PEAK (bukan rata-rata) per bucket — biar transient/hentakan
