@@ -10,12 +10,11 @@
 import type { Template } from "../types";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
 import { ExportCancelledError, type ExportProgress } from "./export";
-import { exportTemplateVideoWebCodecs, isWebCodecsExportSupported, type ExportQuality } from "./webcodecs-export";
+import { exportTemplateVideoWebCodecs, isWebCodecsExportSupported } from "./webcodecs-export";
 import type { AudioClipExport } from "./audioClips";
 
 export type { ExportProgress } from "./export";
 export { ExportCancelledError } from "./export";
-export type { ExportQuality } from "./webcodecs-export";
 
 export type ExportEngine = "webcodecs";
 
@@ -44,9 +43,6 @@ export async function exportTemplateVideoAuto(
   // Data amplitude/peaks file audio asli, cuma dipakai kalau
   // progressStyle === "waveform" (lihat drawWaveformProgress di render.ts).
   peaks?: number[],
-  // Pilihan kualitas dari user lewat modal "Pilih Kualitas" pas nekan
-  // Export (lihat Editor.tsx) — "hd" (default) atau "sd".
-  quality: ExportQuality = "hd",
 ): Promise<ExportResult> {
   if (!isWebCodecsExportSupported()) {
     // eslint-disable-next-line no-console
@@ -75,7 +71,6 @@ export async function exportTemplateVideoAuto(
       audioClips,
       progressStyle,
       peaks,
-      quality,
     );
     // eslint-disable-next-line no-console
     console.info("[export] ✅ Berhasil render (VideoEncoder/AudioEncoder + mp4-muxer).");

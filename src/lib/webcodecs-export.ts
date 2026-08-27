@@ -65,16 +65,12 @@ async function findSupportedVideoConfig(
   width: number,
   height: number,
   fps: number,
-  quality: "sd" | "hd" = "hd",
 ): Promise<VideoEncoderConfig> {
-  // HD: bitrate lebih tinggi biar detail teks/garis tetap tajam (di
-  // canvas 1080x1920@25fps ~9-11 Mbps). SD: lebih irit, canvas-nya juga
-  // sudah di-downscale duluan (lihat qualityScale di atas) jadi total
-  // ukuran file bisa jauh lebih kecil buat HP/koneksi pas-pasan.
-  const bitrate =
-    quality === "sd"
-      ? Math.min(6_000_000, Math.max(1_200_000, Math.round(width * height * fps * 0.12)))
-      : Math.min(18_000_000, Math.max(4_000_000, Math.round(width * height * fps * 0.18)));
+  // Bitrate dinaikkan dari sebelumnya (faktor 0.1, cap 12 Mbps) — buat
+  // canvas 1080x1920 @25fps itu cuma ~5.2 Mbps, kurang buat konten yang
+  // banyak teks/garis tajam (gampang keliatan blocky/lembek). Sekarang
+  // ~9.3 Mbps di resolusi yang sama, cap dinaikkan ke 18 Mbps.
+  const bitrate = Math.min(18_000_000, Math.max(4_000_000, Math.round(width * height * fps * 0.18)));
   const candidates: VideoEncoderConfig[] = [
     { codec: "avc1.640028", width, height, framerate: fps, bitrate, bitrateMode: "variable", latencyMode: "quality" },
     { codec: "avc1.4d0028", width, height, framerate: fps, bitrate, bitrateMode: "variable", latencyMode: "quality" },
@@ -213,8 +209,6 @@ type ResolvedSlot = {
   imgBitmap?: ImageBitmap;
 };
 
-export type ExportQuality = "sd" | "hd";
-
 export async function exportTemplateVideoWebCodecs(
   template: Template,
   slotMedia: SlotMediaState,
@@ -237,11 +231,6 @@ export async function exportTemplateVideoWebCodecs(
   // Peaks/amplitude file audio asli, cuma dipakai kalau progressStyle
   // "waveform" (lihat drawWaveformProgress di render.ts).
   peaks?: number[],
-  // Pilihan kualitas dari user ("Export HD?" toggle di UI) — "hd" pakai
-  // resolusi asli template + bitrate tinggi (tajam, file lebih besar),
-  // "sd" nge-downscale resolusi + bitrate lebih rendah (lebih cepat &
-  // ringan, buat HP/koneksi pas-pasan). Default "hd".
-  quality: ExportQuality = "hd",
 ): Promise<Blob> {
   if (!isWebCodecsExportSupported()) {
     throw new Error("Browser ini tidak mendukung WebCodecs API (VideoEncoder/AudioEncoder).");
@@ -257,14 +246,8 @@ export async function exportTemplateVideoWebCodecs(
 
   onProgress({ stage: "loading-engine", percent: 5, label: "Menyiapkan mesin render (WebCodecs)…" });
 
-  // "sd" nge-downscale sisi lebar template ke maksimal 720px (rasio
-  // dijaga) — kalau template-nya udah <=720 lebar aslinya, "sd" ya sama
-  // aja kayak "hd" (nggak ada yang perlu di-downscale).
-  const baseCanvasW = template.canvasWidth ?? 1080;
-  const baseCanvasH = template.canvasHeight ?? 1920;
-  const qualityScale = quality === "sd" ? Math.min(1, 720 / baseCanvasW) : 1;
-  const canvasW = pickCanvasEven(baseCanvasW * qualityScale);
-  const canvasH = pickCanvasEven(baseCanvasH * qualityScale);
+  const canvasW = pickCanvasEven(template.canvasWidth ?? 1080);
+  const canvasH = pickCanvasEven(template.canvasHeight ?? 1920);
 
   const backDecorLayers = (template.decorLayers ?? []).filter((l) => l.order === "back");
   // Kalau progressStyle "waveform", skip decorLayer track statis
@@ -446,7 +429,7 @@ export async function exportTemplateVideoWebCodecs(
 
   const { Muxer, ArrayBufferTarget } = await import("mp4-muxer");
 
-  const videoConfig = await findSupportedVideoConfig(canvasW, canvasH, TARGET_FPS, quality);
+  const videoConfig = await findSupportedVideoConfig(canvasW, canvasH, TARGET_FPS);
 
   let audioConfig: AudioEncoderConfig | null = null;
   if (decodedAudioBuffer) {
