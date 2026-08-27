@@ -239,7 +239,7 @@ function BottomNavCard({
 
   return (
     <div
-      className="relative z-30 flex shrink-0 flex-col overflow-hidden rounded-t-2xl border border-mute/10 bg-panel shadow-[0_-8px_30px_rgba(0,0,0,0.35)] transition-[height] duration-300 ease-out"
+      className="relative z-30 flex shrink-0 flex-col overflow-hidden border-t border-white/5 bg-editor-panel transition-[height] duration-300 ease-out"
       style={{ height: cardHeight }}
     >
       {/* Elemen ukur tersembunyi: render konten yang akan datang di luar
