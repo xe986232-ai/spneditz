@@ -946,8 +946,12 @@ export default function Editor({
     const tick = (now: number) => {
       const elapsed = (now - startRef.current) / 1000;
       if (elapsed >= DURATION) {
-        setCurrentSec(DURATION);
-        setIsPlaying(false);
+        // Sampe di akhir timeline — balikin playhead ke awal (0) &
+        // lanjut muter otomatis (loop), biar nggak perlu drag manual
+        // balik ke depan tiap mau preview ulang dari awal.
+        startRef.current = now;
+        setCurrentSec(0);
+        rafRef.current = requestAnimationFrame(tick);
         return;
       }
       setCurrentSec(elapsed);
