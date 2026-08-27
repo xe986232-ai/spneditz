@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Video,
@@ -176,13 +176,21 @@ function BottomNavCard({
 
   // panelKey ATAU children berubah -> ganti isi yang ditampilkan sekarang
   // juga, gak ditunda-tunda lewat fase exit/enter apa pun.
-  useEffect(() => {
+  //
+  // PAKAI useLayoutEffect (BUKAN useEffect biasa) — ini kuncinya. useEffect
+  // jalan SETELAH browser sempet paint, jadi ada 1 frame "hantu" nampilin
+  // konten & tinggi LAMA dulu sebelum ke-update ke yang baru. Itu yang
+  // bikin overlay kerasa lag/lambat pas nutup padahal kodenya udah
+  // "instan". useLayoutEffect jalan SEBELUM paint, jadi swap konten & ukur
+  // tinggi kelar duluan sebelum ada yang sempet kegambar — user langsung
+  // liat hasil akhirnya, gak ada frame nyasar.
+  useLayoutEffect(() => {
     setShown({ key: panelKey, node: children });
   }, [panelKey, children]);
 
   // Tinggi eksplisit (drag manual buat Background/Liquid Glass) — ganti
   // langsung tiap frame drag, jarinya nempel pas.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (height === undefined) return;
     setCardHeight(height);
   }, [height]);
@@ -194,8 +202,9 @@ function BottomNavCard({
   // panel ini "muncul"/"nutup"/ganti isi langsung "plukk" instan, gak ada
   // transition-[height] apa pun. Ini permintaan eksplisit: animasi
   // naik-turun kerasa lambat & bikin gelisah, jadi dihapus total daripada
-  // cuma "diperhalus" kondisinya.
-  useEffect(() => {
+  // cuma "diperhalus" kondisinya. (Diukur pakai useLayoutEffect di atas,
+  // BUKAN useEffect, supaya beneran gak ada frame transisi yang kelihatan.)
+  useLayoutEffect(() => {
     if (height !== undefined) return;
     const el = contentRef.current;
     if (!el) return;
