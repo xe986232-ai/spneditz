@@ -395,32 +395,29 @@ export default function Editor({
   const [isPlaying, setIsPlaying] = useState(false);
 
   // Kontrol mengambang (label waktu + tombol play/pause) di preview —
-  // ini murni perilaku EDITOR, bukan bagian dari template. Tampil pas
-  // preview dibuka/di-tap, lalu otomatis turun/hilang setelah beberapa
-  // detik biar preview keliatan clean. Tap preview lagi buat manggil
-  // balik (naik) dan kasih waktu beberapa detik lagi sebelum turun.
+  // ini murni perilaku EDITOR, bukan bagian dari template. Nongol duluan
+  // pas editor kebuka, terus turun OTOMATIS sekali doang (berpatokan
+  // waktu, dipercepat dikit). Setelah itu murni toggle: tap preview buat
+  // naikin, tap lagi buat nurunin — nggak ada timer otomatis lagi.
   const [showFloatingControls, setShowFloatingControls] = useState(true);
-  const floatingControlsHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const revealFloatingControls = useCallback(() => {
-    setShowFloatingControls(true);
-    if (floatingControlsHideTimerRef.current) {
-      clearTimeout(floatingControlsHideTimerRef.current);
-    }
-    floatingControlsHideTimerRef.current = setTimeout(() => {
-      setShowFloatingControls(false);
-    }, 2600);
-  }, []);
+  const initialHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    // Tampil dulu pas editor kebuka, lalu jalanin timer turun otomatis.
-    revealFloatingControls();
+    initialHideTimerRef.current = setTimeout(() => {
+      setShowFloatingControls(false);
+      initialHideTimerRef.current = null;
+    }, 1500); // durasi kemunculan pertama — dipercepat dari sebelumnya
     return () => {
-      if (floatingControlsHideTimerRef.current) {
-        clearTimeout(floatingControlsHideTimerRef.current);
-      }
+      if (initialHideTimerRef.current) clearTimeout(initialHideTimerRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const toggleFloatingControls = useCallback(() => {
+    // Sekali di-tap, mode auto-hide berbasis waktu langsung nonaktif —
+    // selanjutnya murni toggle naik/turun ngikutin tap user.
+    if (initialHideTimerRef.current) {
+      clearTimeout(initialHideTimerRef.current);
+      initialHideTimerRef.current = null;
+    }
+    setShowFloatingControls((v) => !v);
   }, []);
   const [currentSec, setCurrentSec] = useState(0);
   // Slot yang lagi diketuk/terseleksi di timeline atau canvas — kalau ada
@@ -2066,7 +2063,7 @@ export default function Editor({
         />
         <div
           className="relative mx-auto aspect-[9/16] h-full max-h-full max-w-full overflow-hidden bg-black"
-          onPointerDown={revealFloatingControls}
+          onPointerDown={toggleFloatingControls}
         >
           {template.baseAssetSrc ? (
             <canvas
@@ -2158,7 +2155,6 @@ export default function Editor({
             (kayak referensi), jadi nggak butuh panel terpisah lagi. */}
         {!isFullscreen && (
           <div
-            onPointerDown={revealFloatingControls}
             className={`absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-1.5 transition-all duration-500 ease-out ${
               showFloatingControls
                 ? "translate-y-0 opacity-100"
@@ -2170,10 +2166,7 @@ export default function Editor({
               <span className="text-paper/50"> / {formatClock(DURATION)}</span>
             </span>
             <button
-              onClick={() => {
-                setIsPlaying((p) => !p);
-                revealFloatingControls();
-              }}
+              onClick={() => setIsPlaying((p) => !p)}
               className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/45 text-paper backdrop-blur-sm transition active:scale-90"
               title={isPlaying ? "Jeda" : "Putar"}
             >
