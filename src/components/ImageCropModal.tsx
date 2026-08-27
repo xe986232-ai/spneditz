@@ -1,5 +1,7 @@
-import { useCallback, useRef, useState } from "react";
-import { Check, X, ZoomIn } from "lucide-react";
+import { useCallback, useState } from "react";
+import Cropper, { type Area, type Point } from "react-easy-crop";
+import "react-easy-crop/react-easy-crop.css";
+import { Check, X, ZoomIn, ZoomOut } from "lucide-react";
 
 interface ImageCropModalProps {
   /** Object URL dari file mentah yang baru dipilih user (belum di-crop). */
@@ -13,17 +15,58 @@ interface ImageCropModalProps {
   onCancel: () => void;
 }
 
-// Batas ukuran frame crop di layar (px CSS), biar muat di HP maupun desktop.
-const FRAME_MAX_W = 340;
-const FRAME_MAX_H = 480;
 // Lantai resolusi output, biar hasil crop nggak pecah kalau slotnya kecil.
 const MIN_OUTPUT_DIM = 480;
 
+function createImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.addEventListener("load", () => resolve(img));
+    img.addEventListener("error", (e) => reject(e));
+    img.src = url;
+  });
+}
+
+/** Crop pixelCrop (dari react-easy-crop) jadi Blob JPEG, resolusi output
+ *  disamain sama ukuran slot di canvas template (dengan lantai minimum). */
+async function getCroppedBlob(
+  imageSrc: string,
+  pixelCrop: Area,
+  targetWidth: number,
+  targetHeight: number,
+): Promise<Blob | null> {
+  const image = await createImage(imageSrc);
+  const outScale = Math.max(1, MIN_OUTPUT_DIM / Math.min(targetWidth, targetHeight));
+  const outW = Math.max(1, Math.round(targetWidth * outScale));
+  const outH = Math.max(1, Math.round(targetHeight * outScale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = outW;
+  canvas.height = outH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.drawImage(
+    image,
+    pixelCrop.x,
+    pixelCrop.y,
+    pixelCrop.width,
+    pixelCrop.height,
+    0,
+    0,
+    outW,
+    outH,
+  );
+
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.92));
+}
+
 /** Overlay full-screen buat crop foto sampul sebelum dipakai — muncul
- *  begitu user pilih file baru dari galeri/kamera. User bisa geser
- *  (pan) & zoom foto di dalam frame yang rasionya SAMA PERSIS kayak area
- *  slot foto di template, jadi hasil crop-nya pasti pas begitu ditempel
- *  balik ke canvas (drawImageCover di lib/render.ts). */
+ *  begitu user pilih file baru buat slot bertipe "image". Pake
+ *  react-easy-crop (drag & pinch-zoom udah teruji lintas browser/HP,
+ *  gak perlu reinvent pointer-handling manual) — area crop rasionya
+ *  disamain ke ukuran slot di template biar hasilnya pas ditempel balik
+ *  ke canvas (drawImageCover di lib/render.ts). */
 export default function ImageCropModal({
   imageUrl,
   targetWidth,
@@ -33,134 +76,28 @@ export default function ImageCropModal({
 }: ImageCropModalProps) {
   const aspect = targetWidth > 0 && targetHeight > 0 ? targetWidth / targetHeight : 1;
 
-  const frame = (() => {
-    let w = FRAME_MAX_W;
-    let h = w / aspect;
-    if (h > FRAME_MAX_H) {
-      h = FRAME_MAX_H;
-      w = h * aspect;
-    }
-    return { w, h };
-  })();
-
-  const imgRef = useRef<HTMLImageElement | null>(null);
-  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
-  // Faktor zoom TAMBAHAN di atas baseScale (skala minimum biar foto full
-  // nutup frame, mirip object-fit: cover).
+  const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  // Posisi kiri-atas foto relatif ke frame (px), transform-origin 0 0.
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const dragRef = useRef<{
-    startX: number;
-    startY: number;
-    startOffsetX: number;
-    startOffsetY: number;
-  } | null>(null);
+  const [pixelCrop, setPixelCrop] = useState<Area | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const baseScale = natural ? Math.max(frame.w / natural.w, frame.h / natural.h) : 1;
-  const totalScale = baseScale * zoom;
+  const handleCropComplete = useCallback((_croppedArea: Area, croppedAreaPixels: Area) => {
+    setPixelCrop(croppedAreaPixels);
+  }, []);
 
-  const clampOffset = useCallback(
-    (x: number, y: number, scale: number) => {
-      if (!natural) return { x, y };
-      const dispW = natural.w * scale;
-      const dispH = natural.h * scale;
-      const minX = frame.w - dispW;
-      const minY = frame.h - dispH;
-      return {
-        x: Math.min(0, Math.max(minX, x)),
-        y: Math.min(0, Math.max(minY, y)),
-      };
-    },
-    [natural, frame.w, frame.h],
-  );
-
-  function handleImgLoad() {
-    const img = imgRef.current;
-    if (!img) return;
-    const w = img.naturalWidth || 1;
-    const h = img.naturalHeight || 1;
-    setNatural({ w, h });
-    const scale = Math.max(frame.w / w, frame.h / h);
-    // Tengahin foto pas pertama kali kebuka.
-    setOffset({ x: (frame.w - w * scale) / 2, y: (frame.h - h * scale) / 2 });
-  }
-
-  function handlePointerDown(e: React.PointerEvent) {
-    (e.target as Element).setPointerCapture(e.pointerId);
-    setIsDragging(true);
-    dragRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      startOffsetX: offset.x,
-      startOffsetY: offset.y,
-    };
-  }
-
-  function handlePointerMove(e: React.PointerEvent) {
-    const drag = dragRef.current;
-    if (!drag) return;
-    const dx = e.clientX - drag.startX;
-    const dy = e.clientY - drag.startY;
-    setOffset(clampOffset(drag.startOffsetX + dx, drag.startOffsetY + dy, totalScale));
-  }
-
-  function handlePointerUp() {
-    dragRef.current = null;
-    setIsDragging(false);
-  }
-
-  // Ganti zoom lewat slider — anchor-nya titik TENGAH frame biar zoom-nya
-  // kerasa natural (bukan nyontek dari sudut kiri-atas foto).
-  function handleZoomChange(nextZoom: number) {
-    if (!natural) {
-      setZoom(nextZoom);
-      return;
+  async function handleConfirm() {
+    if (!pixelCrop || isProcessing) return;
+    setIsProcessing(true);
+    try {
+      const blob = await getCroppedBlob(imageUrl, pixelCrop, targetWidth, targetHeight);
+      if (blob) onConfirm(blob);
+    } finally {
+      setIsProcessing(false);
     }
-    const oldScale = baseScale * zoom;
-    const newScale = baseScale * nextZoom;
-    const cx = (frame.w / 2 - offset.x) / oldScale;
-    const cy = (frame.h / 2 - offset.y) / oldScale;
-    setZoom(nextZoom);
-    setOffset(
-      clampOffset(frame.w / 2 - cx * newScale, frame.h / 2 - cy * newScale, newScale),
-    );
-  }
-
-  function handleConfirm() {
-    const img = imgRef.current;
-    if (!img || !natural) return;
-
-    // Balikin posisi frame (layar) ke koordinat piksel ASLI foto.
-    const srcX = (0 - offset.x) / totalScale;
-    const srcY = (0 - offset.y) / totalScale;
-    const srcW = frame.w / totalScale;
-    const srcH = frame.h / totalScale;
-
-    // Resolusi output disamain sama ukuran slot di canvas template, biar
-    // gak lebay gede & gak kekecilan — dengan lantai minimum.
-    const outScale = Math.max(1, MIN_OUTPUT_DIM / Math.min(targetWidth, targetHeight));
-    const outW = Math.max(1, Math.round(targetWidth * outScale));
-    const outH = Math.max(1, Math.round(targetHeight * outScale));
-
-    const canvas = document.createElement("canvas");
-    canvas.width = outW;
-    canvas.height = outH;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
-    canvas.toBlob(
-      (blob) => {
-        if (blob) onConfirm(blob);
-      },
-      "image/jpeg",
-      0.92,
-    );
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-black/90 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[60] flex flex-col bg-black/95">
       <div className="flex shrink-0 items-center justify-between px-4 py-3">
         <button
           onClick={onCancel}
@@ -172,7 +109,7 @@ export default function ImageCropModal({
         <span className="text-sm font-medium text-paper">Atur foto sampul</span>
         <button
           onClick={handleConfirm}
-          disabled={!natural}
+          disabled={!pixelCrop || isProcessing}
           className="flex h-9 w-9 items-center justify-center rounded-full bg-editor-accent text-paper transition active:scale-90 disabled:opacity-40"
           title="Pakai crop ini"
         >
@@ -180,53 +117,39 @@ export default function ImageCropModal({
         </button>
       </div>
 
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4">
-        <div
-          className="relative touch-none select-none overflow-hidden rounded-2xl bg-black ring-2 ring-white/20"
-          style={{
-            width: frame.w,
-            height: frame.h,
-            cursor: isDragging ? "grabbing" : "grab",
-          }}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-        >
-          <img
-            ref={imgRef}
-            src={imageUrl}
-            onLoad={handleImgLoad}
-            draggable={false}
-            alt="Pratinjau crop"
-            className="pointer-events-none absolute left-0 top-0 origin-top-left"
-            style={{
-              transform: `translate(${offset.x}px, ${offset.y}px) scale(${totalScale})`,
-              visibility: natural ? "visible" : "hidden",
-            }}
-          />
-          {/* Grid rule-of-thirds tipis, bantu framing doang, gak ikut ke-crop. */}
-          <div className="pointer-events-none absolute inset-0 grid grid-cols-3 grid-rows-3">
-            {Array.from({ length: 9 }).map((_, i) => (
-              <div key={i} className="border border-white/10" />
-            ))}
-          </div>
-        </div>
+      {/* Area cropper — relative + flex-1 biar ngisi sisa layar, react-easy-crop
+          butuh parent dengan tinggi pasti (position relative, overflow hidden
+          sudah di-handle library-nya sendiri lewat container internalnya). */}
+      <div className="relative flex-1">
+        <Cropper
+          image={imageUrl}
+          crop={crop}
+          zoom={zoom}
+          aspect={aspect}
+          onCropChange={setCrop}
+          onZoomChange={setZoom}
+          onCropComplete={handleCropComplete}
+          objectFit="contain"
+          restrictPosition={true}
+        />
+      </div>
 
-        <div className="flex w-full max-w-xs items-center gap-3">
-          <ZoomIn size={16} className="shrink-0 text-mute" />
+      <div className="flex shrink-0 flex-col gap-3 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4">
+        <div className="mx-auto flex w-full max-w-xs items-center gap-3">
+          <ZoomOut size={16} className="shrink-0 text-mute" />
           <input
             type="range"
             min={1}
-            max={3}
+            max={4}
             step={0.01}
             value={zoom}
-            onChange={(e) => handleZoomChange(parseFloat(e.target.value))}
+            onChange={(e) => setZoom(parseFloat(e.target.value))}
             className="w-full accent-editor-accent"
           />
+          <ZoomIn size={16} className="shrink-0 text-mute" />
         </div>
-        <p className="max-w-xs text-center text-[11px] text-mute">
-          Geser buat atur posisi, slider buat zoom. Rasio bingkai udah
+        <p className="text-center text-[11px] text-mute">
+          Geser foto buat atur posisi, slider buat zoom. Bingkai udah
           disamain sama area foto sampul di template.
         </p>
       </div>
