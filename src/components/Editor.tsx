@@ -194,7 +194,7 @@ function BottomNavCard({
 
   return (
     <div
-      className="relative z-30 flex shrink-0 flex-col overflow-hidden rounded-t-2xl border-t border-white/5 bg-editor-panel shadow-[0_-8px_24px_rgba(0,0,0,0.35)] transition-[height] duration-200 ease-out"
+      className="relative z-30 flex shrink-0 flex-col overflow-hidden rounded-t-2xl border-t border-white/5 bg-editor-panel shadow-[0_-8px_24px_rgba(0,0,0,0.35)]"
       style={{ height: cardHeight }}
     >
       <div ref={contentRef} key={shown.key} className="flex flex-1 flex-col">
