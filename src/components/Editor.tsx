@@ -2751,6 +2751,21 @@ export default function Editor({
       ) : (
         <div className="flex shrink-0 flex-col border-t border-white/5 bg-editor-panel">
 
+          {/* Muncul cuma pas tombol "Media" lagi aktif — tombol buat buka
+              file picker slot foto/video. Sama pola kayak "Tambah Audio"
+              di atas: nav bawah (Media/Audio/Teks) tetap keliatan &
+              gampang dipindah-pindah, nggak ketutupan panel lain. */}
+          {activeTool === "media" && (
+            <div className="flex items-center justify-center border-b border-mute/10 px-3 py-2">
+              <button
+                onClick={() => mediaSlotDef && openPicker(mediaSlotDef)}
+                className="flex items-center gap-1.5 rounded-full bg-paper px-3.5 py-1.5 text-[11px] font-semibold text-graphite transition active:scale-95"
+              >
+                <RefreshCcw size={13} />
+                Ganti {mediaSlotDef ? SLOT_SHORT_LABEL[mediaSlotDef.type] : "Media"}
+              </button>
+            </div>
+          )}
           {/* Muncul cuma pas tombol "Audio" lagi aktif — tombol kecil buat
               beneran buka file picker. Sengaja dipisah dari tombol "Audio"
               di bawah biar klik "Audio" nggak langsung lompat ke pemilihan
@@ -2847,7 +2862,14 @@ export default function Editor({
                       setSelectedTextLayerId(null);
                       setSelectedLayerId(null);
                       setSelectedAudioClipId(null);
-                      if (mediaSlotDef) setSelectedSlotId(mediaSlotDef.id);
+                      // Sengaja NNGGAK langsung setSelectedSlotId di sini —
+                      // itu bikin toolbar "nyasar" ke mode "Ganti Foto"
+                      // (nav Media/Audio/Teks ikut ilang/ketutupan).
+                      // Slot beneran dipilih lewat tombol "Ganti Media"
+                      // di bawah nav (lihat activeTool === "media" di
+                      // panel bawah), sama kayak pola tombol "Tambah
+                      // Audio" buat tool Audio.
+                      setSelectedSlotId(null);
                     }
                     if (id === "audio") {
                       setIsTextMode(false);
