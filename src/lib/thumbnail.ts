@@ -7,6 +7,7 @@ import {
   drawSpectrumIndicator,
   drawDurationLayer,
   drawTextLayers,
+  drawSlotGlow,
   roundRectPath,
   isSlotActiveAt,
   parseDurationSec,
@@ -200,8 +201,20 @@ export async function renderTemplateThumbnail(
     const dy = (slot.y / 100) * canvasH;
     const dw = (slot.width / 100) * canvasW;
     const dh = (slot.height / 100) * canvasH;
+    const radius = slot.radius ?? 16;
+
+    // Glow ambient blur di belakang foto sampul (khusus slot yang diflag
+    // glowBehind, misal cover di V5) — SAMA seperti di Editor.tsx (live
+    // preview) & webcodecs-export.ts (hasil export). Sebelumnya kelewat
+    // di sini, jadi thumbnail galeri V5 kelihatan tanpa efek blur-nya
+    // padahal template aslinya ada. Digambar SEBELUM foto tajam, pakai
+    // sumber gambar yang sama, diperbesar & diblur berat.
+    if (slot.glowBehind) {
+      drawSlotGlow(ctx, img, dx, dy, dw, dh, radius);
+    }
+
     ctx.save();
-    roundRectPath(ctx, dx, dy, dw, dh, slot.radius ?? 16);
+    roundRectPath(ctx, dx, dy, dw, dh, radius);
     ctx.clip();
     drawImageCover(ctx, img, dx, dy, dw, dh);
     ctx.restore();
