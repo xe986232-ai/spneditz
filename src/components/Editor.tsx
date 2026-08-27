@@ -146,9 +146,13 @@ function NavAction({
 // ganti cuma ISI di dalamnya lewat prop `panelKey`: begitu panelKey
 // beda dari sebelumnya, isinya diganti LANGSUNG (instan, tanpa animasi
 // slide turun/naik) — biar konten lama (mis. kartu pilihan Gaya) gak
-// "kebawa"/nongol pas udah pindah ke menu lain. Cuma TINGGI card-nya aja
-// yang masih meluncur mulus (transition-[height]) ngikutin konten baru;
-// posisi, border, rounded, shadow card-nya sendiri gak pernah berubah.
+// "kebawa"/nongol pas udah pindah ke menu lain.
+//
+// Tinggi card-nya: cuma dianimasikan pas MEMBESAR (panel baru muncul/isinya
+// nambah) biar kerasa mulus pas "masuk". Pas MENGECIL/nutup (pindah ke
+// menu lain yang kontennya lebih pendek atau kosong), tingginya LANGSUNG
+// instan tanpa transisi sama sekali — sesuai permintaan: gak boleh ada
+// animasi nutup, cuma animasi masuk.
 function BottomNavCard({
   panelKey,
   height,
@@ -168,7 +172,11 @@ function BottomNavCard({
     node: children,
   });
   const [cardHeight, setCardHeight] = useState<number | "auto">(height ?? "auto");
+  // true kalau perubahan tinggi TERAKHIR itu "membesar" (pantas dianimasikan),
+  // false kalau "mengecil"/nutup (harus instan, gak pakai transisi).
+  const [growing, setGrowing] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const lastHeightRef = useRef(0);
 
   // panelKey ATAU children berubah -> ganti isi yang ditampilkan sekarang
   // juga, gak ditunda-tunda lewat fase exit/enter apa pun.
@@ -176,25 +184,39 @@ function BottomNavCard({
     setShown({ key: panelKey, node: children });
   }, [panelKey, children]);
 
-  // Ikuti tinggi eksplisit (drag) kalau ada, atau ukur tinggi konten asli
-  // & pantau perubahannya (ResizeObserver) biar card tetap pas walau isi
-  // di dalamnya berubah.
+  function applyHeight(target: number) {
+    setGrowing(target > lastHeightRef.current);
+    lastHeightRef.current = target;
+    setCardHeight(target);
+  }
+
+  // Tinggi eksplisit (drag manual buat Background/Liquid Glass) — ganti
+  // langsung tiap frame drag, TANPA transisi, biar jarinya nempel pas.
   useEffect(() => {
-    if (height !== undefined) {
-      setCardHeight(height);
-      return;
-    }
+    if (height === undefined) return;
+    lastHeightRef.current = height;
+    setGrowing(false);
+    setCardHeight(height);
+  }, [height]);
+
+  // Tinggi otomatis: ukur tinggi konten asli & pantau perubahannya
+  // (ResizeObserver) biar card tetap pas walau isi di dalamnya berubah.
+  useEffect(() => {
+    if (height !== undefined) return;
     const el = contentRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setCardHeight(el.scrollHeight));
+    const ro = new ResizeObserver(() => applyHeight(el.scrollHeight));
     ro.observe(el);
-    setCardHeight(el.scrollHeight);
+    applyHeight(el.scrollHeight);
     return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [height, shown.key]);
 
   return (
     <div
-      className="relative z-30 flex shrink-0 flex-col overflow-hidden rounded-t-2xl border-t border-white/5 bg-editor-panel shadow-[0_-8px_24px_rgba(0,0,0,0.35)]"
+      className={`relative z-30 flex shrink-0 flex-col overflow-hidden rounded-t-2xl border-t border-white/5 bg-editor-panel shadow-[0_-8px_24px_rgba(0,0,0,0.35)] ${
+        growing ? "transition-[height] duration-200 ease-out" : ""
+      }`}
       style={{ height: cardHeight }}
     >
       <div ref={contentRef} key={shown.key} className="flex flex-1 flex-col">
