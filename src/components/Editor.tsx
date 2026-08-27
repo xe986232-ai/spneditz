@@ -2830,9 +2830,10 @@ export default function Editor({
               </button>
             </div>
           )}
-          {/* Toolbar bawah gaya baru: 1 baris ikon-only (tanpa label),
-              compact mirip CapCut/VN. Undo/Redo/Preset dipindah ke sini
-              dari top bar biar top bar tetap bersih. */}
+          {/* Toolbar bawah gaya baru: ikon + label kecil di bawahnya
+              (Audio, Media, Teks, dst), compact mirip CapCut/VN.
+              Undo/Redo/Preset dipindah ke sini dari top bar biar top
+              bar tetap bersih. */}
           <div className="flex items-center justify-between gap-1 px-3 pb-3 pt-2">
             {visibleTools.map(({ id, label, icon: Icon }) => {
               const active = activeTool === id;
@@ -2869,7 +2870,7 @@ export default function Editor({
                       setSelectedAudioClipId(null);
                     }
                   }}
-                  className={`flex h-10 w-10 items-center justify-center rounded-xl transition active:scale-90 ${
+                  className={`flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl transition active:scale-90 ${
                     active
                       ? "bg-editor-accent/20 text-editor-accent"
                       : "text-paper/55 hover:text-paper"
@@ -2878,31 +2879,37 @@ export default function Editor({
                   aria-label={label}
                 >
                   <Icon size={20} strokeWidth={active ? 2.2 : 1.8} />
+                  <span className="text-[9px] font-medium leading-none">
+                    {label}
+                  </span>
                 </button>
               );
             })}
 
             <button
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-paper/55 transition hover:text-paper active:scale-90"
+              className="flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl text-paper/55 transition hover:text-paper active:scale-90"
               title="Urungkan"
               aria-label="Urungkan"
             >
               <Undo2 size={20} strokeWidth={1.8} />
+              <span className="text-[9px] font-medium leading-none">Urungkan</span>
             </button>
             <button
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-paper/55 transition hover:text-paper active:scale-90"
+              className="flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl text-paper/55 transition hover:text-paper active:scale-90"
               title="Ulangi"
               aria-label="Ulangi"
             >
               <Redo2 size={20} strokeWidth={1.8} />
+              <span className="text-[9px] font-medium leading-none">Ulangi</span>
             </button>
             <button
               onClick={() => setShowPresetPanel(true)}
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-paper/55 transition hover:text-paper active:scale-90"
+              className="flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl text-paper/55 transition hover:text-paper active:scale-90"
               title="Preset"
               aria-label="Preset"
             >
               <Bookmark size={20} strokeWidth={1.8} />
+              <span className="text-[9px] font-medium leading-none">Preset</span>
             </button>
           </div>
         </div>
