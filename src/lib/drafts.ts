@@ -113,7 +113,21 @@ async function saveMediaMap(
   const out: Record<string, StoredMedia> = {};
   for (const [slotId, media] of Object.entries(slotMedia)) {
     if (media?.kind === "file") {
-      out[slotId] = await readEntryAsBlob(media);
+      // PENTING: isolasi per-slot. Sebelumnya kalau SATU slot gagal dibaca
+      // (mis. blob URL video/audio yang sempat "stale"), error-nya nge-throw
+      // dan bikin SELURUH saveDraft() gagal — termasuk perubahan slot LAIN
+      // yang sebenarnya baik-baik saja (mis. foto yang baru saja diganti
+      // user). Sekarang: slot yang gagal cukup di-skip (tetap coba lagi di
+      // autosave berikutnya), slot lain tetap kesimpen.
+      try {
+        out[slotId] = await readEntryAsBlob(media);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[drafts] Gagal baca media slot "${slotId}" saat auto-save, slot ini dilewati (slot lain tetap tersimpan).`,
+          e instanceof Error ? e.message : e,
+        );
+      }
     }
   }
   return out;
