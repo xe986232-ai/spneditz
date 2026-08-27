@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Video,
@@ -393,6 +393,35 @@ export default function Editor({
 }) {
   const [activeTool, setActiveTool] = useState<string>("media");
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // Kontrol mengambang (label waktu + tombol play/pause) di preview —
+  // ini murni perilaku EDITOR, bukan bagian dari template. Tampil pas
+  // preview dibuka/di-tap, lalu otomatis turun/hilang setelah beberapa
+  // detik biar preview keliatan clean. Tap preview lagi buat manggil
+  // balik (naik) dan kasih waktu beberapa detik lagi sebelum turun.
+  const [showFloatingControls, setShowFloatingControls] = useState(true);
+  const floatingControlsHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const revealFloatingControls = useCallback(() => {
+    setShowFloatingControls(true);
+    if (floatingControlsHideTimerRef.current) {
+      clearTimeout(floatingControlsHideTimerRef.current);
+    }
+    floatingControlsHideTimerRef.current = setTimeout(() => {
+      setShowFloatingControls(false);
+    }, 2600);
+  }, []);
+  useEffect(() => {
+    // Tampil dulu pas editor kebuka, lalu jalanin timer turun otomatis.
+    revealFloatingControls();
+    return () => {
+      if (floatingControlsHideTimerRef.current) {
+        clearTimeout(floatingControlsHideTimerRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [currentSec, setCurrentSec] = useState(0);
   // Slot yang lagi diketuk/terseleksi di timeline atau canvas — kalau ada
   // isinya, toolbar bawah berubah jadi cuma tombol "Ganti" buat slot itu.
@@ -2035,7 +2064,10 @@ export default function Editor({
             filter: "blur(40px)",
           }}
         />
-        <div className="relative mx-auto aspect-[9/16] h-full max-h-full max-w-full overflow-hidden bg-black">
+        <div
+          className="relative mx-auto aspect-[9/16] h-full max-h-full max-w-full overflow-hidden bg-black"
+          onPointerDown={revealFloatingControls}
+        >
           {template.baseAssetSrc ? (
             <canvas
               ref={canvasRef}
@@ -2125,13 +2157,23 @@ export default function Editor({
         {/* Play/Pause + label waktu — mengambang nempel di preview
             (kayak referensi), jadi nggak butuh panel terpisah lagi. */}
         {!isFullscreen && (
-          <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-1.5">
+          <div
+            onPointerDown={revealFloatingControls}
+            className={`absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-1.5 transition-all duration-500 ease-out ${
+              showFloatingControls
+                ? "translate-y-0 opacity-100"
+                : "pointer-events-none translate-y-8 opacity-0"
+            }`}
+          >
             <span className="rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-medium tabular-nums text-paper backdrop-blur-sm">
               {formatClock(currentSec)}
               <span className="text-paper/50"> / {formatClock(DURATION)}</span>
             </span>
             <button
-              onClick={() => setIsPlaying((p) => !p)}
+              onClick={() => {
+                setIsPlaying((p) => !p);
+                revealFloatingControls();
+              }}
               className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/45 text-paper backdrop-blur-sm transition active:scale-90"
               title={isPlaying ? "Jeda" : "Putar"}
             >
