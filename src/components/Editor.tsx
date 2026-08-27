@@ -939,6 +939,21 @@ export default function Editor({
   );
 
   // Jalanin playhead pas play, berhenti di posisi terakhir pas pause
+  //
+  // PENTING: DURATION WAJIB ada di dependency array (bukan cuma
+  // isPlaying). DURATION = audioInfo?.duration ?? templateDurationSec
+  // (baris atas) — audioInfo diisi ASINKRON hasil analyzeAudio (decode
+  // Web Audio API), yang makan waktu buat file gede/lagu panjang. Kalau
+  // user pencet Play SEBELUM audioInfo kelar, DURATION masih fallback
+  // ke templateDurationSec (mis. cuma 15 detik buat V4), dan closure
+  // tick() di bawah "membekukan" angka itu selama effect ini belum
+  // restart. Dulu dependency-nya cuma [isPlaying], jadi begitu audioInfo
+  // kelar loading (biasanya sepersekian detik setelah Play ditekan) &
+  // DURATION harusnya udah jadi durasi asli lagu (misal 74 detik),
+  // timer yang udah kadung jalan TETAP loop balik ke 0 tiap ~15 detik
+  // terus-menerus — playhead "balik ke awal padahal lagu belum abis".
+  // Dengan DURATION di deps, effect otomatis restart (re-baca currentSec
+  // biar nggak ikut ke-reset ke 0) begitu durasi asli kelar dihitung.
   useEffect(() => {
     if (!isPlaying) return;
 
@@ -963,8 +978,12 @@ export default function Editor({
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
+    // currentSec sengaja TETAP di-exclude (cuma dibaca sekali di awal
+    // buat startRef, bukan buat nge-trigger restart tiap frame — kalau
+    // ikut di deps, effect bakal restart tiap tick & rAF-nya nggak
+    // pernah jalan mulus).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying]);
+  }, [isPlaying, DURATION]);
 
   // Klip audio yang aktif di detik playhead sekarang ini (kalau ada) —
   // dipakai buat nentuin posisi file asli mana yang harus disuarakan.
