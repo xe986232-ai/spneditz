@@ -201,13 +201,38 @@ function BottomNavCard({
 
   // Tinggi otomatis: ukur tinggi konten asli & pantau perubahannya
   // (ResizeObserver) biar card tetap pas walau isi di dalamnya berubah.
+  //
+  // FIX "nutup lemot": begitu panelKey ganti (pindah tab Media/Audio/
+  // Teks/dll, alias "nutup" panel lama), UKURAN PERTAMA yang kebaca dari
+  // konten baru harus di-snap LANGSUNG tanpa animasi sama sekali — nggak
+  // peduli itu lebih kecil ATAU lebih besar dari panel sebelumnya. Dulu
+  // ukuran pertama ini ikut lewat applyHeight() biasa, yang kadang salah
+  // nebak "ini lagi membesar" (misal scrollHeight sempat kebaca 0 dulu
+  // sebelum layout kelar), jadi malah ikut dikasih transition 200ms
+  // padahal harusnya "plukk" instan. Baru RESIZE BERIKUTNYA di dalam
+  // panel yang SAMA (misal konten nambah dinamis) yang boleh dianimasikan
+  // kalau membesar.
   useEffect(() => {
     if (height !== undefined) return;
     const el = contentRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => applyHeight(el.scrollHeight));
+    let isFirstMeasure = true;
+    const snapInstantly = (target: number) => {
+      isFirstMeasure = false;
+      setGrowing(false);
+      lastHeightRef.current = target;
+      setCardHeight(target);
+    };
+    const ro = new ResizeObserver(() => {
+      const target = el.scrollHeight;
+      if (isFirstMeasure) {
+        snapInstantly(target);
+        return;
+      }
+      applyHeight(target);
+    });
     ro.observe(el);
-    applyHeight(el.scrollHeight);
+    snapInstantly(el.scrollHeight);
     return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [height, shown.key]);
