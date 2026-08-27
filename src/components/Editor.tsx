@@ -240,6 +240,40 @@ const MAX_BACKGROUND_BLUR = 100;
 function defaultBackgroundBlurFor(templateId: string): number {
   return templateId === "iphone-music-player-v4" ? 100 : 0;
 }
+// Downsample sebuah array titik amplitude ke jumlah bar target, dengan
+// ambil nilai PEAK (bukan rata-rata) per bucket — biar transient/hentakan
+// kecil di antara sample nggak "keblur"/ilang pas dipadetin. Dipakai buat
+// bikin waveform klip audio di timeline lebih rapat & mengalir kayak
+// editor video lain (CapCut dkk), bukan cuma segelintir bar gemuk.
+function downsamplePeaks(source: number[], targetCount: number): number[] {
+  if (source.length === 0) return [];
+  if (targetCount <= 0) return [];
+  if (source.length <= targetCount) {
+    // Kurang titik dari target: interpolasi linear biar tetap sehalus
+    // mungkin ngisi lebar klip, bukan cuma diulang-ulang.
+    const out: number[] = [];
+    for (let i = 0; i < targetCount; i++) {
+      const pos = (i / Math.max(1, targetCount - 1)) * (source.length - 1);
+      const lo = Math.floor(pos);
+      const hi = Math.min(source.length - 1, lo + 1);
+      const t = pos - lo;
+      out.push(source[lo] * (1 - t) + source[hi] * t);
+    }
+    return out;
+  }
+  const out: number[] = [];
+  const bucketSize = source.length / targetCount;
+  for (let i = 0; i < targetCount; i++) {
+    const start = Math.floor(i * bucketSize);
+    const end = Math.max(start + 1, Math.floor((i + 1) * bucketSize));
+    let peak = 0;
+    for (let j = start; j < end && j < source.length; j++) {
+      if (source[j] > peak) peak = source[j];
+    }
+    out.push(peak);
+  }
+  return out;
+}
 // Seberapa banyak background di-zoom (overscan, px per level blur) biar
 // pas di-blur nggak ada gradasi hitam di tepian — lihat drawImageCoverZoomed.
 const BACKGROUND_BLUR_OVERSCAN_FACTOR = 2;
@@ -2395,9 +2429,33 @@ export default function Editor({
                           );
                           const isClipSelected = selectedAudioClipId === clip.id;
 
+                          // Target jumlah bar mengikuti LEBAR KLIP DI LAYAR
+                          // (bukan angka tetap) — sekitar 1 bar tiap 3px,
+                          // biar klip pendek tetap padat & klip panjang
+                          // nggak keriting/numpuk. Ini yang bikin waveform
+                          // kerasa "mengalir" kayak di CapCut, bukan cuma
+                          // segelintir batang gemuk.
+                          const targetBarCount = clampNum(
+                            Math.round(clipWidth / 3),
+                            8,
+                            400,
+                          );
+
+                          // Sumber data: pakai bassPeaks (resolusi jauh
+                          // lebih rapat, ~30 titik/detik lagu) kalau ada,
+                          // fallback ke peaks broadband (120 titik/lagu),
+                          // baru fallback flat kalau audio belum selesai
+                          // dianalisis sama sekali.
+                          const richSource =
+                            audioInfo?.bassPeaks?.length
+                              ? audioInfo.bassPeaks
+                              : audioInfo?.peaks?.length
+                                ? audioInfo.peaks
+                                : null;
+
                           let clipPeaks: number[];
-                          if (audioInfo?.peaks?.length) {
-                            const total = audioInfo.peaks.length;
+                          if (richSource) {
+                            const total = richSource.length;
                             const startIdx = clampNum(
                               Math.floor((clip.trimStart / sourceDuration) * total),
                               0,
@@ -2408,16 +2466,10 @@ export default function Editor({
                               startIdx + 1,
                               total,
                             );
-                            clipPeaks = audioInfo.peaks.slice(startIdx, endIdx);
+                            const rawSlice = richSource.slice(startIdx, endIdx);
+                            clipPeaks = downsamplePeaks(rawSlice, targetBarCount);
                           } else {
-                            const barCount = Math.max(
-                              4,
-                              Math.round(
-                                (clipDuration / Math.max(sourceDuration, 0.001)) *
-                                  WAVEFORM_BAR_COUNT,
-                              ),
-                            );
-                            clipPeaks = FALLBACK_PEAKS.slice(0, barCount);
+                            clipPeaks = FALLBACK_PEAKS.slice(0, targetBarCount);
                           }
 
                           return (
@@ -2441,14 +2493,24 @@ export default function Editor({
                               title="Musik latar — tahan & geser buat pindah posisi"
                             >
                               {/* Waveform beneran, ngikutin amplitude/frekuensi
-                                  asli potongan file audio klip ini. */}
-                              <div className="pointer-events-none absolute inset-0 flex items-center gap-[2px] px-1.5">
+                                  asli potongan file audio klip ini. Bar rapat
+                                  (nggak ada gap, lebar ngisi % penuh) biar
+                                  keliatan "mengalir" kayak gelombang asli,
+                                  bukan segelintir batang gemuk berjarak
+                                  lebar. */}
+                              <div className="pointer-events-none absolute inset-0 flex items-center px-1">
                                 {clipPeaks.map((p, i) => (
                                   <span
                                     key={i}
-                                    className="w-[2px] shrink-0 rounded-full bg-emerald-300/80"
+                                    className="shrink-0 rounded-[1px] bg-emerald-300/80"
                                     style={{
-                                      height: `${Math.max(8, Math.min(100, p * 100))}%`,
+                                      width: `${100 / clipPeaks.length}%`,
+                                      // Sedikit "gap" optis lewat border kiri
+                                      // tipis, bukan margin/gap flex — biar
+                                      // nggak ngurangin lebar total pas bar
+                                      // dikit (klip pendek).
+                                      borderLeft: "1px solid rgba(0,0,0,0.35)",
+                                      height: `${Math.max(10, Math.min(100, p * 100))}%`,
                                     }}
                                   />
                                 ))}
