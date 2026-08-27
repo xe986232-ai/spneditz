@@ -140,29 +140,22 @@ function NavAction({
   );
 }
 
-// Durasi animasi slide keluar/masuk (ms) — HARUS SAMA dengan durasi
-// keyframe .animate-nav-slide-down-out / .animate-nav-slide-up-in di
-// index.css, soalnya dipakai juga buat nge-timing setTimeout di bawah.
-const NAV_CARD_EXIT_MS = 200;
-const NAV_CARD_ENTER_MS = 240;
-
 // Card nav bawah — SATU-SATUNYA container tetap buat semua toolbar
 // kontekstual (menu utama Media/Audio/Teks, pengaturan Background,
 // Liquid Glass, opacity layer, ganti slot, edit teks, dst). Yang boleh
 // ganti cuma ISI di dalamnya lewat prop `panelKey`: begitu panelKey
-// beda dari sebelumnya, konten lama dianimasikan "turun" keluar lalu
-// konten baru "naik" masuk — card-nya sendiri (posisi, border, rounded,
-// shadow) TIDAK PERNAH unmount/berganti, cuma tingginya yang meluncur
-// mengikuti isi baru. Ini sengaja dipisah dari komponen lain biar semua
-// panel kontekstual otomatis konsisten satu sama lain tanpa perlu
-// diulang-ulang tiap tempat.
+// beda dari sebelumnya, isinya diganti LANGSUNG (instan, tanpa animasi
+// slide turun/naik) — biar konten lama (mis. kartu pilihan Gaya) gak
+// "kebawa"/nongol pas udah pindah ke menu lain. Cuma TINGGI card-nya aja
+// yang masih meluncur mulus (transition-[height]) ngikutin konten baru;
+// posisi, border, rounded, shadow card-nya sendiri gak pernah berubah.
 function BottomNavCard({
   panelKey,
   height,
   children,
 }: {
   // Identitas konten yang lagi ditampilkan (mis. "default" | "slot" |
-  // "text" | dst) — dipakai buat ndeteksi kapan harus animasi swap.
+  // "text" | dst) — dipakai buat ndeteksi kapan isi harus diganti.
   panelKey: string;
   // Tinggi eksplisit (px) buat panel yang bisa di-drag manual (Background
   // & Liquid Glass pakai sheetHeight). Kalau undefined, tinggi ngikutin
@@ -170,38 +163,23 @@ function BottomNavCard({
   height?: number;
   children: ReactNode;
 }) {
-  const [phase, setPhase] = useState<"idle" | "exit" | "enter">("idle");
   const [shown, setShown] = useState<{ key: string; node: ReactNode }>({
     key: panelKey,
     node: children,
   });
-  const [pending, setPending] = useState<{ key: string; node: ReactNode } | null>(
-    null,
-  );
   const [cardHeight, setCardHeight] = useState<number | "auto">(height ?? "auto");
   const contentRef = useRef<HTMLDivElement>(null);
-  const measureRef = useRef<HTMLDivElement>(null);
 
-  // panelKey berubah -> mulai fase "exit": konten lama tetap ditampilkan
-  // sebentar sambil animasi turun, konten baru disimpan sbg pending buat
-  // diukur tingginya dulu (lewat measureRef, dirender tersembunyi).
+  // panelKey ATAU children berubah -> ganti isi yang ditampilkan sekarang
+  // juga, gak ditunda-tunda lewat fase exit/enter apa pun.
   useEffect(() => {
-    if (panelKey === shown.key) {
-      // Key sama, cuma isi di dalamnya berubah (mis. slider ditarik) —
-      // update langsung tanpa animasi swap.
-      if (phase === "idle") setShown({ key: panelKey, node: children });
-      return;
-    }
-    setPending({ key: panelKey, node: children });
-    setPhase("exit");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setShown({ key: panelKey, node: children });
   }, [panelKey, children]);
 
-  // Selama idle: ikuti tinggi eksplisit (drag) kalau ada, atau ukur
-  // tinggi konten asli & pantau perubahannya (ResizeObserver) biar card
-  // tetap pas walau isi dalamnya berubah tanpa ganti panelKey.
+  // Ikuti tinggi eksplisit (drag) kalau ada, atau ukur tinggi konten asli
+  // & pantau perubahannya (ResizeObserver) biar card tetap pas walau isi
+  // di dalamnya berubah.
   useEffect(() => {
-    if (phase !== "idle") return;
     if (height !== undefined) {
       setCardHeight(height);
       return;
@@ -212,59 +190,14 @@ function BottomNavCard({
     ro.observe(el);
     setCardHeight(el.scrollHeight);
     return () => ro.disconnect();
-  }, [height, phase, shown.key]);
-
-  // Fase exit: ukur tinggi konten BARU (dari elemen tersembunyi), animasikan
-  // tinggi card ke situ bareng konten lama turun, lalu pindah ke fase enter.
-  useEffect(() => {
-    if (phase !== "exit" || !pending) return;
-    const target = height ?? measureRef.current?.scrollHeight ?? cardHeight;
-    setCardHeight(target);
-    const t = setTimeout(() => {
-      setShown(pending);
-      setPending(null);
-      setPhase("enter");
-    }, NAV_CARD_EXIT_MS);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, pending, height]);
-
-  // Fase enter: konten baru sudah tampil & animasi naik jalan, tunggu
-  // animasinya kelar lalu balik idle.
-  useEffect(() => {
-    if (phase !== "enter") return;
-    const t = setTimeout(() => setPhase("idle"), NAV_CARD_ENTER_MS);
-    return () => clearTimeout(t);
-  }, [phase]);
+  }, [height, shown.key]);
 
   return (
     <div
-      className="relative z-30 flex shrink-0 flex-col overflow-hidden rounded-t-2xl border-t border-white/5 bg-editor-panel shadow-[0_-8px_24px_rgba(0,0,0,0.35)] transition-[height] duration-300 ease-out"
+      className="relative z-30 flex shrink-0 flex-col overflow-hidden rounded-t-2xl border-t border-white/5 bg-editor-panel shadow-[0_-8px_24px_rgba(0,0,0,0.35)] transition-[height] duration-200 ease-out"
       style={{ height: cardHeight }}
     >
-      {/* Elemen ukur tersembunyi: render konten yang akan datang di luar
-          layar buat tau tinggi aslinya SEBELUM benar-benar ditampilkan,
-          biar transisi tinggi card mulus & gak "kagetan". */}
-      {pending && height === undefined && (
-        <div
-          ref={measureRef}
-          aria-hidden
-          className="pointer-events-none invisible absolute inset-x-0 top-0 flex flex-col"
-        >
-          {pending.node}
-        </div>
-      )}
-      <div
-        ref={contentRef}
-        key={shown.key}
-        className={`flex flex-1 flex-col ${
-          phase === "exit"
-            ? "animate-nav-slide-down-out"
-            : phase === "enter"
-              ? "animate-nav-slide-up-in"
-              : ""
-        }`}
-      >
+      <div ref={contentRef} key={shown.key} className="flex flex-1 flex-col">
         {shown.node}
       </div>
     </div>
