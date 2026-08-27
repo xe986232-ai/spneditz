@@ -88,6 +88,10 @@ export async function compositeLayers(
   canvas.height = canvasH;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Gagal bikin canvas compositing");
+  // Default browser buat imageSmoothingQuality itu "low" — bikin foto/video
+  // yang di-scale ke canvas kelihatan lembek/kurang tajam. Paksa "high".
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
 
   if (baseSrc) {
     const bgImg = await loadImageEl(baseSrc);

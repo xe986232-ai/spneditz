@@ -66,7 +66,11 @@ async function findSupportedVideoConfig(
   height: number,
   fps: number,
 ): Promise<VideoEncoderConfig> {
-  const bitrate = Math.min(12_000_000, Math.max(2_500_000, Math.round(width * height * fps * 0.1)));
+  // Bitrate dinaikkan dari sebelumnya (faktor 0.1, cap 12 Mbps) — buat
+  // canvas 1080x1920 @25fps itu cuma ~5.2 Mbps, kurang buat konten yang
+  // banyak teks/garis tajam (gampang keliatan blocky/lembek). Sekarang
+  // ~9.3 Mbps di resolusi yang sama, cap dinaikkan ke 18 Mbps.
+  const bitrate = Math.min(18_000_000, Math.max(4_000_000, Math.round(width * height * fps * 0.18)));
   const candidates: VideoEncoderConfig[] = [
     { codec: "avc1.640028", width, height, framerate: fps, bitrate, bitrateMode: "variable", latencyMode: "quality" },
     { codec: "avc1.4d0028", width, height, framerate: fps, bitrate, bitrateMode: "variable", latencyMode: "quality" },
@@ -280,6 +284,8 @@ export async function exportTemplateVideoWebCodecs(
       c.height = canvasH;
       const cctx = c.getContext("2d");
       if (!cctx) throw new Error("Gagal membuat canvas background");
+      cctx.imageSmoothingEnabled = true;
+      cctx.imageSmoothingQuality = "high";
       drawImageCover(cctx, bgImg, 0, 0, canvasW, canvasH);
       staticBgBitmap = await createImageBitmap(c);
     }
@@ -403,6 +409,8 @@ export async function exportTemplateVideoWebCodecs(
           c.height = Math.max(1, Math.round(resolved.height));
           const cctx = c.getContext("2d");
           if (!cctx) throw new Error("Gagal membuat canvas slot");
+          cctx.imageSmoothingEnabled = true;
+          cctx.imageSmoothingQuality = "high";
           drawImageCover(cctx, img, 0, 0, c.width, c.height);
           if (img instanceof ImageBitmap) img.close();
           resolved.imgBitmap = await createImageBitmap(c);
@@ -502,6 +510,8 @@ export async function exportTemplateVideoWebCodecs(
   frameCanvas.height = canvasH;
   const ctx = frameCanvas.getContext("2d", { alpha: false });
   if (!ctx) throw new Error("Gagal membuat canvas frame render");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
 
   let lastReportedPercent = 20;
   let lastVideoSeekSec = -1;
