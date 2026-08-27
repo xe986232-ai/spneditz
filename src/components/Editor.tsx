@@ -371,19 +371,27 @@ export default function Editor({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingSlotRef = useRef<string | null>(null);
   const exportAbortRef = useRef<AbortController | null>(null);
-  // Foto mentah yang lagi nunggu di-crop user lewat <ImageCropModal> —
-  // null berarti overlay crop lagi ketutup. Diisi begitu user pilih file
-  // baru buat slot bertipe "image" (lihat handleFileChange).
+  // Nyimpen foto ASLI (sebelum di-crop) per slotId, biar tombol "Crop"
+  // di toolbar SELALU mulai dari sumber originalnya — bukan numpuk crop
+  // di atas hasil crop sebelumnya (kalau enggak, tiap crop ulang area
+  // foto makin sempit & makin turun kualitasnya). Pakai ref (bukan state)
+  // karena isinya cuma dibaca pas user pencet "Crop", gak perlu bikin
+  // komponen re-render tiap kali diisi.
+  const originalSlotMediaRef = useRef<Record<string, SlotMediaEntry>>({});
+  // Foto yang lagi nunggu di-crop user lewat <ImageCropModal> — null
+  // berarti overlay crop lagi ketutup. Diisi begitu user pilih file baru
+  // ATAU pencet tombol "Crop" buat foto yang udah ada (lihat
+  // handleFileChange & handleOpenCropForSlot).
   const [cropTarget, setCropTarget] = useState<{
     slotId: string;
     url: string;
     targetWidth: number;
     targetHeight: number;
-    // true kalau url ini dibikin KHUSUS buat sesi crop ini (dari file baru
-    // yang belum kepake di mana-mana) — cuma di situasi ini aman di-revoke
-    // begitu selesai. Kalau false (recrop foto yang UDAH kepake di slot),
-    // url-nya jangan di-revoke karena masih dipakai slotMedia/background.
-    revokeOnDone: boolean;
+    // Diisi kalau sesi crop ini berasal dari file BARU yang baru dipilih
+    // user (belum pernah tersimpan sebagai "original" slot ini). Dipakai
+    // di handleCropConfirm buat nyimpen file ini sebagai original, dan di
+    // handleCropCancel buat tau aman-gaknya di-revoke kalau user batal.
+    rawFile?: File;
   } | null>(null);
 
   // ---- Bottom sheet buat panel "banyak kontrol" (Background & Liquid
@@ -1605,13 +1613,15 @@ export default function Editor({
     if (slot?.type === "image") {
       // Foto -> jangan langsung dipakai, suguhkan overlay crop dulu biar
       // user bisa atur posisi/zoom sebelum ditempel ke slot (lihat
-      // <ImageCropModal> & handleCropConfirm di bawah).
+      // <ImageCropModal> & handleCropConfirm di bawah). File ASLI-nya
+      // (rawFile) dibawa serta di cropTarget, biar begitu crop di-confirm
+      // langsung kesimpen sebagai "original" buat slot ini.
       const canvasW = template.canvasWidth ?? 1080;
       const canvasH = template.canvasHeight ?? 1920;
       const targetWidth = slot.width ? (slot.width / 100) * canvasW : canvasW;
       const targetHeight = slot.height ? (slot.height / 100) * canvasH : canvasH;
       const rawUrl = URL.createObjectURL(file);
-      setCropTarget({ slotId, url: rawUrl, targetWidth, targetHeight, revokeOnDone: true });
+      setCropTarget({ slotId, url: rawUrl, targetWidth, targetHeight, rawFile: file });
       return;
     }
 
@@ -1623,37 +1633,53 @@ export default function Editor({
 
   // Buka overlay crop buat foto yang UDAH kepake di slot (dipicu dari
   // tombol "Crop" di toolbar slot terpilih) — beda dari handleFileChange
-  // yang crop foto BARU. Di sini url-nya dipinjam dari slotMedia yang
-  // sudah ada, jadi TIDAK boleh di-revoke setelah selesai (masih dipakai
-  // slot/background yang lain sampai user beneran ganti/apply crop baru).
+  // yang crop foto BARU. SELALU balik ke foto ORIGINAL (sebelum di-crop)
+  // yang tersimpan di originalSlotMediaRef kalau ada, biar crop ulang gak
+  // numpuk di atas hasil crop sebelumnya (area makin sempit & pecah tiap
+  // di-crop lagi). Fallback ke media yang lagi aktif kalau belum pernah
+  // ada crop sebelumnya di slot ini (misal masih foto sample bawaan).
   function handleOpenCropForSlot(slot: TemplateSlot) {
-    const currentEntry = slotMedia[slot.id];
-    if (!currentEntry) return;
+    const source = originalSlotMediaRef.current[slot.id] ?? slotMedia[slot.id];
+    if (!source) return;
     const canvasW = template.canvasWidth ?? 1080;
     const canvasH = template.canvasHeight ?? 1920;
     const targetWidth = slot.width ? (slot.width / 100) * canvasW : canvasW;
     const targetHeight = slot.height ? (slot.height / 100) * canvasH : canvasH;
-    setCropTarget({
-      slotId: slot.id,
-      url: currentEntry.url,
-      targetWidth,
-      targetHeight,
-      revokeOnDone: false,
-    });
+    setCropTarget({ slotId: slot.id, url: source.url, targetWidth, targetHeight });
   }
 
   function handleCropConfirm(blob: Blob) {
     if (!cropTarget) return;
-    const { slotId, url: rawUrl, revokeOnDone } = cropTarget;
+    const { slotId, url: sourceUrl, rawFile } = cropTarget;
     const croppedFile = new File([blob], "sampul-crop.jpg", { type: "image/jpeg" });
     const url = URL.createObjectURL(croppedFile);
-    if (revokeOnDone) URL.revokeObjectURL(rawUrl);
+
+    if (rawFile) {
+      // Upload BARU -> jadiin foto ini "original" buat slot ini. Kalau
+      // sebelumnya udah ada original lain tersimpan (upload sebelum ini),
+      // lepas dulu URL lamanya biar gak numpuk sampah di memory.
+      const prevOriginal = originalSlotMediaRef.current[slotId];
+      if (prevOriginal?.kind === "file" && prevOriginal.url !== sourceUrl) {
+        URL.revokeObjectURL(prevOriginal.url);
+      }
+      originalSlotMediaRef.current[slotId] = { kind: "file", url: sourceUrl, file: rawFile };
+    }
+    // Kalau ini recrop dari original yang UDAH kesimpen (rawFile kosong),
+    // originalSlotMediaRef dibiarin apa adanya — anchor originalnya tetap
+    // sourceUrl yang sama, siap dipakai lagi buat crop berikutnya.
+
     applySlotMediaEntry(slotId, { kind: "file", url, file: croppedFile });
     setCropTarget(null);
   }
 
   function handleCropCancel() {
-    if (cropTarget?.revokeOnDone) URL.revokeObjectURL(cropTarget.url);
+    // Batal pas lagi crop upload BARU (belum sempet kesimpen jadi
+    // "original") -> url mentahnya gak kepake di mana-mana lagi, aman
+    // di-revoke. Batal pas lagi RECROP dari original yang udah tersimpan
+    // -> JANGAN revoke, itu masih jadi anchor buat crop berikutnya.
+    if (cropTarget?.rawFile) {
+      URL.revokeObjectURL(cropTarget.url);
+    }
     setCropTarget(null);
   }
 
