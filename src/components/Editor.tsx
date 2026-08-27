@@ -29,6 +29,7 @@ import {
   EyeOff,
   Sparkles,
   Check,
+  Crop,
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import { getDominantColor } from "../lib/color";
@@ -378,6 +379,11 @@ export default function Editor({
     url: string;
     targetWidth: number;
     targetHeight: number;
+    // true kalau url ini dibikin KHUSUS buat sesi crop ini (dari file baru
+    // yang belum kepake di mana-mana) — cuma di situasi ini aman di-revoke
+    // begitu selesai. Kalau false (recrop foto yang UDAH kepake di slot),
+    // url-nya jangan di-revoke karena masih dipakai slotMedia/background.
+    revokeOnDone: boolean;
   } | null>(null);
 
   // ---- Bottom sheet buat panel "banyak kontrol" (Background & Liquid
@@ -1605,7 +1611,7 @@ export default function Editor({
       const targetWidth = slot.width ? (slot.width / 100) * canvasW : canvasW;
       const targetHeight = slot.height ? (slot.height / 100) * canvasH : canvasH;
       const rawUrl = URL.createObjectURL(file);
-      setCropTarget({ slotId, url: rawUrl, targetWidth, targetHeight });
+      setCropTarget({ slotId, url: rawUrl, targetWidth, targetHeight, revokeOnDone: true });
       return;
     }
 
@@ -1615,18 +1621,39 @@ export default function Editor({
     applySlotMediaEntry(slotId, { kind: "file", url, file });
   }
 
+  // Buka overlay crop buat foto yang UDAH kepake di slot (dipicu dari
+  // tombol "Crop" di toolbar slot terpilih) — beda dari handleFileChange
+  // yang crop foto BARU. Di sini url-nya dipinjam dari slotMedia yang
+  // sudah ada, jadi TIDAK boleh di-revoke setelah selesai (masih dipakai
+  // slot/background yang lain sampai user beneran ganti/apply crop baru).
+  function handleOpenCropForSlot(slot: TemplateSlot) {
+    const currentEntry = slotMedia[slot.id];
+    if (!currentEntry) return;
+    const canvasW = template.canvasWidth ?? 1080;
+    const canvasH = template.canvasHeight ?? 1920;
+    const targetWidth = slot.width ? (slot.width / 100) * canvasW : canvasW;
+    const targetHeight = slot.height ? (slot.height / 100) * canvasH : canvasH;
+    setCropTarget({
+      slotId: slot.id,
+      url: currentEntry.url,
+      targetWidth,
+      targetHeight,
+      revokeOnDone: false,
+    });
+  }
+
   function handleCropConfirm(blob: Blob) {
     if (!cropTarget) return;
-    const { slotId, url: rawUrl } = cropTarget;
+    const { slotId, url: rawUrl, revokeOnDone } = cropTarget;
     const croppedFile = new File([blob], "sampul-crop.jpg", { type: "image/jpeg" });
     const url = URL.createObjectURL(croppedFile);
-    URL.revokeObjectURL(rawUrl);
+    if (revokeOnDone) URL.revokeObjectURL(rawUrl);
     applySlotMediaEntry(slotId, { kind: "file", url, file: croppedFile });
     setCropTarget(null);
   }
 
   function handleCropCancel() {
-    if (cropTarget) URL.revokeObjectURL(cropTarget.url);
+    if (cropTarget?.revokeOnDone) URL.revokeObjectURL(cropTarget.url);
     setCropTarget(null);
   }
 
@@ -2783,6 +2810,15 @@ export default function Editor({
               active
               onClick={() => openPicker(selectedSlot)}
             />
+            {/* Cuma slot foto yang bisa di-crop ulang — video/audio gak
+                relevan buat crop gambar. */}
+            {selectedSlot.type === "image" && (
+              <NavAction
+                icon={Crop}
+                label="Crop"
+                onClick={() => handleOpenCropForSlot(selectedSlot)}
+              />
+            )}
           </div>
         </div>
       ) : selectedTextLayer ? (

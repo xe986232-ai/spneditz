@@ -21,6 +21,10 @@ const MIN_OUTPUT_DIM = 480;
 function createImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    // Perlu buat crop ULANG foto sample yang masih dari URL remote
+    // (Firebase/Unsplash) — tanpa ini, canvas bisa "tainted" & toBlob()
+    // gagal. Object URL lokal (blob:) tetap aman, atribut ini diabaikan.
+    img.crossOrigin = "anonymous";
     img.addEventListener("load", () => resolve(img));
     img.addEventListener("error", (e) => reject(e));
     img.src = url;
