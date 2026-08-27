@@ -2767,6 +2767,14 @@ export default function Editor({
             : undefined;
 
         let content: ReactNode;
+        // Overlay panel cuma perlu dirender kalau beneran ada isinya. Di
+        // mode "default", Media & Audio emang sengaja kosong (gak ada
+        // pengaturan apa-apa) — cuma tab Gaya (activeTool "progress") yang
+        // punya konten. Daripada overlay nongol kosong lalu "ngempes" pas
+        // ResizeObserver nyusul ngukur ulang, mending overlay-nya gak usah
+        // di-mount sama sekali kalau kosong.
+        const hasDefaultContent =
+          activeTool === "progress" && !!template.progressLayer;
 
         if (panelMode === "background") {
           content = (
@@ -3188,13 +3196,20 @@ export default function Editor({
         // edit teks) lagi kebuka/ganti. Panel kontekstual itu sendiri
         // di-render sebagai overlay yang "naik" nutupin timeline dari bawah
         // (absolute, bottom-full), bukan bikin timeline/row menu ikut geser.
+        const showOverlay = panelMode !== "default" || hasDefaultContent;
+
         return (
           <div className="relative z-30 shrink-0">
-            <div className="absolute inset-x-0 bottom-full">
-              <BottomNavCard panelKey={panelMode} height={panelHeight}>
-                {content}
-              </BottomNavCard>
-            </div>
+            {showOverlay && (
+              <div className="absolute inset-x-0 bottom-full">
+                <BottomNavCard
+                  panelKey={panelMode === "default" ? `default-${activeTool}` : panelMode}
+                  height={panelHeight}
+                >
+                  {content}
+                </BottomNavCard>
+              </div>
+            )}
 
             <div className="flex items-center justify-between gap-1 border-t border-white/5 bg-editor-panel px-3 pb-3 pt-2">
               {visibleTools.map(({ id, label, icon: Icon }) => (
