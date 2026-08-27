@@ -239,7 +239,7 @@ function BottomNavCard({
 
   return (
     <div
-      className="relative z-30 flex shrink-0 flex-col overflow-hidden border-t border-white/5 bg-editor-panel transition-[height] duration-300 ease-out"
+      className="relative z-30 flex shrink-0 flex-col overflow-hidden rounded-t-2xl border-t border-white/5 bg-editor-panel shadow-[0_-8px_24px_rgba(0,0,0,0.35)] transition-[height] duration-300 ease-out"
       style={{ height: cardHeight }}
     >
       {/* Elemen ukur tersembunyi: render konten yang akan datang di luar
@@ -2664,12 +2664,13 @@ export default function Editor({
       </div>
       )}
 
-      {/* Toolbar bawah — SATU card nav yang selalu sama (posisi, border,
-          rounded, shadow); yang berubah cuma ISI di dalamnya sesuai
-          konteks (menu utama Media/Audio/Teks, pengaturan Background,
-          Liquid Glass, opacity layer, ganti slot, edit teks). Pergantian
-          isi dianimasikan lewat BottomNavCard: konten lama "turun" keluar,
-          konten baru "naik" masuk — bukan card baru yang muncul/ilang. */}
+      {/* Toolbar bawah — row menu utama (Media/Audio/Teks/Gaya/Urungkan/
+          Ulangi/Preset) POSISINYA TETAP terkunci di paling bawah, gak
+          pernah ikut animasi. Panel kontekstual (pengaturan Background,
+          Liquid Glass, opacity layer, ganti slot, edit teks) di-render
+          sebagai card overlay TERPISAH yang muncul/ganti isi DI ATAS row
+          menu itu (lihat BottomNavCard di bawah) — jadi yang "naik-turun"
+          cuma panelnya sendiri, timeline & row menu utama gak ikut geser. */}
       {!isFullscreen && (() => {
         const panelMode = isBackgroundLayerSelected
           ? "background"
@@ -3128,69 +3129,80 @@ export default function Editor({
                   </button>
                 </div>
               )}
-              {/* Toolbar bawah gaya baru: ikon + label kecil di bawahnya
-                  (Audio, Media, Teks, dst), compact mirip CapCut/VN. */}
-              <div className="flex items-center justify-between gap-1 px-3 pb-3 pt-2">
-                {visibleTools.map(({ id, label, icon: Icon }) => (
-                  <NavAction
-                    key={id}
-                    icon={Icon}
-                    label={label}
-                    active={activeTool === id}
-                    onClick={() => {
-                      setActiveTool(id);
-                      if (id === "media") {
-                        setIsTextMode(false);
-                        setSelectedTextLayerId(null);
-                        setSelectedLayerId(null);
-                        setSelectedAudioClipId(null);
-                        // Sengaja NGGAK langsung setSelectedSlotId di sini —
-                        // itu bikin toolbar "nyasar" ke mode "Ganti Foto".
-                        // Slot beneran dipilih lewat tombol "Ganti Media"
-                        // di atas (activeTool === "media"), sama kayak pola
-                        // tombol "Tambah Audio" buat tool Audio.
-                        setSelectedSlotId(null);
-                      }
-                      if (id === "audio") {
-                        setIsTextMode(false);
-                        setSelectedTextLayerId(null);
-                        setSelectedSlotId(null);
-                        setSelectedLayerId(null);
-                        setSelectedAudioClipId(null);
-                      }
-                      if (id === "text") {
-                        setSelectedSlotId(null);
-                        setSelectedLayerId(null);
-                        setSelectedAudioClipId(null);
-                        setIsTextMode(true);
-                      }
-                      if (id === "progress") {
-                        setIsTextMode(false);
-                        setSelectedTextLayerId(null);
-                        setSelectedSlotId(null);
-                        setSelectedLayerId(null);
-                        setSelectedAudioClipId(null);
-                      }
-                    }}
-                  />
-                ))}
-
-                <NavAction icon={Undo2} label="Urungkan" />
-                <NavAction icon={Redo2} label="Ulangi" />
-                <NavAction
-                  icon={Bookmark}
-                  label="Preset"
-                  onClick={() => setShowPresetPanel(true)}
-                />
-              </div>
             </>
           );
         }
 
+        // Row menu utama (Media/Audio/Teks/Gaya/Urungkan/Ulangi/Preset)
+        // SENGAJA dipisah dari `content` di atas & dirender permanen di luar
+        // BottomNavCard (lihat return di bawah) — biar posisinya TETAP,
+        // gak pernah ikut animasi turun/naik atau geser walau panel
+        // kontekstual (Background, Liquid Glass, opacity layer, ganti slot,
+        // edit teks) lagi kebuka/ganti. Panel kontekstual itu sendiri
+        // di-render sebagai overlay yang "naik" nutupin timeline dari bawah
+        // (absolute, bottom-full), bukan bikin timeline/row menu ikut geser.
         return (
-          <BottomNavCard panelKey={panelMode} height={panelHeight}>
-            {content}
-          </BottomNavCard>
+          <div className="relative z-30 shrink-0">
+            <div className="absolute inset-x-0 bottom-full">
+              <BottomNavCard panelKey={panelMode} height={panelHeight}>
+                {content}
+              </BottomNavCard>
+            </div>
+
+            <div className="flex items-center justify-between gap-1 border-t border-white/5 bg-editor-panel px-3 pb-3 pt-2">
+              {visibleTools.map(({ id, label, icon: Icon }) => (
+                <NavAction
+                  key={id}
+                  icon={Icon}
+                  label={label}
+                  active={activeTool === id}
+                  onClick={() => {
+                    setActiveTool(id);
+                    if (id === "media") {
+                      setIsTextMode(false);
+                      setSelectedTextLayerId(null);
+                      setSelectedLayerId(null);
+                      setSelectedAudioClipId(null);
+                      // Sengaja NGGAK langsung setSelectedSlotId di sini —
+                      // itu bikin toolbar "nyasar" ke mode "Ganti Foto".
+                      // Slot beneran dipilih lewat tombol "Ganti Media"
+                      // di atas (activeTool === "media"), sama kayak pola
+                      // tombol "Tambah Audio" buat tool Audio.
+                      setSelectedSlotId(null);
+                    }
+                    if (id === "audio") {
+                      setIsTextMode(false);
+                      setSelectedTextLayerId(null);
+                      setSelectedSlotId(null);
+                      setSelectedLayerId(null);
+                      setSelectedAudioClipId(null);
+                    }
+                    if (id === "text") {
+                      setSelectedSlotId(null);
+                      setSelectedLayerId(null);
+                      setSelectedAudioClipId(null);
+                      setIsTextMode(true);
+                    }
+                    if (id === "progress") {
+                      setIsTextMode(false);
+                      setSelectedTextLayerId(null);
+                      setSelectedSlotId(null);
+                      setSelectedLayerId(null);
+                      setSelectedAudioClipId(null);
+                    }
+                  }}
+                />
+              ))}
+
+              <NavAction icon={Undo2} label="Urungkan" />
+              <NavAction icon={Redo2} label="Ulangi" />
+              <NavAction
+                icon={Bookmark}
+                label="Preset"
+                onClick={() => setShowPresetPanel(true)}
+              />
+            </div>
+          </div>
         );
       })()}
 
