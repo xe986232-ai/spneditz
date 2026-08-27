@@ -640,17 +640,25 @@ export const TEMPLATES: Template[] = [
     // nge-center dari x ini), jadi dikurangi setengah lebar total grup
     // (barCount*barWidth + (barCount-1)*gap, dikonversi ke % lebar
     // canvas 1080px) supaya tepi KANAN grup pas nempel di 83.7, bukan
-    // titik tengahnya — sebelumnya x=89.5 kebablasan lewat tepi kanan
-    // card.png (card cuma sampai ~88.98%), makanya nongol keluar card.
+    // titik tengahnya — kalau barCount/barWidth/gap diubah, x WAJIB
+    // dihitung ulang pakai rumus yang sama biar nggak nongol keluar card
+    // lagi (lihat riwayat commit fix sebelumnya).
+    //
+    // 6 batang (bukan 4) — PHASE_OFFSETS_SEC & WEIGHTS di render.ts
+    // emang udah disiapin 6 elemen dari awal (masing2 "mengintip" titik
+    // waktu & bobot beda), jadi barCount=6 ini pas manfaatin full variasi
+    // gerakannya, bukan cuma kepotong 4 pertama. barWidth dikecilin
+    // (6->4px) & maxHeight/minHeight dinaikin (30/7 -> 38/9px) biar tiap
+    // batang keliatan lebih ramping & "menjulang", bukan gemuk-pendek.
     // Warna putih redup (bukan putih penuh) sesuai referensi tampilan asli.
     spectrumLayer: {
-      x: 81.9,
+      x: 81.7,
       y: 57.6,
-      barCount: 4,
-      barWidth: 6,
-      gap: 5,
-      maxHeight: 30,
-      minHeight: 7,
+      barCount: 6,
+      barWidth: 4,
+      gap: 4,
+      maxHeight: 38,
+      minHeight: 9,
       color: "rgba(255,255,255,0.55)",
     },
   },
