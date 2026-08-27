@@ -30,6 +30,7 @@ import {
   Sparkles,
   Check,
 } from "lucide-react";
+import ImageCropModal from "./ImageCropModal";
 import { getDominantColor } from "../lib/color";
 import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../types";import {
   parseDurationSec,
@@ -369,6 +370,15 @@ export default function Editor({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingSlotRef = useRef<string | null>(null);
   const exportAbortRef = useRef<AbortController | null>(null);
+  // Foto mentah yang lagi nunggu di-crop user lewat <ImageCropModal> —
+  // null berarti overlay crop lagi ketutup. Diisi begitu user pilih file
+  // baru buat slot bertipe "image" (lihat handleFileChange).
+  const [cropTarget, setCropTarget] = useState<{
+    slotId: string;
+    url: string;
+    targetWidth: number;
+    targetHeight: number;
+  } | null>(null);
 
   // ---- Bottom sheet buat panel "banyak kontrol" (Background & Liquid
   // Glass) — sengaja dipisah dari toolbar bawah biasa dan dirender sebagai
@@ -1564,13 +1574,9 @@ export default function Editor({
     }
   }
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    const slotId = pendingSlotRef.current;
-    e.target.value = "";
-    if (!file || !slotId) return;
-    const url = URL.createObjectURL(file);
-    const entry: SlotMediaEntry = { kind: "file", url, file };
+  // Dipanggil setelah file (langsung, atau hasil crop) siap dipakai —
+  // nyimpen ke slotMedia + auto-sync ke background kalau ini coverSlotId.
+  function applySlotMediaEntry(slotId: string, entry: SlotMediaEntry) {
     setSlotMedia((prev) => ({ ...prev, [slotId]: entry }));
     setSelectedSlotId(null);
     // Foto sampul otomatis dipakai lagi jadi background begitu diganti —
@@ -1581,6 +1587,47 @@ export default function Editor({
       setBackgroundOpacity(100);
       setBackgroundBlur(defaultBackgroundBlurFor(template.id));
     }
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    const slotId = pendingSlotRef.current;
+    e.target.value = "";
+    if (!file || !slotId) return;
+
+    const slot = template.slots.find((s) => s.id === slotId);
+    if (slot?.type === "image") {
+      // Foto -> jangan langsung dipakai, suguhkan overlay crop dulu biar
+      // user bisa atur posisi/zoom sebelum ditempel ke slot (lihat
+      // <ImageCropModal> & handleCropConfirm di bawah).
+      const canvasW = template.canvasWidth ?? 1080;
+      const canvasH = template.canvasHeight ?? 1920;
+      const targetWidth = slot.width ? (slot.width / 100) * canvasW : canvasW;
+      const targetHeight = slot.height ? (slot.height / 100) * canvasH : canvasH;
+      const rawUrl = URL.createObjectURL(file);
+      setCropTarget({ slotId, url: rawUrl, targetWidth, targetHeight });
+      return;
+    }
+
+    // Video/audio tetap langsung dipakai seperti sebelumnya (gak ada
+    // konsep "crop" buat itu).
+    const url = URL.createObjectURL(file);
+    applySlotMediaEntry(slotId, { kind: "file", url, file });
+  }
+
+  function handleCropConfirm(blob: Blob) {
+    if (!cropTarget) return;
+    const { slotId, url: rawUrl } = cropTarget;
+    const croppedFile = new File([blob], "sampul-crop.jpg", { type: "image/jpeg" });
+    const url = URL.createObjectURL(croppedFile);
+    URL.revokeObjectURL(rawUrl);
+    applySlotMediaEntry(slotId, { kind: "file", url, file: croppedFile });
+    setCropTarget(null);
+  }
+
+  function handleCropCancel() {
+    if (cropTarget) URL.revokeObjectURL(cropTarget.url);
+    setCropTarget(null);
   }
 
   function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
@@ -1922,6 +1969,18 @@ export default function Editor({
         className="hidden"
         onChange={handleFileChange}
       />
+
+      {/* Overlay crop foto sampul — muncul begitu user pilih file baru
+          buat slot bertipe image (lihat handleFileChange). */}
+      {cropTarget && (
+        <ImageCropModal
+          imageUrl={cropTarget.url}
+          targetWidth={cropTarget.targetWidth}
+          targetHeight={cropTarget.targetHeight}
+          onConfirm={handleCropConfirm}
+          onCancel={handleCropCancel}
+        />
+      )}
 
       {/* Timeline — bisa digeser horizontal (overflow-x-auto) & tingginya
           bisa di-drag naik/turun (overflow-y-auto di dalam), di-hide pas
