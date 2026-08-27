@@ -623,6 +623,9 @@ export const TEMPLATES: Template[] = [
       fontSize: 30,
       fontWeight: 500,
       color: "rgba(255,255,255,0.7)",
+      // Angka kanan ikut gerak (mundur "-M:SS" tiap detik) bukan total
+      // durasi diam, sesuai gaya Apple Music/Spotify.
+      countdown: true,
     },
     progressLayer: {
       x1: 16.2,

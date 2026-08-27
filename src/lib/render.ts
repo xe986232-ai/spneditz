@@ -186,8 +186,14 @@ export function drawTextLayers(
   }
 }
 
-/** Gambar label durasi berjalan (kiri) & total (kanan) — SELALU dari
- *  currentSec/totalSec asli (audio), tidak pernah dari input user. */
+/** Gambar label durasi berjalan (kiri) & total/sisa (kanan) — SELALU dari
+ *  currentSec/totalSec asli (audio), tidak pernah dari input user.
+ *
+ *  Teks kanan defaultnya nampilin TOTAL durasi (diam/statis, gak ikut
+ *  gerak playhead). Kalau durationLayer.countdown = true, teks kanan
+ *  diganti jadi SISA waktu (mundur turun tiap detik, format "-M:SS",
+ *  nyampe "-0:00" pas lagu abis) — mirip gaya Apple Music/Spotify,
+ *  bukan angka mati. */
 export function drawDurationLayer(
   ctx: CanvasRenderingContext2D,
   canvasW: number,
@@ -212,9 +218,13 @@ export function drawDurationLayer(
     (durationLayer.currentY / 100) * canvasH,
   );
 
+  const rightText = durationLayer.countdown
+    ? `-${formatClock(Math.max(0, totalSec - currentSec))}`
+    : formatClock(totalSec);
+
   ctx.textAlign = "right";
   ctx.fillText(
-    formatClock(totalSec),
+    rightText,
     (durationLayer.totalX / 100) * canvasW,
     (durationLayer.totalY / 100) * canvasH,
   );

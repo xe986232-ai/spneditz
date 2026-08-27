@@ -134,6 +134,11 @@ export interface TemplateDurationLayer {
   fontSize: number;
   fontWeight?: number;
   color?: string;
+  /** Kalau true, teks KANAN nampilin SISA waktu yang "ikut gerak" (mundur,
+   *  format "-M:SS", turun terus tiap detik) — bukan total durasi lagu
+   *  yang diam/statis. Mirip gaya Apple Music/Spotify. Default false
+   *  (perilaku lama: kanan = total durasi tetap). */
+  countdown?: boolean;
 }
 
 /** Garis putih di atas progressbar.png (yang cuma track abu-abu diam) —
