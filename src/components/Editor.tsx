@@ -114,6 +114,39 @@ const SLOT_SHORT_LABEL: Record<SlotType, string> = {
   audio: "Audio",
 };
 
+// Tombol nav generik — ikon di atas, label kecil di bawah, ukuran & style
+// SAMA PERSIS kayak toolbar utama (Media/Audio/Teks/Urungkan/dst). Dipakai
+// juga di semua toolbar kontekstual (Ganti Foto, Selesai, Reset, Batal,
+// dst) biar begitu menu utama "disembunyikan" & diganti menu lain, style-nya
+// tetap konsisten satu sama lain — bukan bikin tampilan/bar baru yang beda.
+function NavAction({
+  icon: Icon,
+  label,
+  active = false,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl transition active:scale-90 ${
+        active
+          ? "bg-editor-accent/20 text-editor-accent"
+          : "text-paper/55 hover:text-paper"
+      }`}
+      title={label}
+      aria-label={label}
+    >
+      <Icon size={20} strokeWidth={active ? 2.2 : 1.8} />
+      <span className="text-[9px] font-medium leading-none">{label}</span>
+    </button>
+  );
+}
+
 // ID khusus (bukan decorLayer beneran dari template) buat nandain track
 // "Background" di timeline — dipakai bareng selectedLayerId yang sama
 // biar reuse UI seleksi track yang sudah ada.
@@ -2425,27 +2458,12 @@ export default function Editor({
           style={{ height: sheetHeight }}
         >
           <SheetDragHandle />
-          <div className="flex shrink-0 items-center gap-3 px-3 pb-2.5">
-            <button
-              onClick={() => setSelectedLayerId(null)}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
-              title="Selesai"
-            >
-              <X size={18} />
-            </button>
-            <span className="flex-1 text-xs font-semibold text-paper">
+          <div className="shrink-0 px-3 pb-2">
+            <span className="text-xs font-semibold text-paper">
               Pengaturan Background
             </span>
-            <button
-              onClick={handleResetBackground}
-              className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-mute transition hover:text-paper"
-              title="Kembalikan background asli"
-            >
-              <RotateCcw size={12} />
-              Reset
-            </button>
           </div>
-          <div className="flex flex-col gap-4 overflow-y-auto px-3 pb-4">
+          <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 pb-2">
             <div className="flex items-center gap-3">
               <span className="w-14 shrink-0 text-xs font-medium text-paper">
                 Opacity
@@ -2485,6 +2503,10 @@ export default function Editor({
               </span>
             </div>
           </div>
+          <div className="flex shrink-0 items-center justify-center gap-6 border-t border-white/5 px-3 pb-3 pt-2">
+            <NavAction icon={X} label="Selesai" onClick={() => setSelectedLayerId(null)} />
+            <NavAction icon={RotateCcw} label="Reset" onClick={handleResetBackground} />
+          </div>
         </div>
       ) : selectedLayer?.liquidGlass ? (
         (() => {
@@ -2508,30 +2530,13 @@ export default function Editor({
               style={{ height: sheetHeight }}
             >
               <SheetDragHandle />
-              <div className="flex shrink-0 items-center gap-3 px-3 pb-2.5">
-                <button
-                  onClick={() => setSelectedLayerId(null)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
-                  title="Selesai"
-                >
-                  <X size={18} />
-                </button>
-                <span className="flex-1 truncate text-xs font-semibold text-paper">
+              <div className="shrink-0 px-3 pb-2">
+                <span className="truncate text-xs font-semibold text-paper">
                   Pengaturan Kaca — {layer.label}
                 </span>
-                <button
-                  onClick={() =>
-                    setGlassSettings((prev) => ({ ...prev, [layer.id]: {} }))
-                  }
-                  className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-mute transition hover:text-paper"
-                  title="Kembalikan default"
-                >
-                  <RotateCcw size={12} />
-                  Reset
-                </button>
               </div>
 
-              <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 pb-4">
+              <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 pb-2">
                 {/* Opacity layer (sama seperti layer biasa) */}
                 <div className="flex items-center gap-3">
                   <span className="w-24 shrink-0 text-xs font-medium text-paper">
@@ -2707,19 +2712,23 @@ export default function Editor({
                   </span>
                 </label>
               </div>
+
+              <div className="flex shrink-0 items-center justify-center gap-6 border-t border-white/5 px-3 pb-3 pt-2">
+                <NavAction icon={X} label="Selesai" onClick={() => setSelectedLayerId(null)} />
+                <NavAction
+                  icon={RotateCcw}
+                  label="Reset"
+                  onClick={() =>
+                    setGlassSettings((prev) => ({ ...prev, [layer.id]: {} }))
+                  }
+                />
+              </div>
             </div>
           );
         })()
       ) : selectedLayer ? (
-        <div className="flex shrink-0 items-center gap-3 border-t border-mute/10 bg-panel px-3 py-2.5">
-          <button
-            onClick={() => setSelectedLayerId(null)}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
-            title="Selesai"
-          >
-            <X size={18} />
-          </button>
-          <div className="flex flex-1 items-center gap-3">
+        <div className="flex shrink-0 flex-col border-t border-white/5 bg-editor-panel">
+          <div className="flex items-center gap-3 px-3 pb-2 pt-2.5">
             <span className="shrink-0 text-xs font-medium text-paper">
               Opacity
             </span>
@@ -2743,37 +2752,32 @@ export default function Editor({
               {Math.round(layerOpacity[selectedLayer.id] ?? selectedLayer.opacity ?? 100)}%
             </span>
           </div>
+          <div className="flex items-center justify-center gap-1 px-3 pb-3 pt-1">
+            <NavAction icon={X} label="Selesai" onClick={() => setSelectedLayerId(null)} />
+          </div>
         </div>
       ) : selectedSlot ? (
-        <div className="flex shrink-0 items-center gap-2 border-t border-mute/10 bg-panel px-3 py-2">
-          <button
-            onClick={() => {
-              setSelectedSlotId(null);
-              setSelectedAudioClipId(null);
-            }}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
-            title="Batal"
-          >
-            <X size={18} />
-          </button>
-          <button
-            onClick={() => openPicker(selectedSlot)}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-paper/40 px-3 py-2.5 text-xs font-semibold text-paper transition active:scale-95"
-          >
-            <RefreshCcw size={15} />
-            Ganti {SLOT_SHORT_LABEL[selectedSlot.type]}
-          </button>
+        <div className="flex shrink-0 flex-col border-t border-white/5 bg-editor-panel">
+          <div className="flex items-center justify-center gap-6 px-3 pb-3 pt-2">
+            <NavAction
+              icon={X}
+              label="Batal"
+              onClick={() => {
+                setSelectedSlotId(null);
+                setSelectedAudioClipId(null);
+              }}
+            />
+            <NavAction
+              icon={RefreshCcw}
+              label={`Ganti ${SLOT_SHORT_LABEL[selectedSlot.type]}`}
+              active
+              onClick={() => openPicker(selectedSlot)}
+            />
+          </div>
         </div>
       ) : selectedTextLayer ? (
-        <div className="flex shrink-0 items-center gap-3 border-t border-mute/10 bg-panel px-3 py-2.5">
-          <button
-            onClick={() => setSelectedTextLayerId(null)}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-mute transition hover:bg-graphite hover:text-paper active:scale-95"
-            title="Selesai"
-          >
-            <X size={18} />
-          </button>
-          <label className="flex flex-1 flex-col gap-1">
+        <div className="flex shrink-0 flex-col border-t border-white/5 bg-editor-panel">
+          <div className="flex flex-col gap-1 px-3 pb-2 pt-2.5">
             <span className="text-[10px] font-medium text-mute">
               {selectedTextLayer.label}
             </span>
@@ -2791,7 +2795,10 @@ export default function Editor({
               placeholder={selectedTextLayer.defaultText}
               className="w-full rounded-lg border border-mute/20 bg-graphite px-3 py-2 text-sm text-paper outline-none transition focus:border-paper/50"
             />
-          </label>
+          </div>
+          <div className="flex items-center justify-center gap-1 px-3 pb-3 pt-1">
+            <NavAction icon={X} label="Selesai" onClick={() => setSelectedTextLayerId(null)} />
+          </div>
         </div>
       ) : (
         <div className="flex shrink-0 flex-col border-t border-white/5 bg-editor-panel">
@@ -2895,89 +2902,59 @@ export default function Editor({
               Undo/Redo/Preset dipindah ke sini dari top bar biar top
               bar tetap bersih. */}
           <div className="flex items-center justify-between gap-1 px-3 pb-3 pt-2">
-            {visibleTools.map(({ id, label, icon: Icon }) => {
-              const active = activeTool === id;
-              return (
-                <button
-                  key={id}
-                  onClick={() => {
-                    setActiveTool(id);
-                    if (id === "media") {
-                      setIsTextMode(false);
-                      setSelectedTextLayerId(null);
-                      setSelectedLayerId(null);
-                      setSelectedAudioClipId(null);
-                      // Sengaja NNGGAK langsung setSelectedSlotId di sini —
-                      // itu bikin toolbar "nyasar" ke mode "Ganti Foto"
-                      // (nav Media/Audio/Teks ikut ilang/ketutupan).
-                      // Slot beneran dipilih lewat tombol "Ganti Media"
-                      // di bawah nav (lihat activeTool === "media" di
-                      // panel bawah), sama kayak pola tombol "Tambah
-                      // Audio" buat tool Audio.
-                      setSelectedSlotId(null);
-                    }
-                    if (id === "audio") {
-                      setIsTextMode(false);
-                      setSelectedTextLayerId(null);
-                      setSelectedSlotId(null);
-                      setSelectedLayerId(null);
-                      setSelectedAudioClipId(null);
-                    }
-                    if (id === "text") {
-                      setSelectedSlotId(null);
-                      setSelectedLayerId(null);
-                      setSelectedAudioClipId(null);
-                      setIsTextMode(true);
-                    }
-                    if (id === "progress") {
-                      setIsTextMode(false);
-                      setSelectedTextLayerId(null);
-                      setSelectedSlotId(null);
-                      setSelectedLayerId(null);
-                      setSelectedAudioClipId(null);
-                    }
-                  }}
-                  className={`flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl transition active:scale-90 ${
-                    active
-                      ? "bg-editor-accent/20 text-editor-accent"
-                      : "text-paper/55 hover:text-paper"
-                  }`}
-                  title={label}
-                  aria-label={label}
-                >
-                  <Icon size={20} strokeWidth={active ? 2.2 : 1.8} />
-                  <span className="text-[9px] font-medium leading-none">
-                    {label}
-                  </span>
-                </button>
-              );
-            })}
+            {visibleTools.map(({ id, label, icon: Icon }) => (
+              <NavAction
+                key={id}
+                icon={Icon}
+                label={label}
+                active={activeTool === id}
+                onClick={() => {
+                  setActiveTool(id);
+                  if (id === "media") {
+                    setIsTextMode(false);
+                    setSelectedTextLayerId(null);
+                    setSelectedLayerId(null);
+                    setSelectedAudioClipId(null);
+                    // Sengaja NNGGAK langsung setSelectedSlotId di sini —
+                    // itu bikin toolbar "nyasar" ke mode "Ganti Foto"
+                    // (nav Media/Audio/Teks ikut ilang/ketutupan).
+                    // Slot beneran dipilih lewat tombol "Ganti Media"
+                    // di bawah nav (lihat activeTool === "media" di
+                    // panel bawah), sama kayak pola tombol "Tambah
+                    // Audio" buat tool Audio.
+                    setSelectedSlotId(null);
+                  }
+                  if (id === "audio") {
+                    setIsTextMode(false);
+                    setSelectedTextLayerId(null);
+                    setSelectedSlotId(null);
+                    setSelectedLayerId(null);
+                    setSelectedAudioClipId(null);
+                  }
+                  if (id === "text") {
+                    setSelectedSlotId(null);
+                    setSelectedLayerId(null);
+                    setSelectedAudioClipId(null);
+                    setIsTextMode(true);
+                  }
+                  if (id === "progress") {
+                    setIsTextMode(false);
+                    setSelectedTextLayerId(null);
+                    setSelectedSlotId(null);
+                    setSelectedLayerId(null);
+                    setSelectedAudioClipId(null);
+                  }
+                }}
+              />
+            ))}
 
-            <button
-              className="flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl text-paper/55 transition hover:text-paper active:scale-90"
-              title="Urungkan"
-              aria-label="Urungkan"
-            >
-              <Undo2 size={20} strokeWidth={1.8} />
-              <span className="text-[9px] font-medium leading-none">Urungkan</span>
-            </button>
-            <button
-              className="flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl text-paper/55 transition hover:text-paper active:scale-90"
-              title="Ulangi"
-              aria-label="Ulangi"
-            >
-              <Redo2 size={20} strokeWidth={1.8} />
-              <span className="text-[9px] font-medium leading-none">Ulangi</span>
-            </button>
-            <button
+            <NavAction icon={Undo2} label="Urungkan" />
+            <NavAction icon={Redo2} label="Ulangi" />
+            <NavAction
+              icon={Bookmark}
+              label="Preset"
               onClick={() => setShowPresetPanel(true)}
-              className="flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl text-paper/55 transition hover:text-paper active:scale-90"
-              title="Preset"
-              aria-label="Preset"
-            >
-              <Bookmark size={20} strokeWidth={1.8} />
-              <span className="text-[9px] font-medium leading-none">Preset</span>
-            </button>
+            />
           </div>
         </div>
       ))}
