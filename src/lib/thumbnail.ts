@@ -4,6 +4,7 @@ import {
   drawImageCoverZoomed,
   drawProgressFill,
   drawWaveformProgress,
+  drawSpectrumIndicator,
   drawDurationLayer,
   drawTextLayers,
   roundRectPath,
@@ -246,6 +247,20 @@ export async function renderTemplateThumbnail(
     } else {
       drawProgressFill(ctx, canvasW, canvasH, template.progressLayer, currentSec, DURATION);
     }
+  }
+  // Ikon spectrum/equalizer kecil di dekat judul — selalu digambar di
+  // thumbnail (pakai peaks palsu yang sama seperti mode "waveform" di
+  // atas) biar konsisten kelihatan "lagi jalan" kayak elemen lain.
+  if (template.spectrumLayer) {
+    drawSpectrumIndicator(
+      ctx,
+      canvasW,
+      canvasH,
+      template.spectrumLayer,
+      currentSec,
+      DURATION,
+      fakeWaveformPeaks(),
+    );
   }
 
   // Tanpa cropYRange: langsung export full canvas kayak sebelumnya.

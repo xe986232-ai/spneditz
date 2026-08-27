@@ -151,6 +151,34 @@ export interface TemplateProgressLayer {
   color?: string;
 }
 
+/** Ikon "spectrum"/equalizer kecil (mirip indikator "Now Playing" di iOS)
+ *  — beberapa batang vertikal pendek yang naik-turun ngikutin ENERGI AUDIO
+ *  ASLI (bassPeaks) di posisi currentSec, biasanya ditaruh nempel di
+ *  sebelah kanan judul lagu. BEDA dari progressLayer/mode "waveform
+ *  berjalan": itu representasi SELURUH rentang lagu di sepanjang track
+ *  progress, ini cuma indikator kecil "lagu lagi diputar" yang nunjukin
+ *  level energi SAAT INI doang (posisinya independen, di dekat judul,
+ *  bukan di track progress) — dan selalu jalan otomatis, tidak ikut
+ *  toggle gaya progress "Standar"/"Waveform berjalan". Opsional —
+ *  template lama tanpa ini tetap jalan seperti biasa. */
+export interface TemplateSpectrumLayer {
+  /** Posisi titik tengah horizontal ikon, PERSEN relatif canvasWidth. */
+  x: number;
+  /** Posisi titik tengah vertikal ikon, PERSEN relatif canvasHeight. */
+  y: number;
+  /** Jumlah batang, default 4 (mirip ikon Now Playing asli). */
+  barCount?: number;
+  /** Lebar tiap batang, px skala canvas asli (1080x1920). */
+  barWidth?: number;
+  /** Jarak antar batang, px skala canvas asli. */
+  gap?: number;
+  /** Tinggi maksimum batang (energi audio penuh), px skala canvas asli. */
+  maxHeight?: number;
+  /** Tinggi minimum batang (energi nol/diam), px skala canvas asli. */
+  minHeight?: number;
+  color?: string;
+}
+
 export interface Template {
   id: string;
   name: string;
@@ -194,4 +222,8 @@ export interface Template {
    *  ditumpuk di atas progressbar.png (track abu-abu statis). Opsional —
    *  template lama tanpa ini tetap jalan seperti biasa. */
   progressLayer?: TemplateProgressLayer;
+  /** Ikon spectrum/equalizer kecil di dekat judul, animasinya ngikutin
+   *  energi audio asli (lihat drawSpectrumIndicator di lib/render.ts).
+   *  Opsional — template lama tanpa ini tetap jalan seperti biasa. */
+  spectrumLayer?: TemplateSpectrumLayer;
 }

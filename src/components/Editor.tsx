@@ -45,6 +45,7 @@ import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../t
   drawDurationLayer,
   drawProgressFill,
   drawWaveformProgress,
+  drawSpectrumIndicator,
   ImageCache,
 } from "../lib/render";
 import type { SlotMediaEntry } from "../lib/render";
@@ -1172,6 +1173,20 @@ export default function Editor({
           DURATION,
         );
       }
+    }
+    // Ikon spectrum/equalizer kecil di dekat judul — SELALU jalan otomatis
+    // (tidak ikut toggle progressStyle "Standar"/"Waveform berjalan"),
+    // beda posisi & beda maksud dari progressLayer di atas.
+    if (template.spectrumLayer && !hiddenElements.has("spectrumLayer")) {
+      drawSpectrumIndicator(
+        ctx,
+        canvasW,
+        canvasH,
+        template.spectrumLayer,
+        currentSec,
+        DURATION,
+        audioInfo?.bassPeaks?.length ? audioInfo.bassPeaks : FALLBACK_PEAKS,
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [

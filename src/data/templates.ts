@@ -631,5 +631,21 @@ export const TEMPLATES: Template[] = [
       thickness: 18,
       color: "#FFFFFF",
     },
+    // Ikon spectrum/equalizer kecil di kanan judul (mirip indikator
+    // "Now Playing" iOS) — animasinya ngikutin energi audio asli
+    // (lihat drawSpectrumIndicator di lib/render.ts). Posisi disejajarkan
+    // ke baris judul (title.y = 57.47), nempel di tepi kanan yang sama
+    // dengan ujung kanan progress bar/total durasi (x ~83.7) biar rapi.
+    // Warna putih redup (bukan putih penuh) sesuai referensi tampilan asli.
+    spectrumLayer: {
+      x: 89.5,
+      y: 57.6,
+      barCount: 4,
+      barWidth: 6,
+      gap: 5,
+      maxHeight: 30,
+      minHeight: 7,
+      color: "rgba(255,255,255,0.55)",
+    },
   },
 ];

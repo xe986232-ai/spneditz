@@ -3,6 +3,7 @@ import type {
   TemplateTextLayer,
   TemplateDurationLayer,
   TemplateProgressLayer,
+  TemplateSpectrumLayer,
 } from "../types";
 import {
   drawImageCoverZoomed,
@@ -10,6 +11,7 @@ import {
   drawDurationLayer,
   drawProgressFill,
   drawWaveformProgress,
+  drawSpectrumIndicator,
 } from "./render";
 import type { LayerOpacityState, TextValueState } from "./render";
 
@@ -75,6 +77,10 @@ export async function compositeLayers(
     // diisi (backward-compatible, reusable untuk template manapun).
     progressStyle?: "bar" | "waveform";
     peaks?: number[];
+    // Ikon spectrum/equalizer kecil di dekat judul — SELALU digambar
+    // (tidak ikut progressStyle) kalau template-nya punya spectrumLayer
+    // dan ada data peaks (bassPeaks ideal, sama seperti waveform).
+    spectrumLayer?: TemplateSpectrumLayer;
   },
 ): Promise<Blob> {
   const canvas = document.createElement("canvas");
@@ -146,6 +152,17 @@ export async function compositeLayers(
         durationOverride.totalSec,
       );
     }
+  }
+  if (durationOverride?.spectrumLayer && durationOverride.peaks?.length) {
+    drawSpectrumIndicator(
+      ctx,
+      canvasW,
+      canvasH,
+      durationOverride.spectrumLayer,
+      durationOverride.currentSec,
+      durationOverride.totalSec,
+      durationOverride.peaks,
+    );
   }
 
   return canvasToBlob(canvas, opaque ? "image/jpeg" : "image/png", opaque ? 0.92 : undefined);

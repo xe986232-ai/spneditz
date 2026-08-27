@@ -32,6 +32,7 @@ import {
   drawDurationLayer,
   drawProgressFill,
   drawWaveformProgress,
+  drawSpectrumIndicator,
   getAudioDuration,
 } from "./render";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
@@ -564,6 +565,20 @@ export async function exportTemplateVideoWebCodecs(
       } else {
         drawProgressFill(ctx, canvasW, canvasH, template.progressLayer, currentSec, totalDurationForMux);
       }
+    }
+    // Ikon spectrum/equalizer kecil di dekat judul — SELALU digambar
+    // (tidak ikut progressStyle "Standar"/"Waveform berjalan") kalau
+    // template-nya punya spectrumLayer & ada data peaks audio asli.
+    if (template.spectrumLayer && peaks?.length) {
+      drawSpectrumIndicator(
+        ctx,
+        canvasW,
+        canvasH,
+        template.spectrumLayer,
+        currentSec,
+        totalDurationForMux,
+        peaks,
+      );
     }
 
     const videoFrame = new VideoFrame(frameCanvas, {

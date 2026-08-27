@@ -4,6 +4,7 @@ import type {
   TemplateTextLayer,
   TemplateDurationLayer,
   TemplateProgressLayer,
+  TemplateSpectrumLayer,
 } from "../types";
 
 /** "0:15" -> 15, "1:05" -> 65 */
@@ -410,7 +411,80 @@ function sampleWaveformValue(
   return maxVal;
 }
 
+/** Ikon spectrum/equalizer kecil (indikator "lagu lagi diputar", biasanya
+ *  ditaruh nempel di sebelah judul) — beberapa batang pendek yang
+ *  tingginya ngikutin energi audio ASLI (bassPeaks) di SEKITAR
+ *  currentSec. BEDA dari drawWaveformProgress: itu representasi
+ *  rentang/jendela lagu di sepanjang track progress, ini cuma indikator
+ *  kecil di posisi sendiri (independen dari progressLayer) yang SELALU
+ *  jalan otomatis, terlepas dari gaya progress "Standar"/"Waveform
+ *  berjalan" dipilih atau tidak.
+ *
+ *  Tiap batang sengaja "mengintip" titik waktu yang beda-beda dikit
+ *  (phase offset kecil, lihat PHASE_OFFSETS_SEC) supaya gerakannya
+ *  kelihatan kayak beberapa band frekuensi independen (mirip equalizer
+ *  asli/Now Playing indicator iOS), bukan cuma satu nilai energi yang
+ *  digandakan rata ke semua batang.
+ *
+ *  Fungsi MURNI dari currentSec (bukan Date.now()) — sama prinsipnya
+ *  kayak drawWaveformProgress — supaya preview & hasil export identik
+ *  frame demi frame, bukan random/berbeda tiap render. */
+export function drawSpectrumIndicator(
+  ctx: CanvasRenderingContext2D,
+  canvasW: number,
+  canvasH: number,
+  spectrumLayer: TemplateSpectrumLayer,
+  currentSec: number,
+  totalSec: number,
+  peaks: number[],
+) {
+  if (!peaks.length || totalSec <= 0) return;
 
+  const barCount = Math.max(1, spectrumLayer.barCount ?? 4);
+  const barW = spectrumLayer.barWidth ?? 6;
+  const gap = spectrumLayer.gap ?? 5;
+  const maxH = spectrumLayer.maxHeight ?? 26;
+  const minH = spectrumLayer.minHeight ?? 6;
+  const color = spectrumLayer.color ?? "#FFFFFF";
+
+  const cx = (spectrumLayer.x / 100) * canvasW;
+  const cy = (spectrumLayer.y / 100) * canvasH;
+  const totalW = barCount * barW + (barCount - 1) * gap;
+  const startX = cx - totalW / 2;
+
+  const idxPerSec = peaks.length / totalSec;
+
+  // Phase offset kecil per-batang (detik) — tiap batang "mengintip" titik
+  // waktu yang beda dikit di sekitar currentSec, jadi gerakannya gak
+  // sinkron sempurna (tiap "band" punya dinamika sendiri) — bukan cuma
+  // satu nilai energi yang digandakan ke semua batang. Dipilih manual
+  // (tidak simetris/berpola jelas) biar variasinya terasa natural.
+  const PHASE_OFFSETS_SEC = [-0.09, 0.05, -0.02, 0.11, -0.14, 0.08];
+  // "Bobot" tiap batang — nyimulasiin band frekuensi beda sensitivitas
+  // (biar nggak semua batang naik-turun sama persis/monoton).
+  const WEIGHTS = [0.75, 1, 0.85, 0.6, 0.9, 0.7];
+
+  ctx.save();
+  ctx.fillStyle = color;
+  for (let i = 0; i < barCount; i++) {
+    const phase = PHASE_OFFSETS_SEC[i % PHASE_OFFSETS_SEC.length];
+    const weight = WEIGHTS[i % WEIGHTS.length];
+    const sampleSec = Math.max(0, Math.min(totalSec, currentSec + phase));
+    const idx = sampleSec * idxPerSec;
+    const idxStart = Math.max(0, idx - idxPerSec * 0.05);
+    const idxEnd = Math.min(peaks.length, idx + idxPerSec * 0.05);
+    const value = sampleWaveformValue(
+      peaks,
+      idxStart,
+      Math.max(idxStart + 0.001, idxEnd),
+    );
+    const barH = minH + Math.min(1, value * weight) * (maxH - minH);
+    const x = startX + i * (barW + gap);
+    roundRectPath(ctx, x, cy - barH / 2, barW, barH, barW / 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
 
 /** Baca durasi asli file/url audio (detik), dipakai supaya panjang video
  *  bisa otomatis ikut panjang lagu yang diupload user, bukan durasi
