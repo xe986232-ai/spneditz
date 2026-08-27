@@ -371,13 +371,14 @@ export default function Editor({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingSlotRef = useRef<string | null>(null);
   const exportAbortRef = useRef<AbortController | null>(null);
-  // Nyimpen foto ASLI (sebelum di-crop) per slotId, biar tombol "Crop"
-  // di toolbar SELALU mulai dari sumber originalnya — bukan numpuk crop
-  // di atas hasil crop sebelumnya (kalau enggak, tiap crop ulang area
-  // foto makin sempit & makin turun kualitasnya). Pakai ref (bukan state)
-  // karena isinya cuma dibaca pas user pencet "Crop", gak perlu bikin
-  // komponen re-render tiap kali diisi.
-  const originalSlotMediaRef = useRef<Record<string, SlotMediaEntry>>({});
+  // Nyimpen FILE ASLI (sebelum di-crop) per slotId — BUKAN url-nya —
+  // biar tombol "Crop" selalu mulai dari sumber originalnya (bukan
+  // numpuk crop di atas hasil crop sebelumnya). Sengaja simpen File
+  // (bukan object URL) terus bikin object URL BARU tiap kali overlay
+  // crop dibuka: nyimpen url lama-lama itu rawan jadi "basi"/invalid di
+  // sebagian browser (terutama HP begitu tab di-background), sedangkan
+  // File-nya sendiri aman disimpen selama masih ada referensinya di JS.
+  const originalFileRef = useRef<Record<string, File>>({});
   // Foto yang lagi nunggu di-crop user lewat <ImageCropModal> — null
   // berarti overlay crop lagi ketutup. Diisi begitu user pilih file baru
   // ATAU pencet tombol "Crop" buat foto yang udah ada (lihat
@@ -387,11 +388,12 @@ export default function Editor({
     url: string;
     targetWidth: number;
     targetHeight: number;
-    // Diisi kalau sesi crop ini berasal dari file BARU yang baru dipilih
-    // user (belum pernah tersimpan sebagai "original" slot ini). Dipakai
-    // di handleCropConfirm buat nyimpen file ini sebagai original, dan di
-    // handleCropCancel buat tau aman-gaknya di-revoke kalau user batal.
-    rawFile?: File;
+    // Diisi kalau url di atas adalah object URL yang BARU dibikin dari
+    // File (baik upload baru maupun recrop dari originalFileRef) — jadi
+    // WAJIB di-revoke begitu sesi crop ini selesai (confirm/batal), beda
+    // dari sample remote (https://...) yang bukan blob & gak perlu/gak
+    // boleh di-revoke.
+    file?: File;
   } | null>(null);
 
   // ---- Bottom sheet buat panel "banyak kontrol" (Background & Liquid
@@ -1603,6 +1605,19 @@ export default function Editor({
     }
   }
 
+  // Buka overlay crop dari sebuah File — SELALU bikin object URL baru
+  // (bukan makai url lama yang mungkin udah basi), dipakai baik buat
+  // upload baru maupun recrop dari originalFileRef.
+  function openCropWithFile(
+    slotId: string,
+    file: File,
+    targetWidth: number,
+    targetHeight: number,
+  ) {
+    const url = URL.createObjectURL(file);
+    setCropTarget({ slotId, url, targetWidth, targetHeight, file });
+  }
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     const slotId = pendingSlotRef.current;
@@ -1613,15 +1628,12 @@ export default function Editor({
     if (slot?.type === "image") {
       // Foto -> jangan langsung dipakai, suguhkan overlay crop dulu biar
       // user bisa atur posisi/zoom sebelum ditempel ke slot (lihat
-      // <ImageCropModal> & handleCropConfirm di bawah). File ASLI-nya
-      // (rawFile) dibawa serta di cropTarget, biar begitu crop di-confirm
-      // langsung kesimpen sebagai "original" buat slot ini.
+      // <ImageCropModal> & handleCropConfirm di bawah).
       const canvasW = template.canvasWidth ?? 1080;
       const canvasH = template.canvasHeight ?? 1920;
       const targetWidth = slot.width ? (slot.width / 100) * canvasW : canvasW;
       const targetHeight = slot.height ? (slot.height / 100) * canvasH : canvasH;
-      const rawUrl = URL.createObjectURL(file);
-      setCropTarget({ slotId, url: rawUrl, targetWidth, targetHeight, rawFile: file });
+      openCropWithFile(slotId, file, targetWidth, targetHeight);
       return;
     }
 
@@ -1633,51 +1645,60 @@ export default function Editor({
 
   // Buka overlay crop buat foto yang UDAH kepake di slot (dipicu dari
   // tombol "Crop" di toolbar slot terpilih) — beda dari handleFileChange
-  // yang crop foto BARU. SELALU balik ke foto ORIGINAL (sebelum di-crop)
-  // yang tersimpan di originalSlotMediaRef kalau ada, biar crop ulang gak
+  // yang crop foto BARU. SELALU balik ke File ORIGINAL (sebelum di-crop)
+  // yang tersimpan di originalFileRef kalau ada, biar crop ulang gak
   // numpuk di atas hasil crop sebelumnya (area makin sempit & pecah tiap
   // di-crop lagi). Fallback ke media yang lagi aktif kalau belum pernah
-  // ada crop sebelumnya di slot ini (misal masih foto sample bawaan).
+  // ada crop sebelumnya di slot ini (misal masih foto sample bawaan dari
+  // Firebase/Unsplash — itu URL remote biasa, bukan blob, jadi aman
+  // dipakai langsung tanpa perlu bikin object URL baru).
   function handleOpenCropForSlot(slot: TemplateSlot) {
-    const source = originalSlotMediaRef.current[slot.id] ?? slotMedia[slot.id];
-    if (!source) return;
     const canvasW = template.canvasWidth ?? 1080;
     const canvasH = template.canvasHeight ?? 1920;
     const targetWidth = slot.width ? (slot.width / 100) * canvasW : canvasW;
     const targetHeight = slot.height ? (slot.height / 100) * canvasH : canvasH;
-    setCropTarget({ slotId: slot.id, url: source.url, targetWidth, targetHeight });
+
+    const originalFile = originalFileRef.current[slot.id];
+    if (originalFile) {
+      openCropWithFile(slot.id, originalFile, targetWidth, targetHeight);
+      return;
+    }
+
+    const current = slotMedia[slot.id];
+    if (!current) return;
+    if (current.file) {
+      openCropWithFile(slot.id, current.file, targetWidth, targetHeight);
+    } else {
+      // Sample remote (kind: "sample") — url https:// biasa, bukan blob.
+      setCropTarget({ slotId: slot.id, url: current.url, targetWidth, targetHeight });
+    }
   }
 
   function handleCropConfirm(blob: Blob) {
     if (!cropTarget) return;
-    const { slotId, url: sourceUrl, rawFile } = cropTarget;
+    const { slotId, url: sessionUrl, file: sourceFile } = cropTarget;
     const croppedFile = new File([blob], "sampul-crop.jpg", { type: "image/jpeg" });
     const url = URL.createObjectURL(croppedFile);
 
-    if (rawFile) {
-      // Upload BARU -> jadiin foto ini "original" buat slot ini. Kalau
-      // sebelumnya udah ada original lain tersimpan (upload sebelum ini),
-      // lepas dulu URL lamanya biar gak numpuk sampah di memory.
-      const prevOriginal = originalSlotMediaRef.current[slotId];
-      if (prevOriginal?.kind === "file" && prevOriginal.url !== sourceUrl) {
-        URL.revokeObjectURL(prevOriginal.url);
-      }
-      originalSlotMediaRef.current[slotId] = { kind: "file", url: sourceUrl, file: rawFile };
+    if (sourceFile) {
+      // Simpen (atau perbarui) anchor "original" buat slot ini, dan
+      // lepas object URL sesi crop ini (udah gak kepake lagi — hasil
+      // cropnya sendiri punya url baru terpisah di atas).
+      originalFileRef.current[slotId] = sourceFile;
+      URL.revokeObjectURL(sessionUrl);
     }
-    // Kalau ini recrop dari original yang UDAH kesimpen (rawFile kosong),
-    // originalSlotMediaRef dibiarin apa adanya — anchor originalnya tetap
-    // sourceUrl yang sama, siap dipakai lagi buat crop berikutnya.
+    // Kalau sourceFile kosong berarti sesi ini nge-crop sample remote
+    // (bukan blob) — gak ada url yang perlu/boleh di-revoke.
 
     applySlotMediaEntry(slotId, { kind: "file", url, file: croppedFile });
     setCropTarget(null);
   }
 
   function handleCropCancel() {
-    // Batal pas lagi crop upload BARU (belum sempet kesimpen jadi
-    // "original") -> url mentahnya gak kepake di mana-mana lagi, aman
-    // di-revoke. Batal pas lagi RECROP dari original yang udah tersimpan
-    // -> JANGAN revoke, itu masih jadi anchor buat crop berikutnya.
-    if (cropTarget?.rawFile) {
+    // Sesi ini pake object URL BARU yang dibikin khusus buat crop
+    // (upload baru / recrop dari File) -> aman & wajib di-revoke pas
+    // batal. Sample remote (file kosong) gak perlu di-revoke.
+    if (cropTarget?.file) {
       URL.revokeObjectURL(cropTarget.url);
     }
     setCropTarget(null);
