@@ -42,6 +42,7 @@ import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../t
   roundRectPath,
   drawImageCover,
   drawImageCoverZoomed,
+  drawSlotGlow,
   drawTextLayers,
   drawDurationLayer,
   drawProgressFill,
@@ -1257,6 +1258,16 @@ export default function Editor({
       const dh = (slot.height / 100) * canvasH;
       const radius = slot.radius ?? 16;
       const media = slotMedia[slot.id];
+
+      // Glow ambient blur di belakang foto sampul (cuma slot yang diflag
+      // glowBehind, misal cover di V5) — digambar SEBELUM foto tajamnya
+      // sendiri, pakai sumber gambar yang SAMA, diperbesar & diblur berat.
+      if (slot.glowBehind && media) {
+        const glowImg = cache.get(media.url, () => setRenderTick((t) => t + 1));
+        if (glowImg) {
+          drawSlotGlow(ctx, glowImg, dx, dy, dw, dh, radius);
+        }
+      }
 
       ctx.save();
       roundRectPath(ctx, dx, dy, dw, dh, radius);

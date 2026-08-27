@@ -23,6 +23,13 @@ export interface TemplateSlot {
    *  ini sebelum user upload media sendiri sendiri (biar preview & test
    *  export bisa langsung jalan tanpa nunggu user upload apa-apa). */
   sampleSrc?: string;
+  /** Kalau true, foto slot ini (SAMA persis, bukan asset lain) digambar
+   *  ulang di belakang versi tajamnya sendiri — diperbesar sedikit &
+   *  diblur berat, jadi ada efek ambient glow/halo lembut yang "meleber"
+   *  di sekeliling cover (lihat drawSlotGlow di lib/render.ts). Dipakai
+   *  di iPhone Music Player V5. Default false/undefined = perilaku lama
+   *  (tidak ada glow tambahan). */
+  glowBehind?: boolean;
 }
 
 /** Layer dekoratif statis (bukan slot isian user) yang ditumpuk di atas

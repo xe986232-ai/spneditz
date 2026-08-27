@@ -666,9 +666,11 @@ export const TEMPLATES: Template[] = [
     },
   },
   {
-    // Template ke-5: "iPhone Music Player V5" — duplikat persis dari V4
-    // (semua asset, koordinat, layer, dan konfigurasi sama). Titik awal
-    // untuk dikustomisasi lebih lanjut nanti.
+    // Template ke-5: "iPhone Music Player V5" — awalnya duplikat persis
+    // dari V4, sekarang sudah dikustomisasi: card player opacity full
+    // (100%, dulu 35%) + foto sampul dikasih ambient glow blur di
+    // belakangnya (slot "sampul" -> glowBehind: true, lihat types.ts &
+    // lib/render.ts/drawSlotGlow). Thumbnail preview belum diubah dulu.
     id: "iphone-music-player-v5",
     name: "iPhone Music Player V5",
     duration: "0:15",
@@ -685,7 +687,7 @@ export const TEMPLATES: Template[] = [
         label: "Card Player",
         assetSrc: "/templates/iphone-music-player-v5/card.png",
         order: "back",
-        opacity: 35,
+        opacity: 100,
         adjustable: true,
       },
       {
@@ -752,6 +754,11 @@ export const TEMPLATES: Template[] = [
         endSec: 15,
         radius: 36,
         sampleSrc: "/templates/iphone-music-player-v5/sample-cover.jpg",
+        // Efek ambient glow: foto sampul yang sama digambar ulang di
+        // belakang versi tajamnya, diperbesar sedikit + diblur berat
+        // (lihat drawSlotGlow di lib/render.ts) — bukan asset shadow
+        // statis, tapi live pakai foto sampul asli yang diupload user.
+        glowBehind: true,
       },
       {
         id: "audio1",

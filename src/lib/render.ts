@@ -140,6 +140,51 @@ export function drawImageCoverZoomed(
   );
 }
 
+// --- Glow ambient di belakang foto sampul (khusus slot yang diflag
+// `glowBehind: true`, misal cover di iPhone Music Player V5) ---
+//
+// Efeknya: foto sampul yang SAMA digambar ulang di belakang foto sampul
+// yang tajam, tapi diperbesar sedikit (meleber keluar dari kotak cover
+// aslinya) + diblur berat, jadi kelihatan kayak "cahaya"/halo lembut yang
+// bocor dari balik cover — bukan shadow beneran, tapi lebih ke ambient
+// glow ala Apple Music/Spotify.
+const GLOW_EXTEND_RATIO = 0.16;
+const GLOW_BLUR_PX = 60;
+const GLOW_OPACITY = 0.85;
+const GLOW_OVERSCAN_FACTOR = 1.5;
+
+/** Gambar glow ambient blur di belakang sebuah slot foto (dipanggil SEBELUM
+ *  foto sampul tajam digambar di atasnya, di posisi & radius yang sama
+ *  tapi diperbesar). `img` boleh foto asli resolusi penuh (preview) atau
+ *  bitmap yang sudah di-cover-crop ke ukuran slot (export) — dua-duanya
+ *  aman dipakai karena drawImageCoverZoomed re-fit ulang otomatis. */
+export function drawSlotGlow(
+  ctx: CanvasRenderingContext2D,
+  img: DrawableImageSource,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+  radius: number,
+) {
+  const extendX = dw * GLOW_EXTEND_RATIO;
+  const extendY = dh * GLOW_EXTEND_RATIO;
+  const gx = dx - extendX;
+  const gy = dy - extendY;
+  const gw = dw + extendX * 2;
+  const gh = dh + extendY * 2;
+  const gRadius = radius + Math.min(extendX, extendY) * 0.6;
+  const overscan = GLOW_BLUR_PX * GLOW_OVERSCAN_FACTOR;
+
+  ctx.save();
+  roundRectPath(ctx, gx, gy, gw, gh, gRadius);
+  ctx.clip();
+  ctx.filter = `blur(${GLOW_BLUR_PX}px)`;
+  ctx.globalAlpha = GLOW_OPACITY;
+  drawImageCoverZoomed(ctx, img, gx, gy, gw, gh, overscan);
+  ctx.restore();
+}
+
 export type TextValueState = Record<string, string>;
 
 /** Isi awal textValues dari defaultText tiap textLayer template (kalau ada) */

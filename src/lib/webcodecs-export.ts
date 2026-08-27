@@ -29,6 +29,7 @@ import {
   parseDurationSec,
   drawImageCover,
   roundRectPath,
+  drawSlotGlow,
   drawDurationLayer,
   drawProgressFill,
   drawWaveformProgress,
@@ -213,6 +214,7 @@ type ResolvedSlot = {
   isVideo: boolean;
   videoEl?: HTMLVideoElement;
   imgBitmap?: ImageBitmap;
+  glowBehind?: boolean;
 };
 
 export async function exportTemplateVideoWebCodecs(
@@ -402,6 +404,7 @@ export async function exportTemplateVideoWebCodecs(
       radius: slot.radius ?? 16,
       media,
       isVideo: slot.type === "video" && Boolean(media),
+      glowBehind: slot.glowBehind,
     };
     if (media) {
       try {
@@ -546,6 +549,22 @@ export async function exportTemplateVideoWebCodecs(
     ctx.drawImage(staticBgBitmap, 0, 0, canvasW, canvasH);
 
     if (activeSlot) {
+      // Glow ambient blur di belakang foto sampul (cuma slot yang diflag
+      // glowBehind, misal cover di V5) — sama seperti preview, digambar
+      // SEBELUM foto tajamnya, pakai sumber gambar yang sama (bitmap yang
+      // sudah di-cover-crop ke ukuran slot tetap aman, drawImageCoverZoomed
+      // re-fit ulang otomatis).
+      if (activeSlot.glowBehind && !activeSlot.isVideo && activeSlot.imgBitmap) {
+        drawSlotGlow(
+          ctx,
+          activeSlot.imgBitmap,
+          activeSlot.x,
+          activeSlot.y,
+          activeSlot.width,
+          activeSlot.height,
+          activeSlot.radius,
+        );
+      }
       ctx.save();
       roundRectPath(ctx, activeSlot.x, activeSlot.y, activeSlot.width, activeSlot.height, activeSlot.radius);
       ctx.clip();
