@@ -66,12 +66,18 @@ async function findSupportedVideoConfig(
   height: number,
   fps: number,
 ): Promise<VideoEncoderConfig> {
-  // Bitrate dinaikkan dari sebelumnya (faktor 0.1, cap 12 Mbps) — buat
-  // canvas 1080x1920 @25fps itu cuma ~5.2 Mbps, kurang buat konten yang
-  // banyak teks/garis tajam (gampang keliatan blocky/lembek). Sekarang
-  // ~9.3 Mbps di resolusi yang sama, cap dinaikkan ke 18 Mbps.
-  const bitrate = Math.min(18_000_000, Math.max(4_000_000, Math.round(width * height * fps * 0.18)));
+  // Naik lagi ke level "visually lossless": faktor 0.35, cap 40 Mbps.
+  // Untuk canvas 1080x1920 @25fps ini artinya ~18.9 Mbps rata2, bisa naik
+  // sampai 40 Mbps buat konten yang banyak gradasi halus (background blur
+  // berat) — di titik ini H.264 High Profile praktis tak terbedakan dari
+  // sumber aslinya oleh mata telanjang, walau file jadi jauh lebih besar
+  // (~2-3x dibanding sebelumnya) dan waktu encode sedikit lebih lambat.
+  const bitrate = Math.min(40_000_000, Math.max(6_000_000, Math.round(width * height * fps * 0.35)));
   const candidates: VideoEncoderConfig[] = [
+    // avc1.640028 = High Profile Level 4.0 — profil H.264 paling baik yang
+    // umum didukung browser (lebih efisien/tajam daripada Main/Baseline di
+    // bitrate sama). Kandidat kedua & ketiga cuma fallback kalau browser
+    // (biasanya Safari/WebView lama) nggak dukung High Profile.
     { codec: "avc1.640028", width, height, framerate: fps, bitrate, bitrateMode: "variable", latencyMode: "quality" },
     { codec: "avc1.4d0028", width, height, framerate: fps, bitrate, bitrateMode: "variable", latencyMode: "quality" },
     { codec: "avc1.42001f", width, height, framerate: fps, bitrate, bitrateMode: "variable", latencyMode: "quality" },
@@ -598,7 +604,7 @@ export async function exportTemplateVideoWebCodecs(
       timestamp: frame * frameDurationUs,
       duration: frameDurationUs,
     });
-    const isKeyFrame = frame % (TARGET_FPS * 2) === 0; // keyframe tiap ~2 detik
+    const isKeyFrame = frame % TARGET_FPS === 0; // keyframe tiap ~1 detik (lebih rapat = drift kualitas antar-keyframe lebih kecil)
     videoEncoder.encode(videoFrame, { keyFrame: isKeyFrame });
     videoFrame.close();
 
