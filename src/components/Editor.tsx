@@ -3053,32 +3053,6 @@ export default function Editor({
         } else {
           content = (
             <>
-              {/* Muncul cuma pas tombol "Media" lagi aktif — tombol buat
-                  buka file picker slot foto/video. */}
-              {activeTool === "media" && (
-                <div className="flex items-center justify-center border-b border-mute/10 px-3 py-2">
-                  <button
-                    onClick={() => mediaSlotDef && openPicker(mediaSlotDef)}
-                    className="flex items-center gap-1.5 rounded-full bg-paper px-3.5 py-1.5 text-[11px] font-semibold text-graphite transition active:scale-95"
-                  >
-                    <RefreshCcw size={13} />
-                    Ganti {mediaSlotDef ? SLOT_SHORT_LABEL[mediaSlotDef.type] : "Media"}
-                  </button>
-                </div>
-              )}
-              {/* Muncul cuma pas tombol "Audio" lagi aktif — tombol kecil
-                  buat beneran buka file picker. */}
-              {activeTool === "audio" && (
-                <div className="flex items-center justify-center border-b border-mute/10 px-3 py-2">
-                  <button
-                    onClick={() => audioSlotDef && openPicker(audioSlotDef)}
-                    className="flex items-center gap-1.5 rounded-full bg-paper px-3.5 py-1.5 text-[11px] font-semibold text-graphite transition active:scale-95"
-                  >
-                    <Plus size={13} />
-                    Tambah Audio
-                  </button>
-                </div>
-              )}
               {/* Tab "Gaya" — preview visual tiap opsi progress bar SEBELUM
                   dipilih (bukan cuma teks label doang). */}
               {activeTool === "progress" && template.progressLayer && (
