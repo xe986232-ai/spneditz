@@ -36,7 +36,7 @@ import {
   getAudioDuration,
 } from "./render";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
-import { loadImageEl, compositeLayers, ExportCancelledError } from "./export";
+import { loadImageEl, renderCompositeCanvas, ExportCancelledError } from "./export";
 import type { ExportProgress } from "./export";
 import { loadDrawableSource } from "./exportShared";
 import { buildRemappedAudioBuffer, clipsAreTrivial } from "./audioClips";
@@ -266,17 +266,21 @@ export async function exportTemplateVideoWebCodecs(
   let staticBgBitmap: ImageBitmap;
   try {
     if (needsBackgroundComposite) {
-      const bgBlob = await compositeLayers(
+      // Dulu lewat compositeLayers() -> Blob JPEG (quality 0.92) -> decode
+      // lagi ke ImageBitmap. Encode JPEG itu yang bikin background BLUR
+      // (apalagi blur berat, 80-100px) keliatan pecah/banding — gradasi
+      // halus adalah kasus terburuk buat blocking artifact JPEG. Sekarang
+      // langsung dari <canvas> ke ImageBitmap, TANPA kompresi lossy apa pun.
+      const bgCanvas = await renderCompositeCanvas(
         canvasW,
         canvasH,
         backgroundImageSrc,
         backDecorLayers as TemplateDecorLayer[],
         layerOpacity,
-        true,
         backgroundOpacity,
         backgroundBlur,
       );
-      staticBgBitmap = await createImageBitmap(bgBlob);
+      staticBgBitmap = await createImageBitmap(bgCanvas);
     } else {
       const bgImg = await loadImageEl(backgroundImageSrc);
       const c = document.createElement("canvas");
@@ -298,19 +302,18 @@ export async function exportTemplateVideoWebCodecs(
   let staticFrontBitmap: ImageBitmap | null = null;
   if (frontDecorLayers.length > 0 || (template.textLayers?.length ?? 0) > 0) {
     try {
-      const frontBlob = await compositeLayers(
+      const frontCanvas = await renderCompositeCanvas(
         canvasW,
         canvasH,
         null,
         frontDecorLayers as TemplateDecorLayer[],
         layerOpacity,
-        false,
         100,
         0,
         template.textLayers,
         textValues,
       );
-      staticFrontBitmap = await createImageBitmap(frontBlob);
+      staticFrontBitmap = await createImageBitmap(frontCanvas);
     } catch (e) {
       throw new Error(
         `Gagal menyiapkan layer depan/teks. (${e instanceof Error ? e.message : String(e)})`,

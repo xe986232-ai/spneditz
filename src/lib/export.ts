@@ -45,44 +45,34 @@ function canvasToBlob(
 // pas di-blur nggak ada gradasi hitam di tepian — samain sama Editor.tsx.
 const BACKGROUND_BLUR_OVERSCAN_FACTOR = 2;
 
-/** Gabungin baseAssetSrc + sekumpulan decorLayer (dengan opacity masing2)
- *  jadi SATU gambar flat. `opaque=true` -> hasilnya JPEG (buat background,
- *  nggak butuh alpha). `opaque=false` -> PNG dengan alpha (buat overlay
- *  depan yang area kosongnya harus tetap transparan). */
-export async function compositeLayers(
+/** Versi "mentah" compositeLayers — ngerjain semua compositing (background +
+ *  blur + decor layers + teks) ke satu <canvas>, TAPI TIDAK di-encode ke
+ *  Blob (JPEG/PNG) sama sekali. Dipakai jalur WebCodecs (webcodecs-export.ts)
+ *  lewat createImageBitmap(canvas) langsung — sebelumnya lewat compositeLayers
+ *  (JPEG quality 0.92), yang encode+decode JPEG-nya bikin blocking/banding
+ *  KELIATAN BANGET khusus di area background yang di-blur berat (gradasi
+ *  halus paling gampang nunjukkin artefak blok JPEG). Canvas asli = tanpa
+ *  kompresi lossy sama sekali -> background blur bakal setajam preview. */
+export async function renderCompositeCanvas(
   canvasW: number,
   canvasH: number,
   baseSrc: string | null,
   layers: TemplateDecorLayer[],
   layerOpacity: LayerOpacityState,
-  opaque: boolean,
   baseOpacity: number = 100,
   baseBlur: number = 0,
-  // Teks custom (judul/artist/nama device) — digambar SETELAH semua decor
-  // layer, sama seperti urutan di preview canvas (Editor.tsx).
   textLayers?: TemplateTextLayer[],
   textValues?: TextValueState,
-  // Kalau diisi, label durasi berjalan/total ikut digambar di overlay ini
-  // dengan nilai currentSec/totalSec yang diberikan (dipakai per-segmen,
-  // lihat exportTemplateVideo — beda dari textLayers yang statis).
   durationOverride?: {
     durationLayer?: TemplateDurationLayer;
-    // Progress bar (isian putih) — opsional, dipakai bareng durationLayer
-    // karena sama2 butuh currentSec/totalSec per-segmen.
     progressLayer?: TemplateProgressLayer;
     currentSec: number;
     totalSec: number;
-    // Gaya tampilan progress ("bar" standar / "waveform" equalizer) +
-    // data peaks-nya — opsional, default ke drawProgressFill kalau tidak
-    // diisi (backward-compatible, reusable untuk template manapun).
     progressStyle?: "bar" | "waveform";
     peaks?: number[];
-    // Ikon spectrum/equalizer kecil di dekat judul — SELALU digambar
-    // (tidak ikut progressStyle) kalau template-nya punya spectrumLayer
-    // dan ada data peaks (bassPeaks ideal, sama seperti waveform).
     spectrumLayer?: TemplateSpectrumLayer;
   },
-): Promise<Blob> {
+): Promise<HTMLCanvasElement> {
   const canvas = document.createElement("canvas");
   canvas.width = canvasW;
   canvas.height = canvasH;
@@ -169,6 +159,65 @@ export async function compositeLayers(
     );
   }
 
+  return canvas;
+}
+
+/** Gabungin baseAssetSrc + sekumpulan decorLayer (dengan opacity masing2)
+ *  jadi SATU gambar flat. `opaque=true` -> hasilnya JPEG (buat background,
+ *  nggak butuh alpha). `opaque=false` -> PNG dengan alpha (buat overlay
+ *  depan yang area kosongnya harus tetap transparan).
+ *
+ *  CATATAN: dipertahankan buat kompatibilitas (kalau ada pemanggil yang
+ *  memang butuh Blob beneran, misal buat diunduh terpisah). Jalur render
+ *  video utama (webcodecs-export.ts) SUDAH TIDAK pakai fungsi ini lagi —
+ *  ia panggil renderCompositeCanvas() langsung biar nggak ada kompresi
+ *  JPEG yang bikin background blur pecah/banding. */
+export async function compositeLayers(
+  canvasW: number,
+  canvasH: number,
+  baseSrc: string | null,
+  layers: TemplateDecorLayer[],
+  layerOpacity: LayerOpacityState,
+  opaque: boolean,
+  baseOpacity: number = 100,
+  baseBlur: number = 0,
+  // Teks custom (judul/artist/nama device) — digambar SETELAH semua decor
+  // layer, sama seperti urutan di preview canvas (Editor.tsx).
+  textLayers?: TemplateTextLayer[],
+  textValues?: TextValueState,
+  // Kalau diisi, label durasi berjalan/total ikut digambar di overlay ini
+  // dengan nilai currentSec/totalSec yang diberikan (dipakai per-segmen,
+  // lihat exportTemplateVideo — beda dari textLayers yang statis).
+  durationOverride?: {
+    durationLayer?: TemplateDurationLayer;
+    // Progress bar (isian putih) — opsional, dipakai bareng durationLayer
+    // karena sama2 butuh currentSec/totalSec per-segmen.
+    progressLayer?: TemplateProgressLayer;
+    currentSec: number;
+    totalSec: number;
+    // Gaya tampilan progress ("bar" standar / "waveform" equalizer) +
+    // data peaks-nya — opsional, default ke drawProgressFill kalau tidak
+    // diisi (backward-compatible, reusable untuk template manapun).
+    progressStyle?: "bar" | "waveform";
+    peaks?: number[];
+    // Ikon spectrum/equalizer kecil di dekat judul — SELALU digambar
+    // (tidak ikut progressStyle) kalau template-nya punya spectrumLayer
+    // dan ada data peaks (bassPeaks ideal, sama seperti waveform).
+    spectrumLayer?: TemplateSpectrumLayer;
+  },
+): Promise<Blob> {
+  const canvas = await renderCompositeCanvas(
+    canvasW,
+    canvasH,
+    baseSrc,
+    layers,
+    layerOpacity,
+    baseOpacity,
+    baseBlur,
+    textLayers,
+    textValues,
+    durationOverride,
+  );
   return canvasToBlob(canvas, opaque ? "image/jpeg" : "image/png", opaque ? 0.92 : undefined);
 }
 
