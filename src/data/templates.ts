@@ -635,10 +635,16 @@ export const TEMPLATES: Template[] = [
     // "Now Playing" iOS) — animasinya ngikutin energi audio asli
     // (lihat drawSpectrumIndicator di lib/render.ts). Posisi disejajarkan
     // ke baris judul (title.y = 57.47), nempel di tepi kanan yang sama
-    // dengan ujung kanan progress bar/total durasi (x ~83.7) biar rapi.
+    // dengan ujung kanan progress bar/total durasi (x2 = 83.7) biar rapi.
+    // x di sini adalah TITIK TENGAH grup bar (drawSpectrumIndicator
+    // nge-center dari x ini), jadi dikurangi setengah lebar total grup
+    // (barCount*barWidth + (barCount-1)*gap, dikonversi ke % lebar
+    // canvas 1080px) supaya tepi KANAN grup pas nempel di 83.7, bukan
+    // titik tengahnya — sebelumnya x=89.5 kebablasan lewat tepi kanan
+    // card.png (card cuma sampai ~88.98%), makanya nongol keluar card.
     // Warna putih redup (bukan putih penuh) sesuai referensi tampilan asli.
     spectrumLayer: {
-      x: 89.5,
+      x: 81.9,
       y: 57.6,
       barCount: 4,
       barWidth: 6,
