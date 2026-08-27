@@ -163,7 +163,7 @@ function BottomNavCard({
   panelKey: string;
   // Tinggi eksplisit (px) buat panel yang bisa di-drag manual (Background
   // & Liquid Glass pakai sheetHeight). Kalau undefined, tinggi ngikutin
-  // konten aslinya (diukur otomatis & dianimasikan tiap berubah).
+  // konten aslinya (diukur otomatis).
   height?: number;
   children: ReactNode;
 }) {
@@ -172,11 +172,7 @@ function BottomNavCard({
     node: children,
   });
   const [cardHeight, setCardHeight] = useState<number | "auto">(height ?? "auto");
-  // true kalau perubahan tinggi TERAKHIR itu "membesar" (pantas dianimasikan),
-  // false kalau "mengecil"/nutup (harus instan, gak pakai transisi).
-  const [growing, setGrowing] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
-  const lastHeightRef = useRef(0);
 
   // panelKey ATAU children berubah -> ganti isi yang ditampilkan sekarang
   // juga, gak ditunda-tunda lewat fase exit/enter apa pun.
@@ -184,64 +180,35 @@ function BottomNavCard({
     setShown({ key: panelKey, node: children });
   }, [panelKey, children]);
 
-  function applyHeight(target: number) {
-    setGrowing(target > lastHeightRef.current);
-    lastHeightRef.current = target;
-    setCardHeight(target);
-  }
-
   // Tinggi eksplisit (drag manual buat Background/Liquid Glass) — ganti
-  // langsung tiap frame drag, TANPA transisi, biar jarinya nempel pas.
+  // langsung tiap frame drag, jarinya nempel pas.
   useEffect(() => {
     if (height === undefined) return;
-    lastHeightRef.current = height;
-    setGrowing(false);
     setCardHeight(height);
   }, [height]);
 
   // Tinggi otomatis: ukur tinggi konten asli & pantau perubahannya
   // (ResizeObserver) biar card tetap pas walau isi di dalamnya berubah.
   //
-  // FIX "nutup lemot": begitu panelKey ganti (pindah tab Media/Audio/
-  // Teks/dll, alias "nutup" panel lama), UKURAN PERTAMA yang kebaca dari
-  // konten baru harus di-snap LANGSUNG tanpa animasi sama sekali — nggak
-  // peduli itu lebih kecil ATAU lebih besar dari panel sebelumnya. Dulu
-  // ukuran pertama ini ikut lewat applyHeight() biasa, yang kadang salah
-  // nebak "ini lagi membesar" (misal scrollHeight sempat kebaca 0 dulu
-  // sebelum layout kelar), jadi malah ikut dikasih transition 200ms
-  // padahal harusnya "plukk" instan. Baru RESIZE BERIKUTNYA di dalam
-  // panel yang SAMA (misal konten nambah dinamis) yang boleh dianimasikan
-  // kalau membesar.
+  // SENGAJA TANPA ANIMASI SAMA SEKALI (baik membesar maupun mengecil) —
+  // panel ini "muncul"/"nutup"/ganti isi langsung "plukk" instan, gak ada
+  // transition-[height] apa pun. Ini permintaan eksplisit: animasi
+  // naik-turun kerasa lambat & bikin gelisah, jadi dihapus total daripada
+  // cuma "diperhalus" kondisinya.
   useEffect(() => {
     if (height !== undefined) return;
     const el = contentRef.current;
     if (!el) return;
-    let isFirstMeasure = true;
-    const snapInstantly = (target: number) => {
-      isFirstMeasure = false;
-      setGrowing(false);
-      lastHeightRef.current = target;
-      setCardHeight(target);
-    };
-    const ro = new ResizeObserver(() => {
-      const target = el.scrollHeight;
-      if (isFirstMeasure) {
-        snapInstantly(target);
-        return;
-      }
-      applyHeight(target);
-    });
+    const ro = new ResizeObserver(() => setCardHeight(el.scrollHeight));
     ro.observe(el);
-    snapInstantly(el.scrollHeight);
+    setCardHeight(el.scrollHeight);
     return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [height, shown.key]);
 
   return (
     <div
-      className={`relative z-30 flex shrink-0 flex-col overflow-hidden rounded-t-2xl border-t border-white/5 bg-editor-panel shadow-[0_-8px_24px_rgba(0,0,0,0.35)] ${
-        growing ? "transition-[height] duration-200 ease-out" : ""
-      }`}
+      className="relative z-30 flex shrink-0 flex-col overflow-hidden rounded-t-2xl border-t border-white/5 bg-editor-panel shadow-[0_-8px_24px_rgba(0,0,0,0.35)]"
       style={{ height: cardHeight }}
     >
       <div ref={contentRef} key={shown.key} className="flex flex-1 flex-col">
