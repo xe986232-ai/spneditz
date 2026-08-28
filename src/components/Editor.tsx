@@ -336,10 +336,12 @@ function formatClock(sec: number): string {
 
 // Pill label di kiri tiap baris track — nempel (sticky) ke tepi kiri
 // area timeline yang scrollable, jadi tetap keliatan/gampang diketuk
-// meskipun user geser timeline ke kanan. Gayanya diambil dari mockup
-// (repo Mock-up): kartu kecil rounded berisi ikon mata (hide/show),
-// ikon tipe elemen (gambar/audio/teks/dll), dan nama elemennya —
-// bukan cuma tombol bulat mata doang kayak sebelumnya.
+// meskipun user geser timeline ke kanan. Markup & class-nya DIAMBIL
+// PERSIS dari repo Mock-up (bagian "Track: background/cover photo/
+// audio/text" di src/routes/index.tsx) — pakai token warna ed-* yang
+// sama, bukan diadaptasi ke palet lama (editor-*/mute/paper) di
+// spneditz. Bedanya cuma nambahin logic toggle hidden/show (di mockup
+// aslinya cuma ikon statis, di sini beneran bisa diklik).
 function TrackLabel({
   hidden,
   onToggleHidden,
@@ -356,26 +358,28 @@ function TrackLabel({
   shownTitle?: string;
 }) {
   return (
-    <div className="sticky left-1 z-20 flex h-8 w-[104px] shrink-0 items-center gap-1.5 rounded-lg border border-mute/10 bg-editor-panel/95 px-2 backdrop-blur-sm">
+    <div className="sticky left-1 z-20 flex h-8 w-[104px] shrink-0 items-center gap-2 rounded-lg bg-ed-card px-2 text-[11px] text-ed-text">
       <button
         onClick={onToggleHidden}
         title={hidden ? (hiddenTitle ?? "Tampilkan elemen") : (shownTitle ?? "Sembunyikan elemen")}
         aria-label={hidden ? "Tampilkan elemen" : "Sembunyikan elemen"}
-        className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center transition active:scale-90 ${
-          hidden ? "text-mute" : "text-editor-accent"
-        }`}
+        className="flex h-[14px] w-[14px] shrink-0 items-center justify-center transition active:scale-90"
       >
-        {hidden ? <EyeOff size={13} /> : <Eye size={13} />}
+        {hidden ? (
+          <EyeOff className="h-[14px] w-[14px] shrink-0 text-ed-dim" />
+        ) : (
+          <Eye className="h-[14px] w-[14px] shrink-0 text-ed-text" />
+        )}
       </button>
-      <Icon size={13} className="shrink-0 text-editor-muted" />
-      <span className="truncate text-[10px] font-medium text-paper/90">{label}</span>
+      <Icon className="h-[14px] w-[14px] shrink-0" />
+      <span className="truncate">{label}</span>
     </div>
   );
 }
 
 // Titik tiga di kanan tiap baris track — juga sticky (nempel ke tepi
-// kanan area scroll), gayanya ngikutin ikon "MoreVertical" polos di
-// mockup (nggak ada lingkaran/border, cuma ikon abu-abu).
+// kanan area scroll). Class-nya persis punya Mock-up:
+// <MoreVertical className="h-4 w-4 shrink-0 text-ed-dim" />
 function TrackMenuButton({ title }: { title?: string }) {
   return (
     <button
@@ -383,9 +387,9 @@ function TrackMenuButton({ title }: { title?: string }) {
       title={title ?? "Menu track"}
       aria-label={title ?? "Menu track"}
       onClick={(e) => e.stopPropagation()}
-      className="sticky right-1 z-20 flex h-8 w-6 shrink-0 items-center justify-center text-editor-muted transition active:scale-90"
+      className="sticky right-1 z-20 flex h-8 w-6 shrink-0 items-center justify-center transition active:scale-90"
     >
-      <MoreVertical size={15} />
+      <MoreVertical className="h-4 w-4 shrink-0 text-ed-dim" />
     </button>
   );
 }
