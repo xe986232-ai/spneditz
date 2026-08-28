@@ -89,6 +89,11 @@ export type DraftRecord = {
    *  fallback ke 0 di sisi pemanggil (Editor.tsx). */
   glowIntensity: number;
   textValues: TextValueState;
+  /** Warna custom tiap textLayer (override dari layer.color default
+   *  template), key = textLayer.id, value = hex string. Draft lama
+   *  (sebelum fitur ini ada) tidak punya field ini — dibaca undefined,
+   *  di-fallback ke {} di sisi pemanggil (Editor.tsx). */
+  textColors?: Record<string, string>;
   slotMedia: Record<string, StoredMedia>;
   customBackground: StoredMedia | null;
   /** Klip-klip potongan track audio (offset/trim) — biar posisi motong
@@ -151,6 +156,7 @@ export async function saveDraft(
     progressStyle: "bar" | "waveform";
     glowIntensity: number;
     textValues: TextValueState;
+    textColors?: Record<string, string>;
     slotMedia: SlotMediaState;
     customBackground: SlotMediaEntry | null;
     audioClips: { id: string; trimStart: number; trimEnd: number; offset: number }[];
@@ -184,6 +190,7 @@ export async function saveDraft(
     progressStyle: params.progressStyle,
     glowIntensity: params.glowIntensity,
     textValues: { ...params.textValues },
+    textColors: { ...(params.textColors ?? {}) },
     slotMedia: slotMediaOut,
     customBackground: customBackgroundOut,
     audioClips: params.audioClips.map((c) => ({ ...c })),

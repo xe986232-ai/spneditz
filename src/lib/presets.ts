@@ -82,6 +82,10 @@ export type PresetRecord = {
    *  ke 0 di sisi pemanggil (Editor.tsx). */
   glowIntensity: number;
   textValues: TextValueState;
+  /** Warna custom tiap textLayer (override dari layer.color default
+   *  template). Preset lama (sebelum fitur ini ada) tidak punya field
+   *  ini — dibaca undefined, di-fallback ke {} di sisi pemanggil. */
+  textColors?: Record<string, string>;
   slotMedia: Record<string, StoredMedia>;
   customBackground: StoredMedia | null;
 };
@@ -102,6 +106,7 @@ export async function savePreset(params: {
   progressStyle: "bar" | "waveform";
   glowIntensity: number;
   textValues: TextValueState;
+  textColors?: Record<string, string>;
   slotMedia: SlotMediaState;
   customBackground: SlotMediaEntry | null;
 }): Promise<PresetRecord> {
@@ -129,6 +134,7 @@ export async function savePreset(params: {
     progressStyle: params.progressStyle,
     glowIntensity: params.glowIntensity,
     textValues: { ...params.textValues },
+    textColors: { ...(params.textColors ?? {}) },
     slotMedia: slotMediaOut,
     customBackground: customBackgroundOut,
   };

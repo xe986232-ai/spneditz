@@ -31,6 +31,7 @@ import {
   Check,
   Crop,
   Music2,
+  Palette,
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import { getDominantColor } from "../lib/color";
@@ -110,6 +111,22 @@ const SLOT_SHORT_LABEL: Record<SlotType, string> = {
   video: "Video",
   audio: "Audio",
 };
+
+// Daftar warna preset buat color picker di panel edit teks — dipilih yang
+// kontras & gampang kebaca di atas video (putih/hitam netral + beberapa
+// warna terang standar). Urutan dari yang paling sering dipakai (putih,
+// hitam) sampai warna aksen.
+const TEXT_COLOR_SWATCHES: string[] = [
+  "#FFFFFF",
+  "#000000",
+  "#FF3B30",
+  "#FF9500",
+  "#FFEB3B",
+  "#34C759",
+  "#0A84FF",
+  "#AF52DE",
+  "#FF2D95",
+];
 
 // Tombol nav generik — ikon di atas, label kecil di bawah, ukuran & style
 // SAMA PERSIS kayak toolbar utama (Media/Audio/Teks/Urungkan/dst). Dipakai
@@ -432,6 +449,11 @@ export default function Editor({
   // "Teks" di toolbar bawah. Label durasi TIDAK ada di sini — itu selalu
   // dihitung otomatis (lihat drawDurationLayer), bukan dari state ini.
   const [textValues, setTextValues] = useState(() => initialTextValues(template));
+  // Warna custom tiap textLayer (override dari layer.color default template),
+  // key = textLayer.id, value = hex string ("#RRGGBB"). Kalau id belum ada
+  // di sini, berarti belum di-custom user -> fallback ke layer.color bawaan
+  // template (lihat penggunaan di bawah & di handleExport).
+  const [textColors, setTextColors] = useState<Record<string, string>>({});
   // Mode "Teks" lagi aktif/nggak — begitu true, timeline berganti tampilan:
   // cuma nampilin track teks (sejumlah textLayers template ini), track lain
   // (Background/slot/decor) disembunyikan sementara.
@@ -831,6 +853,7 @@ export default function Editor({
           }
           return next;
         });
+        setTextColors(record.textColors ?? {});
         setAudioClips(record.audioClips.map((c) => ({ ...c })));
         setHiddenElements(new Set(record.hiddenElements));
         setCurrentSec(record.currentSec ?? 0);
@@ -861,6 +884,7 @@ export default function Editor({
         progressStyle,
         glowIntensity,
         textValues,
+        textColors,
         slotMedia,
         customBackground,
         audioClips,
@@ -907,6 +931,7 @@ export default function Editor({
     progressStyle,
     glowIntensity,
     textValues,
+    textColors,
     audioClips,
     hiddenElements,
   ]);
@@ -1368,9 +1393,11 @@ export default function Editor({
     // Teks custom (judul, artist, nama device) — di atas semua decor
     // layer, biar selalu kebaca jelas.
     if (template.textLayers?.length) {
-      const visibleTextLayers = template.textLayers.filter(
-        (l) => !hiddenElements.has(l.id),
-      );
+      const visibleTextLayers = template.textLayers
+        .filter((l) => !hiddenElements.has(l.id))
+        .map((l) =>
+          textColors[l.id] ? { ...l, color: textColors[l.id] } : l,
+        );
       if (visibleTextLayers.length) {
         drawTextLayers(ctx, canvasW, canvasH, visibleTextLayers, textValues);
       }
@@ -1444,6 +1471,7 @@ export default function Editor({
     backgroundBlur,
     glowIntensity,
     textValues,
+    textColors,
     hiddenElements,
     DURATION,
     progressStyle,
@@ -1678,6 +1706,7 @@ export default function Editor({
         progressStyle,
         glowIntensity,
         textValues,
+        textColors,
         slotMedia,
         customBackground,
       });
@@ -1761,6 +1790,7 @@ export default function Editor({
         }
         return next;
       });
+      setTextColors(record.textColors ?? {});
 
       setPresetNotice(`Preset "${record.name}" dimuat.`);
       setShowPresetPanel(false);
@@ -1957,9 +1987,9 @@ export default function Editor({
       const exportTemplate: Template = {
         ...template,
         slots: template.slots.filter((slot) => !hiddenElements.has(slot.id)),
-        textLayers: template.textLayers?.filter(
-          (l) => !hiddenElements.has(l.id),
-        ),
+        textLayers: template.textLayers
+          ?.filter((l) => !hiddenElements.has(l.id))
+          .map((l) => (textColors[l.id] ? { ...l, color: textColors[l.id] } : l)),
         decorLayers: template.decorLayers
           ?.filter((layer) => !hiddenElements.has(layer.id))
           .map((layer) =>
@@ -3232,29 +3262,98 @@ export default function Editor({
             </div>
           );
         } else if (panelMode === "text" && selectedTextLayer) {
+          // Warna aktif teks ini: pakai override user (textColors) kalau
+          // ada, fallback ke warna default dari data template.
+          const activeTextColor =
+            textColors[selectedTextLayer.id] ?? selectedTextLayer.color ?? "#FFFFFF";
           content = (
             <>
-              <div className="flex flex-col gap-1 px-3 pb-2 pt-2.5">
+              <div className="flex flex-col gap-2 px-3 pb-3 pt-2.5">
                 <span className="text-[10px] font-medium text-mute">
                   {selectedTextLayer.label}
                 </span>
-                <input
-                  type="text"
-                  autoFocus
-                  value={textValues[selectedTextLayer.id] ?? ""}
-                  maxLength={selectedTextLayer.maxLength}
-                  onChange={(e) =>
-                    setTextValues((prev) => ({
-                      ...prev,
-                      [selectedTextLayer.id]: e.target.value,
-                    }))
-                  }
-                  placeholder={selectedTextLayer.defaultText}
-                  className="w-full rounded-lg border border-mute/20 bg-graphite px-3 py-2 text-sm text-paper outline-none transition focus:border-paper/50"
-                />
-              </div>
-              <div className="flex items-center justify-center gap-1 px-3 pb-3 pt-1">
-                <NavAction icon={X} label="Selesai" onClick={() => setSelectedTextLayerId(null)} />
+                {/* Input & tombol Selesai SATU baris (bukan input di atas,
+                    tombol di bawahnya) — tombol nempel di kanan input.
+                    PENTING: TIDAK ada autoFocus di sini — klik track cuma
+                    nyeleksi & munculin panel ini, keyboard/edit baru aktif
+                    kalau user beneran ngetuk kotak input-nya sendiri. */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={textValues[selectedTextLayer.id] ?? ""}
+                    maxLength={selectedTextLayer.maxLength}
+                    onChange={(e) =>
+                      setTextValues((prev) => ({
+                        ...prev,
+                        [selectedTextLayer.id]: e.target.value,
+                      }))
+                    }
+                    placeholder={selectedTextLayer.defaultText}
+                    className="min-w-0 flex-1 rounded-lg border border-mute/20 bg-graphite px-3 py-2 text-sm text-paper outline-none transition focus:border-paper/50"
+                  />
+                  <button
+                    onClick={() => setSelectedTextLayerId(null)}
+                    className="flex h-9 shrink-0 items-center gap-1 rounded-lg bg-editor-accent/20 px-3 text-xs font-medium text-editor-accent transition active:scale-95"
+                  >
+                    <X size={14} />
+                    Selesai
+                  </button>
+                </div>
+                {/* Color picker — ganti warna teks layer ini. Swatch warna
+                    umum dulu, terakhir 1 swatch custom (input type=color
+                    asli browser) buat warna bebas di luar daftar preset. */}
+                <div className="flex items-center gap-1.5 pt-0.5">
+                  {TEXT_COLOR_SWATCHES.map((c) => {
+                    const isActive = activeTextColor.toLowerCase() === c.toLowerCase();
+                    return (
+                      <button
+                        key={c}
+                        onClick={() =>
+                          setTextColors((prev) => ({
+                            ...prev,
+                            [selectedTextLayer.id]: c,
+                          }))
+                        }
+                        title={c}
+                        aria-label={`Warna ${c}`}
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition active:scale-90 ${
+                          isActive
+                            ? "border-paper ring-2 ring-paper"
+                            : "border-mute/30"
+                        }`}
+                        style={{ backgroundColor: c }}
+                      >
+                        {isActive && (
+                          <Check
+                            size={12}
+                            className={
+                              c === "#FFFFFF" || c === "#FFEB3B"
+                                ? "text-graphite"
+                                : "text-white"
+                            }
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                  <label
+                    className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-dashed border-mute/40 text-mute"
+                    title="Warna custom"
+                  >
+                    <Palette size={12} />
+                    <input
+                      type="color"
+                      value={activeTextColor}
+                      onChange={(e) =>
+                        setTextColors((prev) => ({
+                          ...prev,
+                          [selectedTextLayer.id]: e.target.value,
+                        }))
+                      }
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                    />
+                  </label>
+                </div>
               </div>
             </>
           );
