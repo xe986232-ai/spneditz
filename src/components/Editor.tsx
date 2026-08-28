@@ -1077,6 +1077,18 @@ export default function Editor({
   // isi toolbar bawah (kalau ada, ganti jadi tombol "Ganti").
   const selectedSlot = template.slots.find((s) => s.id === selectedSlotId);
 
+  // Offset horizontal (px) buat nyamain posisi playhead & ruler sama
+  // posisi ASLI klip di track foto/video/teks — klip-klip itu sengaja
+  // digeser +40px ke kanan (lihat clipLeft di bawah) biar nggak ketutupan
+  // TrackEyeButton (tombol mata bulat "sticky left-1 w-8" yang nempel di
+  // kiri tiap baris track). Sebelum ini ditambahin, garis putih playhead
+  // pas di detik 0 nongkrong di x=0 (mentok kiri banget, sejajar sama
+  // tombol mata), padahal klip aslinya baru mulai gambar di x=40 — jadi
+  // playhead keliatan "nggak nyambung"/ketinggalan dari klip. Sekarang
+  // playhead & ruler ikut digeser +40 biar titik 0 mereka SAMA PERSIS
+  // sama titik mulai klip yang keliatan di layar.
+  const TIMELINE_CLIP_OFFSET_PX = 40;
+
   // decorLayers dipisah "back" (di belakang slot foto/video) & "front"
   // (di depan/atas slot), dipakai di render loop biar urutan gambarnya
   // bener. Cuma layer "adjustable" yang bisa diklik & punya slider opacity.
@@ -1449,7 +1461,7 @@ export default function Editor({
 
     const moveTo = (clientX: number) => {
       const rect = container.getBoundingClientRect();
-      const x = clientX - rect.left + container.scrollLeft;
+      const x = clientX - rect.left + container.scrollLeft - TIMELINE_CLIP_OFFSET_PX;
       const sec = Math.min(DURATION, Math.max(0, x / effectivePxPerSec));
       setCurrentSec(sec);
     };
@@ -2301,7 +2313,7 @@ export default function Editor({
                 <span
                   key={t}
                   className="absolute top-0"
-                  style={{ left: t * effectivePxPerSec }}
+                  style={{ left: t * effectivePxPerSec + TIMELINE_CLIP_OFFSET_PX }}
                 >
                   {t === 60 ? "1m" : `${t}s`}
                 </span>
@@ -2315,7 +2327,7 @@ export default function Editor({
                   <span
                     key={t}
                     className="absolute top-0 h-[3px] w-[3px] rounded-full bg-white/15"
-                    style={{ left: mid * effectivePxPerSec }}
+                    style={{ left: mid * effectivePxPerSec + TIMELINE_CLIP_OFFSET_PX }}
                   />
                 );
               })}
@@ -2345,7 +2357,7 @@ export default function Editor({
             <div
               onPointerDown={handlePlayheadPointerDown}
               className="absolute bottom-0 top-4 z-10 w-6 -translate-x-1/2 touch-none cursor-ew-resize"
-              style={{ left: currentSec * effectivePxPerSec }}
+              style={{ left: currentSec * effectivePxPerSec + TIMELINE_CLIP_OFFSET_PX }}
             >
               <div className="pointer-events-none absolute inset-y-0 left-1/2 w-[1.5px] -translate-x-1/2 bg-paper" />
               <div className="pointer-events-none absolute -top-1 left-1/2 h-0 w-0 -translate-x-1/2 border-x-[5px] border-x-transparent border-t-[7px] border-t-paper" />
@@ -2693,7 +2705,7 @@ export default function Editor({
                   const end = slot.endSec ?? DURATION;
                   const isSlotHidden = hiddenElements.has(slot.id);
                   const slotMediaEntry = slotMedia[slot.id];
-                  const clipLeft = start * effectivePxPerSec + 40;
+                  const clipLeft = start * effectivePxPerSec + TIMELINE_CLIP_OFFSET_PX;
                   const clipWidth = Math.max(
                     28,
                     (end - start) * effectivePxPerSec - 4,
