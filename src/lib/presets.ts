@@ -1,5 +1,5 @@
 import type { Template } from "../types";
-import type { LayerOpacityState, SlotMediaEntry, SlotMediaState, TextValueState, TextColorState } from "./render";
+import type { LayerOpacityState, SlotMediaEntry, SlotMediaState, TextValueState } from "./render";
 import {
   ensurePersistentStorage,
   readEntryAsBlob,
@@ -85,7 +85,7 @@ export type PresetRecord = {
   /** Warna custom tiap textLayer (override dari layer.color default
    *  template). Preset lama (sebelum fitur ini ada) tidak punya field
    *  ini — dibaca undefined, di-fallback ke {} di sisi pemanggil. */
-  textColors?: TextColorState;
+  textColors?: Record<string, string>;
   slotMedia: Record<string, StoredMedia>;
   customBackground: StoredMedia | null;
 };
@@ -106,7 +106,7 @@ export async function savePreset(params: {
   progressStyle: "bar" | "waveform";
   glowIntensity: number;
   textValues: TextValueState;
-  textColors?: TextColorState;
+  textColors?: Record<string, string>;
   slotMedia: SlotMediaState;
   customBackground: SlotMediaEntry | null;
 }): Promise<PresetRecord> {
