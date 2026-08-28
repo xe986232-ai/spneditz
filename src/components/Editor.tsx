@@ -2459,6 +2459,29 @@ export default function Editor({
                   </div>
                 )}
 
+                {/* Tombol "Tambah Audio" — cuma muncul di tool "Audio" DAN
+                    selama slot audio-nya masih KOSONG (belum ada klip sama
+                    sekali). Begitu audio sudah ada (audioMedia terisi),
+                    tombol ini otomatis di-hide — track klip audio yang
+                    dirender di visibleSlots.map di bawah yang gantiin
+                    perannya (klik klip buat pilih, geser/trim, dst). Sama
+                    pola-nya kayak tombol "Tambah klip" media di atas. */}
+                {audioSlotDef && activeTool === "audio" && !audioMedia && (
+                  <div className="flex items-center gap-2 pb-0.5">
+                    <button
+                      onClick={() => openPicker(audioSlotDef)}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-editor-accent text-paper transition active:scale-90"
+                      title="Tambah audio"
+                      aria-label="Tambah audio"
+                    >
+                      <Plus size={13} strokeWidth={2.5} />
+                    </button>
+                    <span className="text-[9px] font-medium text-editor-muted">
+                      Tambah audio
+                    </span>
+                  </div>
+                )}
+
                 {visibleSlots.map((slot) => {
 
                   const isAudio = slot.type === "audio";
