@@ -30,6 +30,7 @@ import {
   Sparkles,
   Check,
   Crop,
+  Music2,
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import { getDominantColor } from "../lib/color";
@@ -83,22 +84,17 @@ type Tool = {
   icon: LucideIcon;
 };
 
+// 4 tab tetap, samain persis sama mock-up UI (Edit/Audio/Teks/Gaya) —
+// bukan kondisional lagi. Tab "Efek" (Liquid Glass/Glow) sengaja dicabut
+// dulu dari sini nyusul migrasi UI ke mock-up (belum ada tempatnya di
+// desain baru); state & logic glow-nya (glowIntensity) masih ada di
+// bawah, cuma UI togglenya yang untuk sementara gak ditampilkan.
 const TOOLS: Tool[] = [
-  { id: "media", label: "Media", icon: ImageIcon },
-  { id: "audio", label: "Audio", icon: Music },
+  { id: "media", label: "Edit", icon: Scissors },
+  { id: "audio", label: "Audio", icon: Music2 },
   { id: "text", label: "Teks", icon: Type },
-  { id: "effects", label: "Efek", icon: Sparkles },
+  { id: "progress", label: "Gaya", icon: AudioWaveform },
 ];
-
-// Tab tambahan khusus pemilihan GAYA progress bar (Standar / Waveform
-// berjalan) — cuma ditampilkan kalau template-nya emang punya
-// progressLayer (bukan semua template punya elemen ini), makanya
-// dipisah dari TOOLS di atas dan digabung belakangan lewat visibleTools.
-const PROGRESS_STYLE_TOOL: Tool = {
-  id: "progress",
-  label: "Gaya",
-  icon: AudioWaveform,
-};
 
 const SLOT_ICON: Record<SlotType, LucideIcon> = {
   image: ImageIcon,
@@ -924,9 +920,11 @@ export default function Editor({
   // Tab "Gaya" (pilihan progress bar) cuma relevan buat template yang
   // punya progressLayer — biar reusable ke template lain yang gak punya
   // elemen ini tanpa nampilin tab kosong/gak guna.
-  const visibleTools = template.progressLayer
-    ? [...TOOLS, PROGRESS_STYLE_TOOL]
-    : TOOLS;
+  // 4 tab selalu tampil (samain persis mock-up) — konten tab "Gaya" sendiri
+  // tetap dicek template.progressLayer di bawah, jadi kalau template gak
+  // punya progress bar, tab-nya tetap kelihatan tapi gak nampilin apa-apa
+  // pas ditekan (bukan ke-hide kayak sebelumnya).
+  const visibleTools = TOOLS;
 
   // Foto sumber buat glow ambient di belakang canvas — sampul yang
   // diupload user (slot media pertama non-audio), fallback ke background
@@ -2903,8 +2901,7 @@ export default function Editor({
         // ResizeObserver nyusul ngukur ulang, mending overlay-nya gak usah
         // di-mount sama sekali kalau kosong.
         const hasDefaultContent =
-          (activeTool === "progress" && !!template.progressLayer) ||
-          activeTool === "effects";
+          activeTool === "progress" && !!template.progressLayer;
 
         if (panelMode === "background") {
           content = (
@@ -3314,42 +3311,6 @@ export default function Editor({
                   </button>
                 </div>
               )}
-              {/* Tab "Efek" — slider intensitas Glow (bloom) global, nempel
-                  di seluruh isi canvas (lihat applyGlowBloom di
-                  lib/render.ts). Preview live, sama kayak slider
-                  Background di atas. */}
-              {activeTool === "effects" && (
-                <div className="flex flex-col gap-4 px-3 py-3">
-                  <div className="flex items-center gap-3">
-                    <span className="w-14 shrink-0 text-xs font-medium text-paper">
-                      Glow
-                    </span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={glowIntensity}
-                      onChange={(e) => setGlowIntensity(Number(e.target.value))}
-                      className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
-                      style={{ accentColor: "#ECEAE4" }}
-                      title="Intensitas efek Glow"
-                    />
-                    <span className="w-9 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
-                      {Math.round(glowIntensity)}%
-                    </span>
-                  </div>
-                  {glowIntensity > 0 && (
-                    <button
-                      onClick={() => setGlowIntensity(0)}
-                      className="flex items-center justify-center gap-1.5 self-start rounded-lg border border-mute/15 bg-graphite/40 px-3 py-1.5 text-[11px] font-medium text-mute transition active:scale-95"
-                    >
-                      <RotateCcw size={12} />
-                      Reset
-                    </button>
-                  )}
-                </div>
-              )}
             </>
           );
         }
@@ -3412,13 +3373,6 @@ export default function Editor({
                       setIsTextMode(true);
                     }
                     if (id === "progress") {
-                      setIsTextMode(false);
-                      setSelectedTextLayerId(null);
-                      setSelectedSlotId(null);
-                      setSelectedLayerId(null);
-                      setSelectedAudioClipId(null);
-                    }
-                    if (id === "effects") {
                       setIsTextMode(false);
                       setSelectedTextLayerId(null);
                       setSelectedSlotId(null);
