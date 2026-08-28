@@ -2443,7 +2443,7 @@ export default function Editor({
                     toolbar bawah.
                     Cuma nongol di tool "Media" — di tool "Audio" track ini
                     disembunyiin biar timeline-nya bersih cuma isi audio. */}
-                {customBackground && activeTool !== "audio" && (
+                {customBackground && (
                   <div className="relative flex h-11 items-center rounded-md border border-mute/10 bg-editor-track">
                     <TrackEyeButton
                       hidden={hiddenElements.has(BACKGROUND_LAYER_ID)}
@@ -2493,7 +2493,7 @@ export default function Editor({
                     nambah/ganti klip media (buka file picker yang sama).
                     Cuma di tool "Media", biar nggak nyampur sama tool
                     Audio. */}
-                {mediaSlotDef && activeTool !== "audio" && (
+                {mediaSlotDef && (
                   <div className="flex items-center gap-2 pb-0.5">
                     <button
                       onClick={() => openPicker(mediaSlotDef)}
@@ -2516,7 +2516,7 @@ export default function Editor({
                     dirender di visibleSlots.map di bawah yang gantiin
                     perannya (klik klip buat pilih, geser/trim, dst). Sama
                     pola-nya kayak tombol "Tambah klip" media di atas. */}
-                {audioSlotDef && activeTool === "audio" && !audioMedia && (
+                {audioSlotDef && !audioMedia && (
                   <div className="flex items-center gap-2 pb-0.5">
                     <button
                       onClick={() => openPicker(audioSlotDef)}
@@ -2535,12 +2535,6 @@ export default function Editor({
                 {visibleSlots.map((slot) => {
 
                   const isAudio = slot.type === "audio";
-                  // Isolasi per tool: tool "Audio" cuma nampilin track
-                  // audio, tool lain (Media/Gaya/dll) cuma nampilin track
-                  // non-audio (foto/video) — biar nggak nyampur kayak
-                  // sebelumnya.
-                  if (isAudio && activeTool !== "audio") return null;
-                  if (!isAudio && activeTool === "audio") return null;
                   const filled = Boolean(slotMedia[slot.id]);
                   const isSelected = selectedSlotId === slot.id;
                   const Icon = SLOT_ICON[slot.type];
@@ -2629,8 +2623,8 @@ export default function Editor({
                               }
                               className={`absolute inset-y-0.5 touch-none overflow-hidden rounded border transition ${
                                 isClipSelected
-                                  ? "cursor-grabbing border-paper ring-2 ring-paper bg-emerald-500/25"
-                                  : "cursor-grab border-emerald-500/40 bg-emerald-500/15 active:cursor-grabbing"
+                                  ? "cursor-grabbing border-paper ring-2 ring-paper bg-editor-accent/30"
+                                  : "cursor-grab border-editor-accent/50 bg-editor-accent/20 active:cursor-grabbing"
                               }`}
                               style={{ left: clipLeft, width: clipWidth }}
                               title="Musik latar — tahan & geser buat pindah posisi"
@@ -2645,7 +2639,7 @@ export default function Editor({
                                 {clipPeaks.map((p, i) => (
                                   <span
                                     key={i}
-                                    className="shrink-0 rounded-[1px] bg-emerald-300/80"
+                                    className="shrink-0 rounded-[1px] bg-editor-accent"
                                     style={{
                                       width: `${100 / clipPeaks.length}%`,
                                       // Sedikit "gap" optis lewat border kiri
@@ -2659,7 +2653,7 @@ export default function Editor({
                                 ))}
                               </div>
                               <div className="pointer-events-none absolute left-1 top-0.5 flex items-center gap-1 rounded bg-black/55 px-1 py-[1px]">
-                                <Music size={9} className="shrink-0 text-emerald-300" />
+                                <Music size={9} className="shrink-0 text-editor-accent" />
                                 <span className="max-w-[90px] truncate text-[8px] font-medium text-paper">
                                   Musik latar
                                 </span>
@@ -2785,71 +2779,110 @@ export default function Editor({
                   );
                 })}
 
-                {/* Track khusus buat decorLayer yang "adjustable" (misal:
-                    Card Player) — beda dari slot foto/video/audio karena
-                    isinya statis dari awal sampai akhir & klik-nya cuma
-                    buat munculin slider opacity di toolbar bawah, bukan
-                    buka file picker. Disembunyiin pas tool "Audio" aktif
-                    (ini elemen visual, bukan audio). */}
-                {activeTool !== "audio" && adjustableLayers.map((layer) => {
-                  const isSelected = selectedLayerId === layer.id;
-                  const op = layerOpacity[layer.id] ?? layer.opacity ?? 100;
-                  const isLayerHidden = hiddenElements.has(layer.id);
+                {/* Track judul (teks utama) — permanen di timeline (nggak
+                    perlu masuk mode "Teks" dulu), warna teal + ikon "T"
+                    biar konsisten sama referensi. Klik buka panel edit
+                    teks yang sama kayak textLayer lain (reuse
+                    selectedTextLayerId, panelMode "text" udah nanganin). */}
+                {(() => {
+                  const titleLayer = template.textLayers?.[0];
+                  if (!titleLayer) return null;
+                  const isTitleSelected = selectedTextLayerId === titleLayer.id;
+                  const isTitleHidden = hiddenElements.has(titleLayer.id);
+                  const titleValue = textValues[titleLayer.id] || titleLayer.defaultText;
                   return (
-                    <div
-                      key={layer.id}
-                      className="relative flex h-11 items-center rounded-md border border-mute/10 bg-editor-track"
-                    >
+                    <div className="relative flex h-11 items-center rounded-md border border-mute/10 bg-editor-track">
                       <TrackEyeButton
-                        hidden={isLayerHidden}
-                        onToggle={(e) => toggleElementHidden(layer.id, e)}
+                        hidden={isTitleHidden}
+                        onToggle={(e) => toggleElementHidden(titleLayer.id, e)}
                         title={
-                          isLayerHidden
-                            ? `Tampilkan "${layer.label}"`
-                            : `Sembunyikan "${layer.label}"`
+                          isTitleHidden
+                            ? `Tampilkan "${titleLayer.label}"`
+                            : `Sembunyikan "${titleLayer.label}"`
                         }
                       />
                       <div
                         onClick={() => {
                           setSelectedSlotId(null);
-                          setSelectedLayerId(layer.id);
+                          setSelectedLayerId(null);
+                          setSelectedTextLayerId(titleLayer.id);
                         }}
                         className={`absolute inset-y-0.5 left-10 cursor-pointer overflow-hidden rounded border transition ${
-                          isSelected
-                            ? "border-paper ring-2 ring-paper bg-violet-400/20"
-                            : "border-violet-400/40 bg-violet-400/15"
-                        } ${isLayerHidden ? "opacity-40 grayscale" : ""}`}
+                          isTitleSelected
+                            ? "border-paper ring-2 ring-paper bg-teal-400/20"
+                            : "border-teal-400/40 bg-teal-400/15"
+                        } ${isTitleHidden ? "opacity-40 grayscale" : ""}`}
                         style={{ width: Math.max(28, DURATION * effectivePxPerSec - 4) }}
-                        title={layer.label}
+                        title={titleLayer.label}
                       >
-                        {/* Thumbnail asset PNG asli layer ini (kartu
-                            player/AirPlay, volume bar, dst), diulang
-                            sepanjang track — bukan cuma blok warna ungu
-                            polos. */}
-                        {layer.assetSrc && (
-                          <div
-                            className="pointer-events-none absolute inset-0 bg-repeat-x bg-graphite/60"
-                            style={{
-                              backgroundImage: `url(${layer.assetSrc})`,
-                              backgroundSize: "auto 90%",
-                              backgroundPosition: "center",
-                            }}
-                          />
-                        )}
-                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-                        <div className="relative flex h-full items-center gap-1 px-1.5">
-                          <SlidersHorizontal size={12} className="shrink-0 text-violet-200" />
+                        <div className="flex h-full items-center gap-1 px-1.5">
+                          <Type size={12} className="shrink-0 text-teal-200" />
                           <span className="truncate text-[10px] font-medium text-paper">
-                            {layer.label}
-                          </span>
-                          <span className="ml-auto shrink-0 text-[9px] text-violet-200/80">
-                            {Math.round(op)}%
+                            {titleValue}
                           </span>
                         </div>
                       </div>
                     </div>
                   );
-                })}
+                })()}
+
+                {/* Track khusus buat decorLayer yang "adjustable" (misal:
+                    Card Player) — dirender sebagai strip ikon kecil (bukan
+                    blok penuh selebar timeline) biar padat kayak baris
+                    sticker/overlay di referensi, tapi klik-nya tetap
+                    munculin slider opacity di toolbar bawah kayak semula. */}
+                {adjustableLayers.length > 0 && (() => {
+                  const allHidden = adjustableLayers.every((l) => hiddenElements.has(l.id));
+                  return (
+                    <div className="relative flex h-11 items-center gap-1.5 rounded-md border border-mute/10 bg-editor-track pl-10 pr-2">
+                      <TrackEyeButton
+                        hidden={allHidden}
+                        onToggle={(e) => {
+                          e.stopPropagation();
+                          setHiddenElements((prev) => {
+                            const next = new Set(prev);
+                            adjustableLayers.forEach((l) =>
+                              allHidden ? next.delete(l.id) : next.add(l.id),
+                            );
+                            return next;
+                          });
+                        }}
+                        title={allHidden ? "Tampilkan semua elemen" : "Sembunyikan semua elemen"}
+                      />
+                      <div className="flex flex-1 items-center gap-1 overflow-x-auto">
+                        {adjustableLayers.map((layer) => {
+                          const isSelected = selectedLayerId === layer.id;
+                          const isLayerHidden = hiddenElements.has(layer.id);
+                          return (
+                            <button
+                              key={layer.id}
+                              onClick={() => {
+                                setSelectedSlotId(null);
+                                setSelectedTextLayerId(null);
+                                setSelectedLayerId(layer.id);
+                              }}
+                              className={`relative h-8 w-8 shrink-0 overflow-hidden rounded border bg-graphite/60 transition ${
+                                isSelected
+                                  ? "border-paper ring-2 ring-paper"
+                                  : "border-violet-400/40"
+                              } ${isLayerHidden ? "opacity-40 grayscale" : ""}`}
+                              title={layer.label}
+                            >
+                              {layer.assetSrc && (
+                                <img
+                                  src={layer.assetSrc}
+                                  alt={layer.label}
+                                  className="pointer-events-none h-full w-full object-contain p-0.5"
+                                />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
               </div>
             ) : (
               <button
