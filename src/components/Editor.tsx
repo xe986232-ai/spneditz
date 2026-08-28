@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Video,
@@ -9,6 +9,9 @@ import {
   Redo2,
   Play,
   Pause,
+  SkipBack,
+  SkipForward,
+  Diamond,
   Plus,
   Scissors,
   Loader2,
@@ -432,30 +435,6 @@ export default function Editor({
   const [activeTool, setActiveTool] = useState<string>("media");
   const [isPlaying, setIsPlaying] = useState(false);
 
-  // Kontrol mengambang (label waktu + tombol play/pause) di preview —
-  // ini murni perilaku EDITOR, bukan bagian dari template. DUA logic
-  // jalan bareng:
-  // 1) Auto-hide berbasis WAKTU — jalan tiap kali kontrolnya lagi
-  //    "naik"/tampil (bukan cuma sekali di awal), otomatis turun sendiri
-  //    abis beberapa saat kalau dibiarin.
-  // 2) Toggle MANUAL — tap di preview kapan aja buat naikin/nurunin
-  //    langsung, independen dari si timer auto-hide.
-  const FLOAT_CONTROLS_AUTO_HIDE_MS = 1500; // dipercepat dari sebelumnya
-  const [showFloatingControls, setShowFloatingControls] = useState(true);
-  useEffect(() => {
-    // Cuma jalan pas showFloatingControls === true (baik dari mount
-    // pertama, maupun abis di-toggle naik lagi). Kalau di-tap turun
-    // manual duluan sebelum timer ini nembak, cleanup di bawah bakal
-    // otomatis batalin timernya.
-    if (!showFloatingControls) return;
-    const timer = setTimeout(() => {
-      setShowFloatingControls(false);
-    }, FLOAT_CONTROLS_AUTO_HIDE_MS);
-    return () => clearTimeout(timer);
-  }, [showFloatingControls]);
-  const toggleFloatingControls = useCallback(() => {
-    setShowFloatingControls((v) => !v);
-  }, []);
   const [currentSec, setCurrentSec] = useState(0);
   // Slot yang lagi diketuk/terseleksi di timeline atau canvas — kalau ada
   // isinya, toolbar bawah berubah jadi cuma tombol "Ganti" buat slot itu.
@@ -1538,6 +1517,18 @@ export default function Editor({
     window.addEventListener("pointerup", handleUp);
   }
 
+  // Tombol Skip-back/Skip-forward di Transport bar — loncat langsung ke
+  // awal/akhir timeline, sekalian pause dulu (sama pola kayak drag
+  // playhead manual di handlePlayheadPointerDown).
+  function handleSkipToStart() {
+    setIsPlaying(false);
+    setCurrentSec(0);
+  }
+  function handleSkipToEnd() {
+    setIsPlaying(false);
+    setCurrentSec(DURATION);
+  }
+
   function openPicker(slot: TemplateSlot) {
     pendingSlotRef.current = slot.id;
     const input = fileInputRef.current;
@@ -2191,7 +2182,6 @@ export default function Editor({
           style={{
             boxShadow: `0 25px 70px -18px rgba(${dominantColor}, 0.65), 0 0 90px -10px rgba(${dominantColor}, 0.45)`,
           }}
-          onPointerDown={toggleFloatingControls}
         >
           {template.baseAssetSrc ? (
             <canvas
@@ -2279,35 +2269,83 @@ export default function Editor({
           {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
         </button>
 
-        {/* Play/Pause + label waktu — mengambang nempel di preview
-            (kayak referensi), jadi nggak butuh panel terpisah lagi. */}
-        {!isFullscreen && (
-          <div
-            className={`absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-1.5 transition-all duration-500 ease-out ${
-              showFloatingControls
-                ? "translate-y-0 opacity-100"
-                : "pointer-events-none translate-y-8 opacity-0"
-            }`}
-          >
-            <span className="rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-medium tabular-nums text-paper backdrop-blur-sm">
-              {formatClock(currentSec)}
-              <span className="text-paper/50"> / {formatClock(DURATION)}</span>
-            </span>
-            <button
-              onClick={() => setIsPlaying((p) => !p)}
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/45 text-paper backdrop-blur-sm transition active:scale-90"
-              title={isPlaying ? "Jeda" : "Putar"}
-            >
-              {isPlaying ? (
-                <Pause size={20} fill="currentColor" />
-              ) : (
-                <Play size={20} fill="currentColor" className="ml-0.5" />
-              )}
-            </button>
-          </div>
-        )}
       </div>
 
+      {/* Transport bar — diambil dari mockup (src/routes/index.tsx di
+          repo "Mock-up"): Undo/Redo di kiri, Skip-back/Play-Pause/
+          Skip-forward di tengah (absolute, biar tetap presisi di tengah
+          walau lebar sisi kiri/kanan beda), durasi + ikon keyframe
+          (Diamond) di kanan. Menggantikan overlay Play/Pause lama yang
+          nempel-ngambang di atas preview (showFloatingControls dkk. —
+          sudah dihapus semua).
+          Undo/Redo & Diamond (keyframe) masih murni visual, sama seperti
+          di mockup aslinya — belum ada sistem riwayat/keyframe di editor
+          ini, jadi jujur ditandai nonaktif drpd pura-pura berfungsi. */}
+      {!isFullscreen && (
+        <div className="relative mx-3 mt-2 flex shrink-0 items-center justify-between rounded-xl bg-editor-panel px-3 py-2">
+          <div className="flex items-center gap-4">
+            <button
+              disabled
+              title="Urungkan (belum tersedia)"
+              className="text-paper/30"
+            >
+              <Undo2 size={18} />
+            </button>
+            <button
+              disabled
+              title="Ulangi (belum tersedia)"
+              className="text-paper/30"
+            >
+              <Redo2 size={18} />
+            </button>
+          </div>
+
+          <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-5 sm:gap-8">
+            <button
+              onClick={handleSkipToStart}
+              title="Ke awal"
+              className="text-paper transition active:scale-90"
+            >
+              <SkipBack size={16} fill="currentColor" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsPlaying((p) => !p)}
+              aria-label={isPlaying ? "Jeda" : "Putar"}
+              aria-pressed={isPlaying}
+              title={isPlaying ? "Jeda" : "Putar"}
+              className="flex h-6 w-6 items-center justify-center text-paper transition active:scale-90"
+            >
+              {isPlaying ? (
+                <Pause size={24} fill="currentColor" />
+              ) : (
+                <Play size={24} fill="currentColor" />
+              )}
+            </button>
+            <button
+              onClick={handleSkipToEnd}
+              title="Ke akhir"
+              className="text-paper transition active:scale-90"
+            >
+              <SkipForward size={16} fill="currentColor" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="truncate text-[10px] font-medium tabular-nums text-editor-muted">
+              {formatClock(currentSec)}
+              <span className="text-editor-muted/70"> / {formatClock(DURATION)}</span>
+            </span>
+            <button
+              disabled
+              title="Keyframe (belum tersedia)"
+              className="text-paper/30"
+            >
+              <Diamond size={20} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Baris Potong/Hapus audio — cuma nongol pas emang lagi motong
           klip audio (adaptif), biar nggak makan ruang pas nggak kepake. */}
@@ -2346,6 +2384,10 @@ export default function Editor({
           buat slot bertipe image (lihat handleFileChange). */}
       {cropTarget && (
         <ImageCropModal
+          // key: mastiin instance-nya remount bersih tiap sesi crop baru
+          // (mis. foto sample gagal -> user batal -> coba foto lain),
+          // biar state cropError/pixelCrop/zoom lama nggak kebawa-bawa.
+          key={`${cropTarget.slotId}-${cropTarget.url}`}
           imageUrl={cropTarget.url}
           targetWidth={cropTarget.targetWidth}
           targetHeight={cropTarget.targetHeight}
@@ -3543,8 +3585,6 @@ export default function Editor({
                 />
               ))}
 
-              <NavAction icon={Undo2} label="Urungkan" />
-              <NavAction icon={Redo2} label="Ulangi" />
               <NavAction
                 icon={Bookmark}
                 label="Preset"

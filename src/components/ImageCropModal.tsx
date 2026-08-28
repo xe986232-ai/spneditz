@@ -84,6 +84,16 @@ export default function ImageCropModal({
   const [zoom, setZoom] = useState(1);
   const [pixelCrop, setPixelCrop] = useState<Area | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  // BUGFIX (tombol centang "kadang" nggak nyimpen): sebelumnya kalau
+  // createImage()/getCroppedBlob() gagal (paling sering gara-gara foto
+  // sample remote yang host-nya nolak CORS anonymous — lihat createImage
+  // di bawah), errornya nggak ketangkep sama sekali. isProcessing balik
+  // false lewat finally, tapi onConfirm TIDAK PERNAH dipanggil — dari sisi
+  // user kelihatannya kayak tombol centang "gak ngefek", padahal diem-diam
+  // gagal di background tanpa kasih tau apa-apa. Sekarang errornya
+  // ditangkep & ditampilin biar user tau apa yang terjadi & bisa coba
+  // solusi lain (mis. upload foto sendiri dari galeri).
+  const [cropError, setCropError] = useState<string | null>(null);
 
   const handleCropComplete = useCallback((_croppedArea: Area, croppedAreaPixels: Area) => {
     setPixelCrop(croppedAreaPixels);
@@ -92,9 +102,24 @@ export default function ImageCropModal({
   async function handleConfirm() {
     if (!pixelCrop || isProcessing) return;
     setIsProcessing(true);
+    setCropError(null);
     try {
       const blob = await getCroppedBlob(imageUrl, pixelCrop, targetWidth, targetHeight);
-      if (blob) onConfirm(blob);
+      if (blob) {
+        onConfirm(blob);
+      } else {
+        setCropError(
+          "Gagal memproses foto ini. Coba upload foto lain dari galeri kamu.",
+        );
+      }
+    } catch {
+      // Paling sering kejadian di sini: foto sample remote yang host-nya
+      // nolak dimuat lewat crossOrigin="anonymous" (perlu buat canvas
+      // nggak "tainted"), jadi createImage() reject. Kasih pesan yang
+      // actionable, bukan diem aja.
+      setCropError(
+        "Foto ini gagal diproses (kemungkinan masalah izin akses dari server foto). Coba upload foto lain dari galeri kamu.",
+      );
     } finally {
       setIsProcessing(false);
     }
@@ -156,6 +181,11 @@ export default function ImageCropModal({
           Geser foto buat atur posisi, slider buat zoom. Bingkai udah
           disamain sama area foto sampul di template.
         </p>
+        {cropError && (
+          <p className="text-center text-[11px] font-medium text-red-400">
+            {cropError}
+          </p>
+        )}
       </div>
     </div>
   );

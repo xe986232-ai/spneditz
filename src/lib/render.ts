@@ -741,30 +741,68 @@ export function getAudioDuration(
 }
 
 /** Simple in-memory image loader + cache, dipakai render loop supaya
- *  nggak reload gambar yang sama tiap frame. */
+ *  nggak reload gambar yang sama tiap frame.
+ *
+ *  BUGFIX (background/foto sampul suka "ilang" di V4/V5): foto remote
+ *  (https://...) awalnya SELALU diminta pakai `crossOrigin="anonymous"`
+ *  biar canvas nggak "tainted" (dibutuhkan buat toDataURL/toBlob pas
+ *  auto-save thumbnail & export). Masalahnya, kalau host foto itu (mis.
+ *  foto default yang ditambahin admin lewat dashboard) TIDAK ngirim
+ *  header CORS yang benar, browser gagal total memuat gambarnya —
+ *  `onerror` kepanggil dan sebelumnya di sini cuma didiemin tanpa fallback
+ *  apa pun, jadi background/foto itu kosong SELAMANYA walau url-nya valid
+ *  & bisa diakses biasa (mis. dibuka langsung di tab baru).
+ *
+ *  Sekarang: kalau load dengan crossOrigin gagal, DICOBA ULANG SEKALI
+ *  tanpa crossOrigin — gambarnya jadi tetap kelihatan (drawImage ke
+ *  canvas nggak butuh CORS buat SEKADAR ditampilkan), walau konsekuensinya
+ *  canvas itu jadi "tainted" utk foto ini (operasi baca piksel seperti
+ *  toDataURL/toBlob bisa gagal khusus saat foto ini lagi tampil — kode
+ *  pemanggilnya sendiri sudah dibungkus try/catch, lihat autosaveDraftNow
+ *  di Editor.tsx). Lebih baik background KELIHATAN drpd hilang total. */
 export class ImageCache {
   private cache = new Map<string, HTMLImageElement>();
   private pending = new Set<string>();
+  // URL yang udah kebukti gagal pas dicoba pakai crossOrigin="anonymous"
+  // (host-nya kemungkinan besar nggak ngirim header CORS) — begitu masuk
+  // sini, percobaan BERIKUTNYA buat url yang sama langsung skip
+  // crossOrigin, nggak perlu gagal dulu tiap kali.
+  private skipCrossOrigin = new Set<string>();
 
   get(url: string, onLoaded: () => void): HTMLImageElement | null {
     const hit = this.cache.get(url);
     if (hit) return hit;
     if (!this.pending.has(url)) {
       this.pending.add(url);
-      const img = new Image();
-      if (/^https?:\/\//i.test(url)) {
-        img.crossOrigin = "anonymous";
-      }
-      img.onload = () => {
-        this.cache.set(url, img);
-        this.pending.delete(url);
-        onLoaded();
-      };
-      img.onerror = () => {
-        this.pending.delete(url);
-      };
-      img.src = url;
+      this.load(url, onLoaded, this.skipCrossOrigin.has(url));
     }
     return null;
+  }
+
+  private load(url: string, onLoaded: () => void, skipCrossOrigin: boolean) {
+    const img = new Image();
+    const useCrossOrigin = /^https?:\/\//i.test(url) && !skipCrossOrigin;
+    if (useCrossOrigin) {
+      img.crossOrigin = "anonymous";
+    }
+    img.onload = () => {
+      this.cache.set(url, img);
+      this.pending.delete(url);
+      onLoaded();
+    };
+    img.onerror = () => {
+      if (useCrossOrigin) {
+        // Kemungkinan besar gagal gara-gara host-nya nolak CORS anonymous
+        // — coba ulang SEKALI tanpa crossOrigin biar minimal kelihatan.
+        this.skipCrossOrigin.add(url);
+        this.load(url, onLoaded, true);
+        return;
+      }
+      // Udah dicoba tanpa crossOrigin juga & tetap gagal (url beneran
+      // rusak/404/offline) — barulah nyerah, biarin slot/background-nya
+      // tetap kosong seperti sebelumnya.
+      this.pending.delete(url);
+    };
+    img.src = url;
   }
 }
