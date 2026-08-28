@@ -62,7 +62,12 @@ import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../t
   BACKGROUND_BLUR_OVERSCAN_FACTOR,
   defaultBackgroundBlurFor,
 } from "../lib/render";
-import type { SlotMediaEntry } from "../lib/render";
+import type {
+  SlotMediaEntry,
+  SlotMediaState,
+  LayerOpacityState,
+  TextValueState,
+} from "../lib/render";
 import {
   drawLiquidGlassCard,
   resolveLiquidGlassRectPx,
@@ -328,6 +333,27 @@ function makeClipId() {
   clipIdCounter += 1;
   return `clip-${Date.now()}-${clipIdCounter}`;
 }
+
+// Satu "langkah" riwayat Undo/Redo — nyimpen SEMUA state yang beneran
+// mendefinisikan isi project (media tiap slot, teks, warna, opacity,
+// efek kaca, background, klip audio, elemen yang disembunyikan, dst).
+// State UI murni (tab toolbar aktif, fullscreen, panel preset kebuka,
+// dst.) SENGAJA tidak ikut, biar Undo/Redo cuma mundur/maju perubahan
+// project-nya aja, bukan navigasi UI.
+type ProjectSnapshot = {
+  slotMedia: SlotMediaState;
+  customBackground: SlotMediaEntry | null;
+  layerOpacity: LayerOpacityState;
+  glassSettings: Record<string, Partial<LiquidGlassSettings>>;
+  backgroundOpacity: number;
+  backgroundBlur: number;
+  progressStyle: "bar" | "waveform";
+  glowIntensity: number;
+  textValues: TextValueState;
+  textColors: Record<string, string>;
+  audioClips: AudioClip[];
+  hiddenElements: Set<string>;
+};
 
 // Format detik jadi mm:ss buat label waktu di atas baris playback.
 function formatClock(sec: number): string {
@@ -814,6 +840,171 @@ export default function Editor({
     null,
   );
 
+  // ---- Riwayat Undo/Redo ----------------------------------------------
+  // historyRef.past  : tumpukan snapshot SEBELUM state sekarang (paling
+  //                     baru di ujung array) — dipakai tombol Undo.
+  // historyRef.future: tumpukan snapshot yang barusan di-undo — dipakai
+  //                     tombol Redo, DIKOSONGKAN lagi begitu ada
+  //                     perubahan baru (bukan hasil undo/redo sendiri).
+  // Disimpan di ref (bukan state) biar gak numpuk re-render tiap detik;
+  // historyVersion di bawah cuma dipakai buat "maksa" re-render dikit
+  // spy tombol Undo/Redo bisa update kondisi disabled-nya.
+  const historyRef = useRef<{ past: ProjectSnapshot[]; future: ProjectSnapshot[] }>({
+    past: [],
+    future: [],
+  });
+  // Snapshot state project paling akhir yang udah "ke-commit" ke riwayat —
+  // jadi baseline pembanding tiap kali ada perubahan baru masuk.
+  const lastSnapshotRef = useRef<ProjectSnapshot | null>(null);
+  // true sesaat setelah applyProjectSnapshot() manggil semua setter (pas
+  // Undo/Redo ditekan) — effect pencatat riwayat di bawah bakal skip satu
+  // kali biar perubahan akibat Undo/Redo gak ke-catat lagi jadi langkah
+  // baru (yang bakal bikin future keputus/ilang).
+  const isApplyingHistoryRef = useRef(false);
+  const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [, setHistoryVersion] = useState(0);
+
+  function captureProjectSnapshot(): ProjectSnapshot {
+    return {
+      slotMedia,
+      customBackground,
+      layerOpacity,
+      glassSettings,
+      backgroundOpacity,
+      backgroundBlur,
+      progressStyle,
+      glowIntensity,
+      textValues,
+      textColors,
+      audioClips,
+      hiddenElements,
+    };
+  }
+
+  function applyProjectSnapshot(snap: ProjectSnapshot) {
+    isApplyingHistoryRef.current = true;
+    setSlotMedia(snap.slotMedia);
+    setCustomBackground(snap.customBackground);
+    setLayerOpacity(snap.layerOpacity);
+    setGlassSettings(snap.glassSettings);
+    setBackgroundOpacity(snap.backgroundOpacity);
+    setBackgroundBlur(snap.backgroundBlur);
+    setProgressStyle(snap.progressStyle);
+    setGlowIntensity(snap.glowIntensity);
+    setTextValues(snap.textValues);
+    setTextColors(snap.textColors);
+    setAudioClips(snap.audioClips);
+    setHiddenElements(snap.hiddenElements);
+    lastSnapshotRef.current = snap;
+  }
+
+  function handleUndo() {
+    if (historyTimerRef.current) {
+      clearTimeout(historyTimerRef.current);
+      historyTimerRef.current = null;
+    }
+    const { past, future } = historyRef.current;
+    if (past.length === 0) return;
+    const previous = past[past.length - 1];
+    const current = lastSnapshotRef.current ?? captureProjectSnapshot();
+    historyRef.current = { past: past.slice(0, -1), future: [...future, current] };
+    applyProjectSnapshot(previous);
+    setHistoryVersion((v) => v + 1);
+  }
+
+  function handleRedo() {
+    if (historyTimerRef.current) {
+      clearTimeout(historyTimerRef.current);
+      historyTimerRef.current = null;
+    }
+    const { past, future } = historyRef.current;
+    if (future.length === 0) return;
+    const next = future[future.length - 1];
+    const current = lastSnapshotRef.current ?? captureProjectSnapshot();
+    historyRef.current = { past: [...past, current], future: future.slice(0, -1) };
+    applyProjectSnapshot(next);
+    setHistoryVersion((v) => v + 1);
+  }
+
+  const canUndo = historyRef.current.past.length > 0;
+  const canRedo = historyRef.current.future.length > 0;
+
+  // Shortcut keyboard standar: Ctrl/Cmd+Z buat Undo, Ctrl/Cmd+Shift+Z atau
+  // Ctrl/Cmd+Y buat Redo. Dilewatin kalau fokus lagi di input/textarea
+  // (mis. lagi ngetik judul lagu) biar gak nabrak undo bawaan browser
+  // buat teks yang lagi diketik.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      const key = e.key.toLowerCase();
+      if (key === "z" && e.shiftKey) {
+        e.preventDefault();
+        handleRedo();
+      } else if (key === "z") {
+        e.preventDefault();
+        handleUndo();
+      } else if (key === "y") {
+        e.preventDefault();
+        handleRedo();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Effect ini yang beneran "mencatat" tiap perubahan state project ke
+  // riwayat Undo — jalan tiap salah satu dependency di bawah berubah,
+  // didebounce dikit (400ms) biar perubahan yang beruntun cepat (mis.
+  // geser slider opacity, ketik teks huruf demi huruf) numpuk jadi SATU
+  // langkah undo, bukan puluhan langkah kecil per keystroke.
+  useEffect(() => {
+    if (hydratingDraftRef.current) return;
+    // Belum ada baseline sama sekali (baru mount / baru selesai hydrate
+    // draft) — jadiin state sekarang sebagai titik awal riwayat, JANGAN
+    // dicatat sebagai langkah undo (gak ada "sebelum"-nya).
+    if (!lastSnapshotRef.current) {
+      lastSnapshotRef.current = captureProjectSnapshot();
+      return;
+    }
+    // Perubahan ini akibat applyProjectSnapshot() sendiri (Undo/Redo) —
+    // baseline-nya udah di-update di situ, jangan dicatat ulang jadi
+    // langkah baru (nanti future-nya keputus terus).
+    if (isApplyingHistoryRef.current) {
+      isApplyingHistoryRef.current = false;
+      return;
+    }
+    if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+    historyTimerRef.current = setTimeout(() => {
+      const previous = lastSnapshotRef.current;
+      if (!previous) return;
+      historyRef.current = { past: [...historyRef.current.past, previous], future: [] };
+      lastSnapshotRef.current = captureProjectSnapshot();
+      setHistoryVersion((v) => v + 1);
+    }, 400);
+    return () => {
+      if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    slotMedia,
+    customBackground,
+    layerOpacity,
+    glassSettings,
+    backgroundOpacity,
+    backgroundBlur,
+    progressStyle,
+    glowIntensity,
+    textValues,
+    textColors,
+    audioClips,
+    hiddenElements,
+  ]);
+
   // Hydrate semua state Editor dari draft lama (kalau resumeDraftId ada) —
   // jalan SEKALI pas mount, sebelum auto-save pertama diizinkan jalan.
   useEffect(() => {
@@ -873,7 +1064,14 @@ export default function Editor({
         // Editor tetap kebuka normal pakai default template, gak usah
         // nge-block user dengan alert.
       } finally {
-        if (!cancelled) hydratingDraftRef.current = false;
+        if (!cancelled) {
+          // Reset baseline riwayat Undo — state hasil hydrate draft ini
+          // yang jadi titik awal baru, biar Undo pertama user gak malah
+          // "mundur" ke project kosong sebelum draft dimuat.
+          historyRef.current = { past: [], future: [] };
+          lastSnapshotRef.current = null;
+          hydratingDraftRef.current = false;
+        }
       }
     })();
     return () => {
@@ -2278,23 +2476,35 @@ export default function Editor({
           (Diamond) di kanan. Menggantikan overlay Play/Pause lama yang
           nempel-ngambang di atas preview (showFloatingControls dkk. —
           sudah dihapus semua).
-          Undo/Redo & Diamond (keyframe) masih murni visual, sama seperti
-          di mockup aslinya — belum ada sistem riwayat/keyframe di editor
-          ini, jadi jujur ditandai nonaktif drpd pura-pura berfungsi. */}
+          Undo/Redo sekarang beneran jalan (lihat historyRef & effect
+          pencatat riwayat di atas) — nyatet SEMUA perubahan state
+          project (media, teks, warna, opacity, glass, background, audio,
+          elemen hidden). Diamond (keyframe) masih murni visual, belum
+          ada sistem keyframe di editor ini. */}
       {!isFullscreen && (
         <div className="relative mx-3 mt-2 flex shrink-0 items-center justify-between rounded-xl bg-editor-panel px-3 py-2">
           <div className="flex items-center gap-4">
             <button
-              disabled
-              title="Urungkan (belum tersedia)"
-              className="text-paper/30"
+              onClick={handleUndo}
+              disabled={!canUndo}
+              title={canUndo ? "Urungkan (Ctrl+Z)" : "Belum ada yang bisa diurungkan"}
+              className={
+                canUndo
+                  ? "text-paper transition active:scale-90"
+                  : "text-paper/30"
+              }
             >
               <Undo2 size={18} />
             </button>
             <button
-              disabled
-              title="Ulangi (belum tersedia)"
-              className="text-paper/30"
+              onClick={handleRedo}
+              disabled={!canRedo}
+              title={canRedo ? "Ulangi (Ctrl+Shift+Z)" : "Belum ada yang bisa diulangi"}
+              className={
+                canRedo
+                  ? "text-paper transition active:scale-90"
+                  : "text-paper/30"
+              }
             >
               <Redo2 size={18} />
             </button>
