@@ -124,36 +124,41 @@ function drawableSize(img: DrawableImageSource): { w: number; h: number } {
 // abis durasinya lewat, BALIK diam di scale 1 selamanya (nggak diulang).
 
 /** Durasi default animasi tekan, dalam detik. */
-export const PRESS_BOUNCE_DURATION_SEC = 0.5;
+export const PRESS_BOUNCE_DURATION_SEC = 1.0;
 
-/** Elastic ease-out (Robert Penner) — dipakai buat fase "mantul kenyal"
- *  abis ditekan, overshoot dikit di atas 1 sebelum settle balik ke 1. */
-function easeOutElastic(u: number): number {
+/** Elastic ease-out custom (amplitude & period bisa diatur) — dipakai
+ *  buat fase "mantul kenyal" abis ditekan. amplitude lebih besar = mantul
+ *  lebih jauh ngelewatin scale 1 (overshoot lebih kerasa), period lebih
+ *  kecil = ayunannya lebih cepat/rapat. */
+function easeOutElastic(u: number, amplitude = 1.7, period = 0.45): number {
   if (u <= 0) return 0;
   if (u >= 1) return 1;
-  const c4 = (2 * Math.PI) / 3;
-  return Math.pow(2, -10 * u) * Math.sin((u * 10 - 0.75) * c4) + 1;
+  const s = period / 4;
+  return (
+    amplitude * Math.pow(2, -10 * u) * Math.sin(((u - s) * (2 * Math.PI)) / period) + 1
+  );
 }
 
 /** Hitung faktor scale tombol di detik `t` (waktu ABSOLUT di timeline,
- *  0 = awal video). Sebelum `duration` lewat: fase tekan cepat (scale
- *  turun ke ~0.82) diikuti fase lepas elastis (mantul lewat >1, settle
- *  balik ke 1). Setelah `duration` lewat: selalu 1 (diam, tidak loop). */
+ *  0 = awal video). Sebelum `duration` lewat: fase tekan cepat & DALAM
+ *  (scale turun tajam ke ~0.68, kesan "digencet" beneran) diikuti fase
+ *  lepas elastis kuat (mantul jauh ngelewatin 1, baru settle). Setelah
+ *  `duration` lewat: selalu 1 (diam, tidak loop). */
 export function getPressBounceScale(
   t: number,
   duration: number = PRESS_BOUNCE_DURATION_SEC,
 ): number {
   if (t <= 0 || t >= duration) return 1;
-  const pressPortion = 0.22; // ~22% durasi awal = fase "ditekan turun"
+  const pressPortion = 0.18; // ~18% durasi awal = fase "ditekan turun"
   const pressEnd = duration * pressPortion;
-  const minScale = 0.82;
+  const minScale = 0.68;
   if (t <= pressEnd) {
-    // Ease-in quad: 1 -> minScale, cepat & tegas (kesan "diklik").
+    // Ease-in quad: 1 -> minScale, cepat & tegas (kesan "diklik" dalam).
     const u = t / pressEnd;
     const eased = u * u;
     return 1 - (1 - minScale) * eased;
   }
-  // Fase lepas: minScale -> 1, mantul elastis (overshoot dikit di atas 1).
+  // Fase lepas: minScale -> mantul jauh lewat 1 -> settle di 1.
   const u = (t - pressEnd) / (duration - pressEnd);
   const eased = easeOutElastic(u);
   return minScale + (1 - minScale) * eased;
