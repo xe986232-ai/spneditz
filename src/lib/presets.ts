@@ -77,6 +77,10 @@ export type PresetRecord = {
   backgroundOpacity: number;
   backgroundBlur: number;
   progressStyle: "bar" | "waveform";
+  /** Intensitas efek Glow (bloom) global, 0-100. Preset lama (sebelum
+   *  fitur ini ada) tidak punya field ini — dibaca undefined, di-fallback
+   *  ke 0 di sisi pemanggil (Editor.tsx). */
+  glowIntensity: number;
   textValues: TextValueState;
   slotMedia: Record<string, StoredMedia>;
   customBackground: StoredMedia | null;
@@ -96,6 +100,7 @@ export async function savePreset(params: {
   backgroundOpacity: number;
   backgroundBlur: number;
   progressStyle: "bar" | "waveform";
+  glowIntensity: number;
   textValues: TextValueState;
   slotMedia: SlotMediaState;
   customBackground: SlotMediaEntry | null;
@@ -122,6 +127,7 @@ export async function savePreset(params: {
     backgroundOpacity: params.backgroundOpacity,
     backgroundBlur: params.backgroundBlur,
     progressStyle: params.progressStyle,
+    glowIntensity: params.glowIntensity,
     textValues: { ...params.textValues },
     slotMedia: slotMediaOut,
     customBackground: customBackgroundOut,

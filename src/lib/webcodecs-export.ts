@@ -35,6 +35,7 @@ import {
   drawWaveformProgress,
   drawSpectrumIndicator,
   getAudioDuration,
+  applyGlowBloom,
 } from "./render";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
 import { loadImageEl, renderCompositeCanvas, ExportCancelledError } from "./export";
@@ -239,6 +240,10 @@ export async function exportTemplateVideoWebCodecs(
   // Peaks/amplitude file audio asli, cuma dipakai kalau progressStyle
   // "waveform" (lihat drawWaveformProgress di render.ts).
   peaks?: number[],
+  // Intensitas efek Glow (bloom) global, 0-100 — sama persis dengan yang
+  // kelihatan di preview Editor.tsx (lihat applyGlowBloom di render.ts).
+  // Default 0 = mati, tidak ada biaya render tambahan.
+  glowIntensity: number = 0,
 ): Promise<Blob> {
   if (!isWebCodecsExportSupported()) {
     throw new Error("Browser ini tidak mendukung WebCodecs API (VideoEncoder/AudioEncoder).");
@@ -618,6 +623,11 @@ export async function exportTemplateVideoWebCodecs(
         peaks,
       );
     }
+
+    // Efek Glow (bloom) global — PALING TERAKHIR, setelah semua layer
+    // (background, foto/video slot, decor front, teks, progress,
+    // spectrum) selesai digambar di frame ini, biar semuanya kena.
+    applyGlowBloom(ctx, canvasW, canvasH, glowIntensity);
 
     const videoFrame = new VideoFrame(frameCanvas, {
       timestamp: frame * frameDurationUs,

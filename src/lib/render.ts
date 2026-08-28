@@ -210,6 +210,43 @@ export function drawSlotGlow(
   ctx.restore();
 }
 
+// --- Efek Glow (bloom) GLOBAL — beda dari drawSlotGlow di atas (yang
+// cuma ambient di belakang satu foto sampul). Ini nempel di SELURUH isi
+// canvas: background, foto/video slot, teks, decor layer, semuanya —
+// makanya dipanggil PALING TERAKHIR, setelah semua layer lain selesai
+// digambar (preview: akhir render loop Editor.tsx; export: tiap frame
+// sebelum di-encode di webcodecs-export.ts). ---
+
+/** Ambil "jepretan" isi canvas SEJAUH INI, lalu tempel ulang versi
+ *  blur+terang di atasnya pakai blend "lighter" (additive) — area yang
+ *  udah terang jadi "meleber" bercahaya, mirip efek bloom kamera/game,
+ *  tanpa perlu tau apa isi tiap layer (murni post-process piksel). */
+export function applyGlowBloom(
+  ctx: CanvasRenderingContext2D,
+  canvasW: number,
+  canvasH: number,
+  intensity: number, // 0-100, 0 = mati (skip total, gratis)
+) {
+  if (intensity <= 0) return;
+  const amount = Math.max(0, Math.min(100, intensity)) / 100;
+
+  const snapshot = document.createElement("canvas");
+  snapshot.width = canvasW;
+  snapshot.height = canvasH;
+  const sctx = snapshot.getContext("2d");
+  if (!sctx) return;
+  sctx.drawImage(ctx.canvas, 0, 0, canvasW, canvasH);
+
+  ctx.save();
+  // Blur & brightness naik seiring intensity — makin tinggi, cahaya
+  // makin "meleber" lebar dan makin terang cahayanya.
+  ctx.filter = `blur(${6 + amount * 22}px) brightness(${1.25 + amount * 1.35}) saturate(${1.05 + amount * 0.35})`;
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = 0.22 + amount * 0.5;
+  ctx.drawImage(snapshot, 0, 0, canvasW, canvasH);
+  ctx.restore();
+}
+
 export type TextValueState = Record<string, string>;
 
 /** Isi awal textValues dari defaultText tiap textLayer template (kalau ada) */

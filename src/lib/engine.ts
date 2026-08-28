@@ -43,6 +43,8 @@ export async function exportTemplateVideoAuto(
   // Data amplitude/peaks file audio asli, cuma dipakai kalau
   // progressStyle === "waveform" (lihat drawWaveformProgress di render.ts).
   peaks?: number[],
+  // Intensitas efek Glow (bloom) global, 0-100. Default 0 = mati.
+  glowIntensity: number = 0,
 ): Promise<ExportResult> {
   if (!isWebCodecsExportSupported()) {
     // eslint-disable-next-line no-console
@@ -71,6 +73,7 @@ export async function exportTemplateVideoAuto(
       audioClips,
       progressStyle,
       peaks,
+      glowIntensity,
     );
     // eslint-disable-next-line no-console
     console.info("[export] ✅ Berhasil render (VideoEncoder/AudioEncoder + mp4-muxer).");

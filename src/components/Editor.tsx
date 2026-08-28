@@ -48,6 +48,7 @@ import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../t
   drawProgressFill,
   drawWaveformProgress,
   drawSpectrumIndicator,
+  applyGlowBloom,
   ImageCache,
   MAX_BACKGROUND_BLUR,
   BACKGROUND_BLUR_OVERSCAN_FACTOR,
@@ -84,6 +85,7 @@ const TOOLS: Tool[] = [
   { id: "media", label: "Media", icon: ImageIcon },
   { id: "audio", label: "Audio", icon: Music },
   { id: "text", label: "Teks", icon: Type },
+  { id: "effects", label: "Efek", icon: Sparkles },
 ];
 
 // Tab tambahan khusus pemilihan GAYA progress bar (Standar / Waveform
@@ -498,6 +500,10 @@ export default function Editor({
   const [backgroundBlur, setBackgroundBlur] = useState(() =>
     defaultBackgroundBlurFor(template.id),
   );
+  // Intensitas efek Glow (bloom) global, 0-100 — nempel di SELURUH isi
+  // canvas (lihat applyGlowBloom di lib/render.ts), diatur lewat tab
+  // "Efek" di toolbar bawah. Default 0 = mati.
+  const [glowIntensity, setGlowIntensity] = useState(0);
   // Warna dominan (vivid) hasil ekstraksi dari foto yang lagi diupload
   // user — dipakai buat ambient glow/shadow di belakang canvas preview,
   // biar nyatu sama warna foto-nya (mirip "Canvas" Spotify). Default abu2
@@ -817,6 +823,7 @@ export default function Editor({
         setBackgroundOpacity(record.backgroundOpacity);
         setBackgroundBlur(record.backgroundBlur);
         setProgressStyle(record.progressStyle);
+        setGlowIntensity(record.glowIntensity ?? 0);
         setTextValues((prev) => {
           const next = { ...prev };
           for (const key of Object.keys(next)) {
@@ -854,6 +861,7 @@ export default function Editor({
         backgroundOpacity,
         backgroundBlur,
         progressStyle,
+        glowIntensity,
         textValues,
         slotMedia,
         customBackground,
@@ -899,6 +907,7 @@ export default function Editor({
     backgroundOpacity,
     backgroundBlur,
     progressStyle,
+    glowIntensity,
     textValues,
     audioClips,
     hiddenElements,
@@ -1385,6 +1394,10 @@ export default function Editor({
         audioInfo?.bassPeaks?.length ? audioInfo.bassPeaks : FALLBACK_PEAKS,
       );
     }
+    // Efek Glow (bloom) global — PALING TERAKHIR, setelah semua layer
+    // (background, foto/video slot, decor front, teks, progress,
+    // spectrum) selesai digambar, biar semua isi canvas kena.
+    applyGlowBloom(ctx, canvasW, canvasH, glowIntensity);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     template,
@@ -1398,6 +1411,7 @@ export default function Editor({
     customBackground,
     backgroundOpacity,
     backgroundBlur,
+    glowIntensity,
     textValues,
     hiddenElements,
     DURATION,
@@ -1631,6 +1645,7 @@ export default function Editor({
         backgroundOpacity,
         backgroundBlur,
         progressStyle,
+        glowIntensity,
         textValues,
         slotMedia,
         customBackground,
@@ -1704,6 +1719,7 @@ export default function Editor({
       setBackgroundOpacity(record.backgroundOpacity);
       setBackgroundBlur(record.backgroundBlur);
       setProgressStyle(record.progressStyle);
+      setGlowIntensity(record.glowIntensity ?? 0);
 
       setTextValues((prev) => {
         const next = { ...prev };
@@ -1950,6 +1966,7 @@ export default function Editor({
         })),
         progressStyle,
         audioInfo?.bassPeaks?.length ? audioInfo.bassPeaks : FALLBACK_PEAKS,
+        glowIntensity,
       );
       setExportResultUrl(URL.createObjectURL(blob));
       setExportEngineUsed(engine);
@@ -2853,7 +2870,8 @@ export default function Editor({
         // ResizeObserver nyusul ngukur ulang, mending overlay-nya gak usah
         // di-mount sama sekali kalau kosong.
         const hasDefaultContent =
-          activeTool === "progress" && !!template.progressLayer;
+          (activeTool === "progress" && !!template.progressLayer) ||
+          activeTool === "effects";
 
         if (panelMode === "background") {
           content = (
@@ -3263,6 +3281,42 @@ export default function Editor({
                   </button>
                 </div>
               )}
+              {/* Tab "Efek" — slider intensitas Glow (bloom) global, nempel
+                  di seluruh isi canvas (lihat applyGlowBloom di
+                  lib/render.ts). Preview live, sama kayak slider
+                  Background di atas. */}
+              {activeTool === "effects" && (
+                <div className="flex flex-col gap-4 px-3 py-3">
+                  <div className="flex items-center gap-3">
+                    <span className="w-14 shrink-0 text-xs font-medium text-paper">
+                      Glow
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={glowIntensity}
+                      onChange={(e) => setGlowIntensity(Number(e.target.value))}
+                      className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-graphite accent-paper"
+                      style={{ accentColor: "#ECEAE4" }}
+                      title="Intensitas efek Glow"
+                    />
+                    <span className="w-9 shrink-0 text-right text-xs font-medium tabular-nums text-mute">
+                      {Math.round(glowIntensity)}%
+                    </span>
+                  </div>
+                  {glowIntensity > 0 && (
+                    <button
+                      onClick={() => setGlowIntensity(0)}
+                      className="flex items-center justify-center gap-1.5 self-start rounded-lg border border-mute/15 bg-graphite/40 px-3 py-1.5 text-[11px] font-medium text-mute transition active:scale-95"
+                    >
+                      <RotateCcw size={12} />
+                      Reset
+                    </button>
+                  )}
+                </div>
+              )}
             </>
           );
         }
@@ -3325,6 +3379,13 @@ export default function Editor({
                       setIsTextMode(true);
                     }
                     if (id === "progress") {
+                      setIsTextMode(false);
+                      setSelectedTextLayerId(null);
+                      setSelectedSlotId(null);
+                      setSelectedLayerId(null);
+                      setSelectedAudioClipId(null);
+                    }
+                    if (id === "effects") {
                       setIsTextMode(false);
                       setSelectedTextLayerId(null);
                       setSelectedSlotId(null);
