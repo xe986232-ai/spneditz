@@ -2066,51 +2066,59 @@ export default function Editor({
 
   return (
     <div className="relative flex h-[100dvh] w-screen flex-col overflow-hidden bg-editor-bg font-sans">
-      {/* Top bar minimal — back (kiri), nama template (tengah), tombol
-          check bulat (kanan) = Ekspor. Di-hide total pas fullscreen. */}
+      {/* Top bar — restyle ala mockup "iPhone Music Player V4": grid 3 kolom
+          (kiri: back + divider + judul, tengah: spacer, kanan: tombol
+          Export solid), bukan lagi judul absolute-center kayak sebelumnya.
+          Di-hide total pas fullscreen. */}
       {!isFullscreen && (
-      <div className="relative flex shrink-0 items-center justify-between px-3 py-2.5">
-        <button
-          onClick={onBack}
-          className="flex h-9 w-9 items-center justify-center rounded-xl text-paper/80 transition hover:text-paper active:scale-90"
-          title="Kembali ke daftar template"
-        >
-          <ArrowLeft size={20} />
-        </button>
-
-        <span className="pointer-events-none absolute left-1/2 flex max-w-[55%] -translate-x-1/2 flex-col items-center">
-          <span className="truncate text-sm font-semibold text-paper">
-            {template.name}
-          </span>
-          <span
-            className={`mt-0.5 flex items-center gap-1 text-[9.5px] font-medium text-emerald-300 transition-opacity duration-500 ${
-              draftSavedFlash ? "opacity-100" : "opacity-0"
-            }`}
-          >
-            <Check size={9} strokeWidth={3} />
-            Draft tersimpan
-          </span>
-        </span>
-
-        {template.baseAssetSrc ? (
+      <header className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-3">
           <button
-            onClick={handleExport}
-            disabled={isExporting}
-            className="flex h-9 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 text-paper transition active:scale-90 disabled:opacity-60"
-            title={isExporting ? "Merender…" : "Ekspor video"}
-            aria-label="Ekspor video"
+            onClick={onBack}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-paper/80 transition hover:text-paper active:scale-90"
+            title="Kembali ke daftar template"
           >
-            {isExporting ? (
-              <Loader2 size={17} className="animate-spin" />
-            ) : (
-              <Download size={17} strokeWidth={2.4} />
-            )}
-            <span className="text-sm font-semibold">Export</span>
+            <ArrowLeft size={20} />
           </button>
-        ) : (
-          <span className="h-9 w-9" />
-        )}
-      </div>
+          <span className="h-5 w-px shrink-0 bg-white/10" />
+          <div className="flex min-w-0 flex-col">
+            <h1 className="truncate text-sm font-semibold text-paper sm:text-[15px]">
+              {template.name}
+            </h1>
+            <span
+              className={`flex items-center gap-1 text-[9.5px] font-medium text-emerald-300 transition-opacity duration-500 ${
+                draftSavedFlash ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              <Check size={9} strokeWidth={3} />
+              Draft tersimpan
+            </span>
+          </div>
+        </div>
+
+        <div />
+
+        <div className="flex shrink-0 items-center justify-end">
+          {template.baseAssetSrc ? (
+            <button
+              onClick={handleExport}
+              disabled={isExporting}
+              className="flex items-center gap-2 rounded-xl bg-editor-accent px-3 py-[6px] text-[13px] font-semibold text-paper transition active:scale-90 disabled:opacity-60"
+              title={isExporting ? "Merender…" : "Ekspor video"}
+              aria-label="Ekspor video"
+            >
+              {isExporting ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Download size={14} strokeWidth={2.4} />
+              )}
+              Export
+            </button>
+          ) : (
+            <span className="h-9 w-9" />
+          )}
+        </div>
+      </header>
       )}
 
 
