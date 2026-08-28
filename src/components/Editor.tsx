@@ -2449,7 +2449,7 @@ export default function Editor({
                     return (
                       <div
                         key={layer.id}
-                        className="relative flex h-11 items-center rounded-md border border-mute/10 bg-editor-track"
+                        className="relative flex h-8 items-center"
                       >
                         <TrackLabel
                           hidden={isTextHidden}
@@ -2518,7 +2518,7 @@ export default function Editor({
                     Cuma nongol di tool "Media" — di tool "Audio" track ini
                     disembunyiin biar timeline-nya bersih cuma isi audio. */}
                 {customBackground && activeTool !== "audio" && (
-                  <div className="relative flex h-11 items-center rounded-md border border-mute/10 bg-editor-track">
+                  <div className="relative flex h-8 items-center">
                     <TrackLabel
                       hidden={hiddenElements.has(BACKGROUND_LAYER_ID)}
                       onToggleHidden={(e) => toggleElementHidden(BACKGROUND_LAYER_ID, e)}
@@ -2574,18 +2574,16 @@ export default function Editor({
                     Cuma di tool "Media", biar nggak nyampur sama tool
                     Audio. */}
                 {mediaSlotDef && activeTool !== "audio" && (
-                  <div className="flex items-center gap-2 pb-0.5">
+                  <div className="flex items-center pt-0.5">
                     <button
                       onClick={() => openPicker(mediaSlotDef)}
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-editor-accent text-paper transition active:scale-90"
+                      className="flex items-center gap-2 rounded-lg bg-ed-card px-3 py-[6px] text-[11px] text-ed-text transition active:scale-95"
                       title="Tambah / ganti klip media"
                       aria-label="Tambah klip media"
                     >
-                      <Plus size={13} strokeWidth={2.5} />
-                    </button>
-                    <span className="text-[9px] font-medium text-editor-muted">
+                      <Plus className="h-[14px] w-[14px]" />
                       Tambah klip
-                    </span>
+                    </button>
                   </div>
                 )}
 
@@ -2597,18 +2595,16 @@ export default function Editor({
                     perannya (klik klip buat pilih, geser/trim, dst). Sama
                     pola-nya kayak tombol "Tambah klip" media di atas. */}
                 {audioSlotDef && activeTool === "audio" && !audioMedia && (
-                  <div className="flex items-center gap-2 pb-0.5">
+                  <div className="flex items-center pt-0.5">
                     <button
                       onClick={() => openPicker(audioSlotDef)}
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-editor-accent text-paper transition active:scale-90"
+                      className="flex items-center gap-2 rounded-lg bg-ed-card px-3 py-[6px] text-[11px] text-ed-text transition active:scale-95"
                       title="Tambah audio"
                       aria-label="Tambah audio"
                     >
-                      <Plus size={13} strokeWidth={2.5} />
-                    </button>
-                    <span className="text-[9px] font-medium text-editor-muted">
+                      <Plus className="h-[14px] w-[14px]" />
                       Tambah audio
-                    </span>
+                    </button>
                   </div>
                 )}
 
@@ -2640,9 +2636,7 @@ export default function Editor({
                           setSelectedLayerId(null);
                           setSelectedSlotId(slot.id);
                         }}
-                        className={`relative flex h-11 items-center rounded-md border bg-black/20 transition ${
-                          isSelected ? "border-paper/40" : "border-mute/10"
-                        }`}
+                        className="relative flex h-8 items-center"
                       >
                         <TrackLabel
                           hidden={isAudioHidden}
@@ -2804,7 +2798,7 @@ export default function Editor({
                   return (
                     <div
                       key={slot.id}
-                      className="relative flex h-11 items-center rounded-md border border-mute/10 bg-editor-track"
+                      className="relative flex h-8 items-center"
                     >
                       <TrackLabel
                         hidden={isSlotHidden}
@@ -2889,7 +2883,7 @@ export default function Editor({
                   return (
                     <div
                       key={layer.id}
-                      className="relative flex h-11 items-center rounded-md border border-mute/10 bg-editor-track"
+                      className="relative flex h-8 items-center"
                     >
                       <TrackLabel
                         hidden={isLayerHidden}
