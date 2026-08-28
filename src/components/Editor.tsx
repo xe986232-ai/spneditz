@@ -2569,45 +2569,6 @@ export default function Editor({
                   </div>
                 )}
 
-                {/* Tombol "+" ungu di ujung kiri baris klip — shortcut
-                    nambah/ganti klip media (buka file picker yang sama).
-                    Cuma di tool "Media", biar nggak nyampur sama tool
-                    Audio. */}
-                {mediaSlotDef && activeTool !== "audio" && (
-                  <div className="flex items-center pt-0.5">
-                    <button
-                      onClick={() => openPicker(mediaSlotDef)}
-                      className="flex items-center gap-2 rounded-lg bg-ed-card px-3 py-[6px] text-[11px] text-ed-text transition active:scale-95"
-                      title="Tambah / ganti klip media"
-                      aria-label="Tambah klip media"
-                    >
-                      <Plus className="h-[14px] w-[14px]" />
-                      Tambah klip
-                    </button>
-                  </div>
-                )}
-
-                {/* Tombol "Tambah Audio" — cuma muncul di tool "Audio" DAN
-                    selama slot audio-nya masih KOSONG (belum ada klip sama
-                    sekali). Begitu audio sudah ada (audioMedia terisi),
-                    tombol ini otomatis di-hide — track klip audio yang
-                    dirender di visibleSlots.map di bawah yang gantiin
-                    perannya (klik klip buat pilih, geser/trim, dst). Sama
-                    pola-nya kayak tombol "Tambah klip" media di atas. */}
-                {audioSlotDef && activeTool === "audio" && !audioMedia && (
-                  <div className="flex items-center pt-0.5">
-                    <button
-                      onClick={() => openPicker(audioSlotDef)}
-                      className="flex items-center gap-2 rounded-lg bg-ed-card px-3 py-[6px] text-[11px] text-ed-text transition active:scale-95"
-                      title="Tambah audio"
-                      aria-label="Tambah audio"
-                    >
-                      <Plus className="h-[14px] w-[14px]" />
-                      Tambah audio
-                    </button>
-                  </div>
-                )}
-
                 {visibleSlots.map((slot) => {
 
                   const isAudio = slot.type === "audio";
@@ -2938,6 +2899,46 @@ export default function Editor({
                     </div>
                   );
                 })}
+
+                {/* Tombol "+" nambah/ganti klip media (buka file picker
+                    yang sama) — dipindah ke PALING BAWAH daftar layer
+                    (setelah semua track), persis posisi "+ Tambah Klip"
+                    di Mock-up. Cuma di tool "Media", biar nggak nyampur
+                    sama tool Audio. */}
+                {mediaSlotDef && activeTool !== "audio" && (
+                  <div className="flex items-center pt-1">
+                    <button
+                      onClick={() => openPicker(mediaSlotDef)}
+                      className="flex items-center gap-2 rounded-lg bg-ed-card px-3 py-[6px] text-[11px] text-ed-text transition active:scale-95"
+                      title="Tambah / ganti klip media"
+                      aria-label="Tambah klip media"
+                    >
+                      <Plus className="h-[14px] w-[14px]" />
+                      Tambah klip
+                    </button>
+                  </div>
+                )}
+
+                {/* Tombol "Tambah Audio" — cuma muncul di tool "Audio" DAN
+                    selama slot audio-nya masih KOSONG (belum ada klip sama
+                    sekali). Begitu audio sudah ada (audioMedia terisi),
+                    tombol ini otomatis di-hide — track klip audio yang
+                    dirender di visibleSlots.map di atas yang gantiin
+                    perannya (klik klip buat pilih, geser/trim, dst). Juga
+                    dipindah ke paling bawah, sama kayak tombol media. */}
+                {audioSlotDef && activeTool === "audio" && !audioMedia && (
+                  <div className="flex items-center pt-1">
+                    <button
+                      onClick={() => openPicker(audioSlotDef)}
+                      className="flex items-center gap-2 rounded-lg bg-ed-card px-3 py-[6px] text-[11px] text-ed-text transition active:scale-95"
+                      title="Tambah audio"
+                      aria-label="Tambah audio"
+                    >
+                      <Plus className="h-[14px] w-[14px]" />
+                      Tambah audio
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <button
