@@ -49,6 +49,9 @@ import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../t
   drawWaveformProgress,
   drawSpectrumIndicator,
   ImageCache,
+  MAX_BACKGROUND_BLUR,
+  BACKGROUND_BLUR_OVERSCAN_FACTOR,
+  defaultBackgroundBlurFor,
 } from "../lib/render";
 import type { SlotMediaEntry } from "../lib/render";
 import {
@@ -235,16 +238,6 @@ const BACKGROUND_LAYER_ID = "__background__";
 // localStorage key buat nyimpen status "udah pernah liat hint bubble teks
 // AirPlay" — sekali di-dismiss, gak muncul lagi di browser yang sama.
 const AIRPLAY_HINT_DISMISSED_KEY = "spneditz_hint_airplay_device_dismissed";
-// Batas max blur (px, dalam skala canvas asli 1080x1920).
-const MAX_BACKGROUND_BLUR = 100;
-// Blur background default per template (px). Template v4 & v5 (klon v4)
-// langsung full blur (100px) begitu dibuka/direset, template lain tetap 0 (tajam).
-function defaultBackgroundBlurFor(templateId: string): number {
-  return templateId === "iphone-music-player-v4" ||
-    templateId === "iphone-music-player-v5"
-    ? 100
-    : 0;
-}
 // Downsample sebuah array titik amplitude ke jumlah bar target, dengan
 // ambil nilai PEAK (bukan rata-rata) per bucket — biar transient/hentakan
 // kecil di antara sample nggak "keblur"/ilang pas dipadetin. Dipakai buat
@@ -279,10 +272,6 @@ function downsamplePeaks(source: number[], targetCount: number): number[] {
   }
   return out;
 }
-// Seberapa banyak background di-zoom (overscan, px per level blur) biar
-// pas di-blur nggak ada gradasi hitam di tepian — lihat drawImageCoverZoomed.
-const BACKGROUND_BLUR_OVERSCAN_FACTOR = 2;
-
 // Kepadatan piksel/detik minimum — dipakai kalau durasinya panjang (biar
 // tetap perlu discroll). Kalau durasinya pendek, kepadatan efektif dihitung
 // dinamis (lihat effectivePxPerSec) supaya timeline selalu mepet ke kanan.

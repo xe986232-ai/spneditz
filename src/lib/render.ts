@@ -7,6 +7,31 @@ import type {
   TemplateSpectrumLayer,
 } from "../types";
 
+// --- Default blur background auto-sync (khusus template tertentu) ---
+//
+// Dipindah ke sini (dari Editor.tsx) supaya bisa dipakai bareng-bareng
+// sama renderTemplateThumbnail (lib/thumbnail.ts) — sebelumnya cuma
+// hidup di Editor.tsx, jadi thumbnail galeri nggak pernah tahu template
+// V4/V5 defaultnya background-nya di-blur penuh, hasilnya thumbnail
+// kelihatan tajam padahal isi template aslinya blur.
+
+/** Batas max blur (px, dalam skala canvas asli 1080x1920). */
+export const MAX_BACKGROUND_BLUR = 100;
+
+/** Faktor overscan biar tepi gambar yang di-blur nggak kelihatan
+ *  pudar/transparan di pinggir canvas (area blur "meluber" keluar). */
+export const BACKGROUND_BLUR_OVERSCAN_FACTOR = 2;
+
+/** Blur background default per template (px). Template v4 & v5 (klon v4)
+ *  langsung full blur (100px) begitu dibuka/direset, template lain tetap
+ *  0 (tajam). */
+export function defaultBackgroundBlurFor(templateId: string): number {
+  return templateId === "iphone-music-player-v4" ||
+    templateId === "iphone-music-player-v5"
+    ? 100
+    : 0;
+}
+
 /** "0:15" -> 15, "1:05" -> 65 */
 export function parseDurationSec(duration: string): number {
   const parts = duration.split(":").map((p) => parseInt(p, 10) || 0);

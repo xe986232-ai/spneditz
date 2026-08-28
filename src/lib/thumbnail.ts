@@ -12,6 +12,8 @@ import {
   isSlotActiveAt,
   parseDurationSec,
   initialTextValues,
+  defaultBackgroundBlurFor,
+  BACKGROUND_BLUR_OVERSCAN_FACTOR,
   type DrawableImageSource,
 } from "./render";
 import {
@@ -155,10 +157,31 @@ export async function renderTemplateThumbnail(
   // Unsplash, sama seperti di atas) OTOMATIS jadi background juga (lihat
   // `customBackground` di Editor.tsx, di-init dari initialSlotMedia).
   // Jadi thumbnail nggak pakai baseAssetSrc/bg.jpg statis.
+  //
+  // Sebagian template (V4 & V5) punya default BLUR penuh (100px) khusus
+  // buat background auto-sync ini (lihat defaultBackgroundBlurFor di
+  // lib/render.ts, sebelumnya cuma hidup di Editor.tsx) — kalau
+  // backgroundSrc-nya berasal dari cover (bukan baseAssetSrc statis),
+  // efek blur itu WAJIB ikut digambar di sini juga, sama persis kayak
+  // canvas Editor, supaya thumbnail galeri nggak kelihatan "tajam"
+  // padahal isi template aslinya blur.
+  const isCoverSyncedBackground = Boolean(coverImageSrc);
   const backgroundSrc = coverImageSrc ?? template.baseAssetSrc;
   if (backgroundSrc) {
     const bg = imageBySrc.get(backgroundSrc);
-    if (bg) drawImageCoverZoomed(ctx, bg, 0, 0, canvasW, canvasH, 0);
+    if (bg) {
+      ctx.save();
+      let blurOverscan = 0;
+      if (isCoverSyncedBackground) {
+        const blurPx = defaultBackgroundBlurFor(template.id);
+        if (blurPx > 0) {
+          ctx.filter = `blur(${blurPx}px)`;
+          blurOverscan = blurPx * BACKGROUND_BLUR_OVERSCAN_FACTOR;
+        }
+      }
+      drawImageCoverZoomed(ctx, bg, 0, 0, canvasW, canvasH, blurOverscan);
+      ctx.restore();
+    }
   }
 
   // 2) decorLayers "back" (Card Player, termasuk versi liquid glass live)
