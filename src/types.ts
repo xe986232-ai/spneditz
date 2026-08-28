@@ -114,6 +114,18 @@ export interface LiquidGlassSettings {
   overLight: boolean;
 }
 
+/** Satu "rentang" warna custom di dalam SATU textLayer — start/end adalah
+ *  index karakter (0-based, end eksklusif) di string textValues layer
+ *  ini. Dipakai buat fitur "warnain sebagian teks yang diseleksi user",
+ *  bukan cuma satu warna buat seluruh teks. Rentang yang TIDAK
+ *  ke-cover oleh segmen manapun tetap pakai TemplateTextLayer.color
+ *  (warna default template/layer). */
+export interface TextColorSegment {
+  start: number;
+  end: number;
+  color: string;
+}
+
 /** Layer teks yang bisa di-custom user (judul, artist, nama device, dsb).
  *  Beda dari TemplateDecorLayer (yang isinya gambar statis) — ini digambar
  *  langsung dari kode pakai canvas fillText, jadi isinya bisa diganti user
@@ -134,6 +146,11 @@ export interface TemplateTextLayer {
   fontSize: number;
   fontWeight?: number;
   color?: string;
+  /** Override warna PER-RENTANG karakter (hasil user nyeleksi sebagian
+   *  teks lalu milih warna) — diisi runtime dari textColors state di
+   *  Editor, BUKAN dari data template. Rentang yang gak disebut di sini
+   *  tetap pakai `color` di atas. */
+  colorSegments?: TextColorSegment[];
   align?: "left" | "center" | "right";
   /** Placeholder pendek buat input field di panel edit (opsional). */
   maxLength?: number;

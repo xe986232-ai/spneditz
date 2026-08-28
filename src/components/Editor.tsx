@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import { getDominantColor } from "../lib/color";
-import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../types";import {
+import type { Template, TemplateSlot, SlotType, LiquidGlassSettings, TextColorSegment } from "../types";import {
   parseDurationSec,
   initialSlotMedia,
   initialLayerOpacity,
@@ -67,6 +67,7 @@ import type {
   SlotMediaState,
   LayerOpacityState,
   TextValueState,
+  TextColorState,
 } from "../lib/render";
 import {
   drawLiquidGlassCard,
@@ -350,7 +351,7 @@ type ProjectSnapshot = {
   progressStyle: "bar" | "waveform";
   glowIntensity: number;
   textValues: TextValueState;
-  textColors: Record<string, string>;
+  textColors: TextColorState;
   audioClips: AudioClip[];
   hiddenElements: Set<string>;
 };
@@ -490,7 +491,12 @@ export default function Editor({
   // key = textLayer.id, value = hex string ("#RRGGBB"). Kalau id belum ada
   // di sini, berarti belum di-custom user -> fallback ke layer.color bawaan
   // template (lihat penggunaan di bawah & di handleExport).
-  const [textColors, setTextColors] = useState<Record<string, string>>({});
+  // Override warna custom PER-RENTANG teks tiap textLayer, key = textLayer.id,
+  // value = daftar TextColorSegment (start/end index karakter + warna).
+  // Rentang yang gak disebut tetap fallback ke layer.color default
+  // template. Diisi lewat applyTextColor() — lihat di bawah, dipicu dari
+  // panel "Teks" pas user seleksi sebagian teks lalu milih warna.
+  const [textColors, setTextColors] = useState<TextColorState>({});
   // Mode "Teks" lagi aktif/nggak — begitu true, timeline berganti tampilan:
   // cuma nampilin track teks (sejumlah textLayers template ini), track lain
   // (Background/slot/decor) disembunyikan sementara.
@@ -500,6 +506,30 @@ export default function Editor({
   const [selectedTextLayerId, setSelectedTextLayerId] = useState<string | null>(
     null,
   );
+  // Rentang seleksi teks TERAKHIR di dalam <input> edit teks yang lagi
+  // aktif — {start, end} index karakter (index natural dari
+  // HTMLInputElement.selectionStart/End). null = belum pernah nyeleksi
+  // apa pun (berarti klik warna nanti nge-warnain SEMUA teks, kayak
+  // perilaku lama). Diupdate tiap event select/klik/panah di input-nya
+  // (lihat handleTextInputSelect di bawah), DIRESET tiap ganti layer
+  // teks yang diedit (biar seleksi punya layer sebelumnya gak nyasar
+  // kepake buat layer baru).
+  const [textSelection, setTextSelection] = useState<{
+    start: number;
+    end: number;
+  } | null>(null);
+  const textInputRef = useRef<HTMLInputElement | null>(null);
+  function handleTextInputSelect() {
+    const el = textInputRef.current;
+    if (!el) return;
+    const { selectionStart, selectionEnd } = el;
+    if (selectionStart === null || selectionEnd === null) return;
+    setTextSelection({ start: selectionStart, end: selectionEnd });
+  }
+  function selectTextLayer(id: string | null) {
+    setTextSelection(null);
+    setSelectedTextLayerId(id);
+  }
 
   // Hint bubble sekali-tampil ("teks ini bisa diubah") yang nunjuk ke
   // textLayer nama perangkat AirPlay di canvas — cuma buat kasih tau user
@@ -1352,6 +1382,41 @@ export default function Editor({
   const selectedTextLayer = template.textLayers?.find(
     (l) => l.id === selectedTextLayerId,
   );
+  // Terapin warna ke teks layer yang lagi diedit — kalau user lagi
+  // beneran nyeleksi sebagian teks (textSelection.start !== end), CUMA
+  // rentang itu yang diwarnain (segmen lama yang ke-overlap dipotong/
+  // dibuang dulu biar list tetap non-overlapping & urut). Kalau enggak
+  // ada seleksi beneran, warnain SEMUA teks (perilaku lama, ekivalen
+  // sama satu segmen full-width).
+  function applyTextColor(color: string) {
+    if (!selectedTextLayer) return;
+    const layerId = selectedTextLayer.id;
+    const text = textValues[layerId] ?? "";
+    setTextColors((prev) => {
+      let start = textSelection?.start ?? 0;
+      let end = textSelection?.end ?? text.length;
+      if (start === end) {
+        start = 0;
+        end = text.length;
+      }
+      start = Math.max(0, Math.min(start, text.length));
+      end = Math.max(start, Math.min(end, text.length));
+      if (end <= start) return prev;
+      const existing = prev[layerId] ?? [];
+      const next: TextColorSegment[] = [];
+      for (const seg of existing) {
+        if (seg.end <= start || seg.start >= end) {
+          next.push(seg);
+          continue;
+        }
+        if (seg.start < start) next.push({ ...seg, end: start });
+        if (seg.end > end) next.push({ ...seg, start: end });
+      }
+      next.push({ start, end, color });
+      next.sort((a, b) => a.start - b.start);
+      return { ...prev, [layerId]: next };
+    });
+  }
   // Track pseudo "Background" (bukan decorLayer template) — aktif kalau
   // customBackground ada & lagi diseleksi user di timeline.
   const isBackgroundLayerSelected =
@@ -1608,7 +1673,7 @@ export default function Editor({
       const visibleTextLayers = template.textLayers
         .filter((l) => !hiddenElements.has(l.id))
         .map((l) =>
-          textColors[l.id] ? { ...l, color: textColors[l.id] } : l,
+          textColors[l.id]?.length ? { ...l, colorSegments: textColors[l.id] } : l,
         );
       if (visibleTextLayers.length) {
         drawTextLayers(ctx, canvasW, canvasH, visibleTextLayers, textValues);
@@ -2213,7 +2278,9 @@ export default function Editor({
         slots: template.slots.filter((slot) => !hiddenElements.has(slot.id)),
         textLayers: template.textLayers
           ?.filter((l) => !hiddenElements.has(l.id))
-          .map((l) => (textColors[l.id] ? { ...l, color: textColors[l.id] } : l)),
+          .map((l) =>
+            textColors[l.id]?.length ? { ...l, colorSegments: textColors[l.id] } : l,
+          ),
         decorLayers: template.decorLayers
           ?.filter((layer) => !hiddenElements.has(layer.id))
           .map((layer) =>
@@ -2715,7 +2782,7 @@ export default function Editor({
                           onClick={() => {
                             setSelectedSlotId(null);
                             setSelectedLayerId(null);
-                            setSelectedTextLayerId(layer.id);
+                            selectTextLayer(layer.id);
                             if (layer.id === "airplayDevice") dismissAirplayHint();
                           }}
                           className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded border transition ${
@@ -3575,10 +3642,24 @@ export default function Editor({
             </div>
           );
         } else if (panelMode === "text" && selectedTextLayer) {
-          // Warna aktif teks ini: pakai override user (textColors) kalau
-          // ada, fallback ke warna default dari data template.
+          const currentTextValue = textValues[selectedTextLayer.id] ?? "";
+          const layerDefaultColor = selectedTextLayer.color ?? "#FFFFFF";
+          const layerSegments = textColors[selectedTextLayer.id] ?? [];
+          // Ada seleksi teks BENERAN (bukan cuma kursor diam di satu
+          // titik) di dalam input yang lagi aktif -> klik warna nanti
+          // cuma nge-warnain rentang itu. Kalau enggak (start === end,
+          // atau belum pernah nyeleksi), klik warna nge-warnain SEMUA
+          // teks, sama kayak perilaku lama.
+          const hasRealSelection =
+            !!textSelection && textSelection.end > textSelection.start;
+          // Warna yang ditandai "aktif" di swatch: warna di titik kursor/
+          // awal seleksi sekarang (fallback ke warna default kalau titik
+          // itu belum di-custom).
+          const caretIndex = textSelection?.start ?? 0;
           const activeTextColor =
-            textColors[selectedTextLayer.id] ?? selectedTextLayer.color ?? "#FFFFFF";
+            layerSegments.find(
+              (seg) => caretIndex >= seg.start && caretIndex < seg.end,
+            )?.color ?? layerDefaultColor;
           content = (
             <>
               <div className="flex flex-col gap-2 px-3 pb-3 pt-2.5">
@@ -3592,8 +3673,9 @@ export default function Editor({
                     kalau user beneran ngetuk kotak input-nya sendiri. */}
                 <div className="flex items-center gap-2">
                   <input
+                    ref={textInputRef}
                     type="text"
-                    value={textValues[selectedTextLayer.id] ?? ""}
+                    value={currentTextValue}
                     maxLength={selectedTextLayer.maxLength}
                     onChange={(e) =>
                       setTextValues((prev) => ({
@@ -3601,32 +3683,42 @@ export default function Editor({
                         [selectedTextLayer.id]: e.target.value,
                       }))
                     }
+                    onSelect={handleTextInputSelect}
+                    onMouseUp={handleTextInputSelect}
+                    onKeyUp={handleTextInputSelect}
+                    onFocus={handleTextInputSelect}
                     placeholder={selectedTextLayer.defaultText}
                     className="min-w-0 flex-1 rounded-lg border border-mute/20 bg-graphite px-3 py-2 text-sm text-paper outline-none transition focus:border-paper/50"
                   />
                   <button
-                    onClick={() => setSelectedTextLayerId(null)}
+                    onClick={() => selectTextLayer(null)}
                     className="flex h-9 shrink-0 items-center gap-1 rounded-lg bg-editor-accent/20 px-3 text-xs font-medium text-editor-accent transition active:scale-95"
                   >
                     <X size={14} />
                     Selesai
                   </button>
                 </div>
-                {/* Color picker — ganti warna teks layer ini. Swatch warna
-                    umum dulu, terakhir 1 swatch custom (input type=color
-                    asli browser) buat warna bebas di luar daftar preset. */}
+                {/* Hint kecil: kalau user lagi nyeleksi sebagian teks,
+                    kasih tau klik warna di bawah cuma bakal ngewarnain
+                    bagian itu — biar gak ketebak-tebak. */}
+                <span className="text-[10px] text-mute/70">
+                  {hasRealSelection
+                    ? `Warna berlaku buat "${currentTextValue.slice(textSelection!.start, textSelection!.end)}" yang diseleksi`
+                    : "Seleksi sebagian teks di atas buat warnain bagian itu aja, atau langsung pilih warna buat semua teks"}
+                </span>
+                {/* Color picker — ganti warna teks layer ini (semua teks,
+                    atau cuma bagian yang diseleksi user — lihat
+                    applyTextColor). Swatch warna umum dulu, terakhir 1
+                    swatch custom (input type=color asli browser) buat
+                    warna bebas di luar daftar preset. */}
                 <div className="flex items-center gap-1.5 pt-0.5">
                   {TEXT_COLOR_SWATCHES.map((c) => {
                     const isActive = activeTextColor.toLowerCase() === c.toLowerCase();
                     return (
                       <button
                         key={c}
-                        onClick={() =>
-                          setTextColors((prev) => ({
-                            ...prev,
-                            [selectedTextLayer.id]: c,
-                          }))
-                        }
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applyTextColor(c)}
                         title={c}
                         aria-label={`Warna ${c}`}
                         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition active:scale-90 ${
@@ -3657,15 +3749,26 @@ export default function Editor({
                     <input
                       type="color"
                       value={activeTextColor}
-                      onChange={(e) =>
-                        setTextColors((prev) => ({
-                          ...prev,
-                          [selectedTextLayer.id]: e.target.value,
-                        }))
-                      }
+                      onChange={(e) => applyTextColor(e.target.value)}
                       className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                     />
                   </label>
+                  {layerSegments.length > 0 && (
+                    <button
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() =>
+                        setTextColors((prev) => {
+                          const next = { ...prev };
+                          delete next[selectedTextLayer.id];
+                          return next;
+                        })
+                      }
+                      title="Reset ke warna default"
+                      className="ml-1 flex h-6 shrink-0 items-center rounded-full border border-mute/30 px-2 text-[10px] text-mute transition active:scale-95"
+                    >
+                      Reset
+                    </button>
+                  )}
                 </div>
               </div>
             </>
@@ -3761,7 +3864,7 @@ export default function Editor({
                     setActiveTool(id);
                     if (id === "media") {
                       setIsTextMode(false);
-                      setSelectedTextLayerId(null);
+                      selectTextLayer(null);
                       setSelectedLayerId(null);
                       setSelectedAudioClipId(null);
                       // Sengaja NGGAK langsung setSelectedSlotId di sini —
@@ -3773,7 +3876,7 @@ export default function Editor({
                     }
                     if (id === "audio") {
                       setIsTextMode(false);
-                      setSelectedTextLayerId(null);
+                      selectTextLayer(null);
                       setSelectedSlotId(null);
                       setSelectedLayerId(null);
                       setSelectedAudioClipId(null);
@@ -3786,7 +3889,7 @@ export default function Editor({
                     }
                     if (id === "progress") {
                       setIsTextMode(false);
-                      setSelectedTextLayerId(null);
+                      selectTextLayer(null);
                       setSelectedSlotId(null);
                       setSelectedLayerId(null);
                       setSelectedAudioClipId(null);

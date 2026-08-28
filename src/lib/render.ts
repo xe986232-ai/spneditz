@@ -5,6 +5,7 @@ import type {
   TemplateDurationLayer,
   TemplateProgressLayer,
   TemplateSpectrumLayer,
+  TextColorSegment,
 } from "../types";
 
 // --- Default blur background auto-sync (khusus template tertentu) ---
@@ -320,6 +321,45 @@ export function applyGlowBloom(
 
 export type TextValueState = Record<string, string>;
 
+/** Semua override warna custom user, per textLayer.id -> daftar rentang
+ *  warna (lihat TextColorSegment). Kalau array-nya kosong/gak ada
+ *  entrinya, layer itu pakai warna default dari data template. */
+export type TextColorState = Record<string, TextColorSegment[]>;
+
+/** Pecah SATU string teks jadi beberapa "run" berwarna berdasarkan daftar
+ *  rentang custom (segments) — bagian yang gak ke-cover segmen manapun
+ *  tetap pakai defaultColor. Diasumsikan segments sudah non-overlapping
+ *  (dijamin oleh cara Editor.tsx nulis/nge-update segments), tapi fungsi
+ *  ini tetap urutin & clamp index-nya sendiri biar aman dari data nyasar
+ *  (mis. sisa segments dari teks yang sudah diperpendek user). */
+function resolveTextColorRuns(
+  text: string,
+  defaultColor: string,
+  segments: TextColorSegment[] | undefined,
+): { text: string; color: string }[] {
+  if (!segments || segments.length === 0) {
+    return [{ text, color: defaultColor }];
+  }
+  const sorted = [...segments].sort((a, b) => a.start - b.start);
+  const runs: { text: string; color: string }[] = [];
+  let cursor = 0;
+  for (const seg of sorted) {
+    const start = Math.max(cursor, Math.min(seg.start, text.length));
+    const end = Math.max(start, Math.min(seg.end, text.length));
+    if (start > cursor) {
+      runs.push({ text: text.slice(cursor, start), color: defaultColor });
+    }
+    if (end > start) {
+      runs.push({ text: text.slice(start, end), color: seg.color });
+    }
+    cursor = Math.max(cursor, end);
+  }
+  if (cursor < text.length) {
+    runs.push({ text: text.slice(cursor), color: defaultColor });
+  }
+  return runs.filter((r) => r.text.length > 0);
+}
+
 /** Isi awal textValues dari defaultText tiap textLayer template (kalau ada) */
 export function initialTextValues(template: Template): TextValueState {
   const state: TextValueState = {};
@@ -341,7 +381,14 @@ export function formatClock(totalSeconds: number): string {
 /** Gambar semua textLayers template (judul, artist, nama device, dst) di
  *  atas canvas, pakai nilai user dari `values` (fallback ke defaultText
  *  kalau belum ada/kosong). Dipanggil di render loop preview MAUPUN saat
- *  compositing untuk export, jadi hasilnya konsisten. */
+ *  compositing untuk export, jadi hasilnya konsisten.
+ *
+ *  Kalau layer.colorSegments ada isinya (user udah nyeleksi sebagian
+ *  teks & kasih warna beda-beda), teksnya digambar per-"run" pakai
+ *  ctx.textAlign="left" + akumulasi offset-x manual (dihitung dari
+ *  ctx.measureText), biar tetap presisi align kiri/tengah/kanan sama
+ *  persis kayak mode satu-warna biasa. Kalau nggak ada segments sama
+ *  sekali, tetap pakai jalur fillText biasa (persis perilaku lama). */
 export function drawTextLayers(
   ctx: CanvasRenderingContext2D,
   canvasW: number,
@@ -350,16 +397,40 @@ export function drawTextLayers(
   values: TextValueState,
 ) {
   for (const layer of textLayers) {
-    const text = (values[layer.id] ?? layer.defaultText ?? "").trim();
+    const hasSegments = !!layer.colorSegments?.length;
+    // Kalau ada segments, JANGAN trim (indexnya dihitung dari teks mentah
+    // di input) — biar posisi tiap rentang warna tetap presisi sama yang
+    // diseleksi user. Tanpa segments, tetap trim seperti sebelumnya.
+    const rawText = values[layer.id] ?? layer.defaultText ?? "";
+    const text = hasSegments ? rawText : rawText.trim();
     if (!text) continue;
     const x = (layer.x / 100) * canvasW;
     const y = (layer.y / 100) * canvasH;
+    const defaultColor = layer.color ?? "#FFFFFF";
     ctx.save();
     ctx.font = `${layer.fontWeight ?? 600} ${layer.fontSize}px -apple-system, "Helvetica Neue", Arial, sans-serif`;
-    ctx.fillStyle = layer.color ?? "#FFFFFF";
-    ctx.textAlign = layer.align ?? "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(text, x, y);
+
+    if (!hasSegments) {
+      ctx.fillStyle = defaultColor;
+      ctx.textAlign = layer.align ?? "center";
+      ctx.fillText(text, x, y);
+      ctx.restore();
+      continue;
+    }
+
+    const runs = resolveTextColorRuns(text, defaultColor, layer.colorSegments);
+    const align = layer.align ?? "center";
+    const totalWidth = ctx.measureText(text).width;
+    let cursorX = x;
+    if (align === "center") cursorX = x - totalWidth / 2;
+    else if (align === "right") cursorX = x - totalWidth;
+    ctx.textAlign = "left";
+    for (const run of runs) {
+      ctx.fillStyle = run.color;
+      ctx.fillText(run.text, cursorX, y);
+      cursorX += ctx.measureText(run.text).width;
+    }
     ctx.restore();
   }
 }
