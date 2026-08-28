@@ -49,6 +49,8 @@ import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../t
   drawWaveformProgress,
   drawSpectrumIndicator,
   applyGlowBloom,
+  getPressBounceScale,
+  drawImageCoverWithPressBounce,
   ImageCache,
   MAX_BACKGROUND_BLUR,
   BACKGROUND_BLUR_OVERSCAN_FACTOR,
@@ -1330,7 +1332,26 @@ export default function Editor({
       if (op <= 0) continue;
       ctx.save();
       ctx.globalAlpha = op;
-      drawImageCover(ctx, img, 0, 0, canvasW, canvasH);
+      if (layer.pressAnimation) {
+        // Efek "abis diklik" cuma di detik-detik awal timeline (dari
+        // playhead absolut currentSec, BUKAN loop) — lihat
+        // getPressBounceScale di lib/render.ts.
+        const scale = getPressBounceScale(
+          currentSec,
+          layer.pressAnimation.durationSec,
+        );
+        drawImageCoverWithPressBounce(
+          ctx,
+          img,
+          canvasW,
+          canvasH,
+          layer.pressAnimation.anchorXPercent,
+          layer.pressAnimation.anchorYPercent,
+          scale,
+        );
+      } else {
+        drawImageCover(ctx, img, 0, 0, canvasW, canvasH);
+      }
       ctx.restore();
     }
 

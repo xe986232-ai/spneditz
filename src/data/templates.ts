@@ -521,6 +521,14 @@ export const TEMPLATES: Template[] = [
         assetSrc: "/templates/iphone-music-player-v4/musicplayer-center.png",
         order: "front",
         adjustable: true,
+        // Efek "abis diklik" pas video baru mulai (0.5 detik pertama
+        // doang, nggak loop) — anchor diukur dari bounding-box alpha
+        // musicplayer-center.png (pusat tombol asli, bukan tengah canvas).
+        pressAnimation: {
+          anchorXPercent: 50.09,
+          anchorYPercent: 71.43,
+          durationSec: 0.5,
+        },
       },
       {
         // Dulu isinya star + volume (icon speaker kiri/kanan + bar).

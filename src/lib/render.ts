@@ -114,6 +114,78 @@ function drawableSize(img: DrawableImageSource): { w: number; h: number } {
   return { w: img.width, h: img.height };
 }
 
+// --- Animasi "tombol ditekan" (press/kenyal) untuk decor layer tertentu ---
+//
+// Dipakai buat kasih efek "kayak abis diklik" di awal video doang (BUKAN
+// loop) — contoh pertama: tombol Play/Pause di tengah Template V4
+// (musicplayer-center.png), biar kesannya user baru aja mulai/nge-play.
+// Kurva: tekan cepat (scale turun dikit), lalu mantul ke depan lewat
+// scale >1 (efek "kenyal"/elastis), baru settle pas di scale 1 — dan
+// abis durasinya lewat, BALIK diam di scale 1 selamanya (nggak diulang).
+
+/** Durasi default animasi tekan, dalam detik. */
+export const PRESS_BOUNCE_DURATION_SEC = 0.5;
+
+/** Elastic ease-out (Robert Penner) — dipakai buat fase "mantul kenyal"
+ *  abis ditekan, overshoot dikit di atas 1 sebelum settle balik ke 1. */
+function easeOutElastic(u: number): number {
+  if (u <= 0) return 0;
+  if (u >= 1) return 1;
+  const c4 = (2 * Math.PI) / 3;
+  return Math.pow(2, -10 * u) * Math.sin((u * 10 - 0.75) * c4) + 1;
+}
+
+/** Hitung faktor scale tombol di detik `t` (waktu ABSOLUT di timeline,
+ *  0 = awal video). Sebelum `duration` lewat: fase tekan cepat (scale
+ *  turun ke ~0.82) diikuti fase lepas elastis (mantul lewat >1, settle
+ *  balik ke 1). Setelah `duration` lewat: selalu 1 (diam, tidak loop). */
+export function getPressBounceScale(
+  t: number,
+  duration: number = PRESS_BOUNCE_DURATION_SEC,
+): number {
+  if (t <= 0 || t >= duration) return 1;
+  const pressPortion = 0.22; // ~22% durasi awal = fase "ditekan turun"
+  const pressEnd = duration * pressPortion;
+  const minScale = 0.82;
+  if (t <= pressEnd) {
+    // Ease-in quad: 1 -> minScale, cepat & tegas (kesan "diklik").
+    const u = t / pressEnd;
+    const eased = u * u;
+    return 1 - (1 - minScale) * eased;
+  }
+  // Fase lepas: minScale -> 1, mantul elastis (overshoot dikit di atas 1).
+  const u = (t - pressEnd) / (duration - pressEnd);
+  const eased = easeOutElastic(u);
+  return minScale + (1 - minScale) * eased;
+}
+
+/** Gambar salah satu decor layer (full-canvas) dengan efek "tombol
+ *  ditekan" di atas, discale dari titik jangkar (anchor) tertentu dalam
+ *  PERSEN canvas — bukan dari tengah canvas, biar animasinya kelihatan
+ *  keluar dari posisi tombol aslinya, bukan dari tengah layar. */
+export function drawImageCoverWithPressBounce(
+  ctx: CanvasRenderingContext2D,
+  img: DrawableImageSource,
+  canvasW: number,
+  canvasH: number,
+  anchorXPercent: number,
+  anchorYPercent: number,
+  scale: number,
+) {
+  if (scale === 1) {
+    drawImageCover(ctx, img, 0, 0, canvasW, canvasH);
+    return;
+  }
+  const anchorX = (anchorXPercent / 100) * canvasW;
+  const anchorY = (anchorYPercent / 100) * canvasH;
+  ctx.save();
+  ctx.translate(anchorX, anchorY);
+  ctx.scale(scale, scale);
+  ctx.translate(-anchorX, -anchorY);
+  drawImageCover(ctx, img, 0, 0, canvasW, canvasH);
+  ctx.restore();
+}
+
 /** Gambar image "cover" (isi penuh kotak tujuan, crop kelebihannya) */
 export function drawImageCover(
   ctx: CanvasRenderingContext2D,

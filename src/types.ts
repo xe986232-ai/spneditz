@@ -65,6 +65,18 @@ export interface TemplateDecorLayer {
    *  lewat panel pengaturan. assetSrc tetap harus diisi (dipakai sebagai
    *  fallback kalau browser user nggak dukung SVG filter di canvas). */
   liquidGlass?: TemplateLiquidGlassConfig;
+  /** Kalau diisi, layer ini kena animasi "tombol ditekan/kenyal" SEKALI
+   *  doang di awal video (bukan loop) — dipakai buat tombol Play/Pause
+   *  tengah biar keliatan kayak baru aja diklik pas video mulai. anchorX/
+   *  anchorYPercent = titik pusat tombol (PERSEN dari canvasWidth/Height,
+   *  hasil ukur bounding-box alpha PNG-nya) — dipakai sebagai titik
+   *  jangkar scale, biar animasinya "keluar" dari posisi tombol asli,
+   *  bukan dari tengah canvas. durationSec default 0.5 detik. */
+  pressAnimation?: {
+    anchorXPercent: number;
+    anchorYPercent: number;
+    durationSec?: number;
+  };
 }
 
 /** Kotak area kaca (dalam PERSEN dari canvasWidth/canvasHeight, sama

@@ -36,6 +36,8 @@ import {
   drawSpectrumIndicator,
   getAudioDuration,
   applyGlowBloom,
+  getPressBounceScale,
+  drawImageCoverWithPressBounce,
 } from "./render";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
 import { loadImageEl, renderCompositeCanvas, ExportCancelledError } from "./export";
@@ -266,8 +268,23 @@ export async function exportTemplateVideoWebCodecs(
   // Kalau progressStyle "waveform", skip decorLayer track statis
   // (progressbar.png) — samain sama preview & export ffmpeg, biar gak
   // dobel/numpuk sama bar waveform yang digambar dari nol.
+  //
+  // Layer yang punya pressAnimation (misal tombol Play/Pause tengah V4)
+  // DIKELUARIN dari composite statis di bawah — soalnya dia butuh discale
+  // beda tiap frame (efek "abis diklik" 0.5 detik pertama), sedangkan
+  // composite statis cuma dirender SEKALI & dipakai ulang tiap frame.
+  // Makanya dia digambar terpisah per-frame di render loop bawah.
   const frontDecorLayers = (template.decorLayers ?? []).filter(
-    (l) => l.order === "front" && !(progressStyle === "waveform" && l.hideInWaveformMode),
+    (l) =>
+      l.order === "front" &&
+      !(progressStyle === "waveform" && l.hideInWaveformMode) &&
+      !l.pressAnimation,
+  );
+  const animatedFrontDecorLayers = (template.decorLayers ?? []).filter(
+    (l) =>
+      l.order === "front" &&
+      !(progressStyle === "waveform" && l.hideInWaveformMode) &&
+      Boolean(l.pressAnimation),
   );
 
   // --- Layer statis: dirender SEKALI, dipakai ulang tiap frame. ---
@@ -330,6 +347,36 @@ export async function exportTemplateVideoWebCodecs(
     } catch (e) {
       throw new Error(
         `Gagal menyiapkan layer depan/teks. (${e instanceof Error ? e.message : String(e)})`,
+      );
+    }
+  }
+
+  // Layer depan yang punya pressAnimation (misal tombol Play/Pause tengah
+  // V4) — dimuat terpisah (BUKAN ikut composite statis di atas) karena
+  // butuh discale beda tiap frame di 0.5 detik pertama. Dimuat sekali di
+  // sini (ImageBitmap), lalu dipakai ulang di render loop per-frame bawah.
+  const animatedFrontDecorImages: {
+    layer: TemplateDecorLayer;
+    bitmap: ImageBitmap;
+    opacity: number;
+  }[] = [];
+  for (const layer of animatedFrontDecorLayers) {
+    try {
+      const el = await loadImageEl(layer.assetSrc);
+      const c = document.createElement("canvas");
+      c.width = canvasW;
+      c.height = canvasH;
+      const cctx = c.getContext("2d");
+      if (!cctx) continue;
+      cctx.imageSmoothingEnabled = true;
+      cctx.imageSmoothingQuality = "high";
+      drawImageCover(cctx, el, 0, 0, canvasW, canvasH);
+      const bitmap = await createImageBitmap(c);
+      const op = (layerOpacity[layer.id] ?? layer.opacity ?? 100) / 100;
+      animatedFrontDecorImages.push({ layer, bitmap, opacity: op });
+    } catch (e) {
+      throw new Error(
+        `Gagal menyiapkan layer animasi "${layer.label}". (${e instanceof Error ? e.message : String(e)})`,
       );
     }
   }
@@ -590,6 +637,26 @@ export async function exportTemplateVideoWebCodecs(
 
     if (staticFrontBitmap) {
       ctx.drawImage(staticFrontBitmap, 0, 0, canvasW, canvasH);
+    }
+    // Layer "tombol ditekan" (pressAnimation) — digambar terpisah per
+    // frame karena scale-nya berubah tiap frame di 0.5 detik pertama
+    // (lihat getPressBounceScale), beda dari staticFrontBitmap di atas
+    // yang cuma dirender sekali & statis sepanjang video.
+    for (const { layer, bitmap, opacity } of animatedFrontDecorImages) {
+      if (opacity <= 0) continue;
+      const scale = getPressBounceScale(currentSec, layer.pressAnimation?.durationSec);
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      drawImageCoverWithPressBounce(
+        ctx,
+        bitmap,
+        canvasW,
+        canvasH,
+        layer.pressAnimation?.anchorXPercent ?? 50,
+        layer.pressAnimation?.anchorYPercent ?? 50,
+        scale,
+      );
+      ctx.restore();
     }
     if (template.durationLayer) {
       drawDurationLayer(ctx, canvasW, canvasH, template.durationLayer, currentSec, totalDurationForMux);
