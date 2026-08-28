@@ -2826,62 +2826,6 @@ export default function Editor({
                   );
                 })()}
 
-                {/* Track khusus buat decorLayer yang "adjustable" (misal:
-                    Card Player) — dirender sebagai strip ikon kecil (bukan
-                    blok penuh selebar timeline) biar padat kayak baris
-                    sticker/overlay di referensi, tapi klik-nya tetap
-                    munculin slider opacity di toolbar bawah kayak semula. */}
-                {adjustableLayers.length > 0 && (() => {
-                  const allHidden = adjustableLayers.every((l) => hiddenElements.has(l.id));
-                  return (
-                    <div className="relative flex h-11 items-center gap-1.5 rounded-md border border-mute/10 bg-editor-track pl-10 pr-2">
-                      <TrackEyeButton
-                        hidden={allHidden}
-                        onToggle={(e) => {
-                          e.stopPropagation();
-                          setHiddenElements((prev) => {
-                            const next = new Set(prev);
-                            adjustableLayers.forEach((l) =>
-                              allHidden ? next.delete(l.id) : next.add(l.id),
-                            );
-                            return next;
-                          });
-                        }}
-                        title={allHidden ? "Tampilkan semua elemen" : "Sembunyikan semua elemen"}
-                      />
-                      <div className="flex flex-1 items-center gap-1 overflow-x-auto">
-                        {adjustableLayers.map((layer) => {
-                          const isSelected = selectedLayerId === layer.id;
-                          const isLayerHidden = hiddenElements.has(layer.id);
-                          return (
-                            <button
-                              key={layer.id}
-                              onClick={() => {
-                                setSelectedSlotId(null);
-                                setSelectedTextLayerId(null);
-                                setSelectedLayerId(layer.id);
-                              }}
-                              className={`relative h-8 w-8 shrink-0 overflow-hidden rounded border bg-graphite/60 transition ${
-                                isSelected
-                                  ? "border-paper ring-2 ring-paper"
-                                  : "border-violet-400/40"
-                              } ${isLayerHidden ? "opacity-40 grayscale" : ""}`}
-                              title={layer.label}
-                            >
-                              {layer.assetSrc && (
-                                <img
-                                  src={layer.assetSrc}
-                                  alt={layer.label}
-                                  className="pointer-events-none h-full w-full object-contain p-0.5"
-                                />
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
 
               </div>
             ) : (
