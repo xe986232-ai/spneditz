@@ -140,26 +140,20 @@ function easeOutElastic(u: number, amplitude = 1.7, period = 0.45): number {
 }
 
 /** Hitung faktor scale tombol di detik `t` (waktu ABSOLUT di timeline,
- *  0 = awal video). Sebelum `duration` lewat: fase tekan cepat & DALAM
- *  (scale turun tajam ke ~0.68, kesan "digencet" beneran) diikuti fase
- *  lepas elastis kuat (mantul jauh ngelewatin 1, baru settle). Setelah
- *  `duration` lewat: selalu 1 (diam, tidak loop). */
+ *  0 = awal video). Animasinya BUKAN "normal -> tekan -> normal", tapi
+ *  langsung mulai dari kondisi SUDAH ketekan (scale ~0.68) pas video mulai
+ *  (t=0), lalu mantul kenyal lepas balik ke normal (scale 1) — kesan
+ *  "abis diklik pas play ditekan, terus lepas". Setelah `duration` lewat:
+ *  selalu 1 (diam, tidak loop). */
 export function getPressBounceScale(
   t: number,
   duration: number = PRESS_BOUNCE_DURATION_SEC,
 ): number {
-  if (t <= 0 || t >= duration) return 1;
-  const pressPortion = 0.18; // ~18% durasi awal = fase "ditekan turun"
-  const pressEnd = duration * pressPortion;
+  if (t <= 0) return 0.68; // mulai dari kondisi udah ketekan, bukan normal
+  if (t >= duration) return 1;
   const minScale = 0.68;
-  if (t <= pressEnd) {
-    // Ease-in quad: 1 -> minScale, cepat & tegas (kesan "diklik" dalam).
-    const u = t / pressEnd;
-    const eased = u * u;
-    return 1 - (1 - minScale) * eased;
-  }
-  // Fase lepas: minScale -> mantul jauh lewat 1 -> settle di 1.
-  const u = (t - pressEnd) / (duration - pressEnd);
+  // Fase lepas: minScale (udah ketekan) -> mantul jauh lewat 1 -> settle di 1.
+  const u = t / duration;
   const eased = easeOutElastic(u);
   return minScale + (1 - minScale) * eased;
 }
