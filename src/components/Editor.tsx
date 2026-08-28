@@ -32,6 +32,7 @@ import {
   Crop,
   Music2,
   Palette,
+  MoreVertical,
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import { getDominantColor } from "../lib/color";
@@ -333,31 +334,58 @@ function formatClock(sec: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-// Tombol mata kecil di kiri tiap baris track — nempel (sticky) ke tepi
-// kiri area timeline yang scrollable, jadi tetap keliatan/gampang diketuk
-// meskipun user geser timeline ke kanan. Klik toggle hidden/show elemen
-// itu tanpa ikut milih (select) track-nya.
-function TrackEyeButton({
+// Pill label di kiri tiap baris track — nempel (sticky) ke tepi kiri
+// area timeline yang scrollable, jadi tetap keliatan/gampang diketuk
+// meskipun user geser timeline ke kanan. Gayanya diambil dari mockup
+// (repo Mock-up): kartu kecil rounded berisi ikon mata (hide/show),
+// ikon tipe elemen (gambar/audio/teks/dll), dan nama elemennya —
+// bukan cuma tombol bulat mata doang kayak sebelumnya.
+function TrackLabel({
   hidden,
-  onToggle,
-  title,
+  onToggleHidden,
+  icon: Icon,
+  label,
+  hiddenTitle,
+  shownTitle,
 }: {
   hidden: boolean;
-  onToggle: (e: React.MouseEvent) => void;
-  title?: string;
+  onToggleHidden: (e: React.MouseEvent) => void;
+  icon: LucideIcon;
+  label: string;
+  hiddenTitle?: string;
+  shownTitle?: string;
 }) {
   return (
+    <div className="sticky left-1 z-20 flex h-8 w-[104px] shrink-0 items-center gap-1.5 rounded-lg border border-mute/10 bg-editor-panel/95 px-2 backdrop-blur-sm">
+      <button
+        onClick={onToggleHidden}
+        title={hidden ? (hiddenTitle ?? "Tampilkan elemen") : (shownTitle ?? "Sembunyikan elemen")}
+        aria-label={hidden ? "Tampilkan elemen" : "Sembunyikan elemen"}
+        className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center transition active:scale-90 ${
+          hidden ? "text-mute" : "text-editor-accent"
+        }`}
+      >
+        {hidden ? <EyeOff size={13} /> : <Eye size={13} />}
+      </button>
+      <Icon size={13} className="shrink-0 text-editor-muted" />
+      <span className="truncate text-[10px] font-medium text-paper/90">{label}</span>
+    </div>
+  );
+}
+
+// Titik tiga di kanan tiap baris track — juga sticky (nempel ke tepi
+// kanan area scroll), gayanya ngikutin ikon "MoreVertical" polos di
+// mockup (nggak ada lingkaran/border, cuma ikon abu-abu).
+function TrackMenuButton({ title }: { title?: string }) {
+  return (
     <button
-      onClick={onToggle}
-      title={title ?? (hidden ? "Tampilkan elemen" : "Sembunyikan elemen")}
-      aria-label={hidden ? "Tampilkan elemen" : "Sembunyikan elemen"}
-      className={`sticky left-1 z-20 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition active:scale-90 ${
-        hidden
-          ? "border-mute/20 bg-graphite/80 text-mute"
-          : "border-editor-accent/40 bg-editor-accent/15 text-editor-accent"
-      }`}
+      type="button"
+      title={title ?? "Menu track"}
+      aria-label={title ?? "Menu track"}
+      onClick={(e) => e.stopPropagation()}
+      className="sticky right-1 z-20 flex h-8 w-6 shrink-0 items-center justify-center text-editor-muted transition active:scale-90"
     >
-      {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+      <MoreVertical size={15} />
     </button>
   );
 }
@@ -1102,15 +1130,18 @@ export default function Editor({
 
   // Offset horizontal (px) buat nyamain posisi playhead & ruler sama
   // posisi ASLI klip di track foto/video/teks — klip-klip itu sengaja
-  // digeser +40px ke kanan (lihat clipLeft di bawah) biar nggak ketutupan
-  // TrackEyeButton (tombol mata bulat "sticky left-1 w-8" yang nempel di
-  // kiri tiap baris track). Sebelum ini ditambahin, garis putih playhead
-  // pas di detik 0 nongkrong di x=0 (mentok kiri banget, sejajar sama
-  // tombol mata), padahal klip aslinya baru mulai gambar di x=40 — jadi
-  // playhead keliatan "nggak nyambung"/ketinggalan dari klip. Sekarang
-  // playhead & ruler ikut digeser +40 biar titik 0 mereka SAMA PERSIS
+  // digeser ke kanan (lihat clipLeft di bawah) biar nggak ketutupan
+  // TrackLabel (pill label + ikon mata yang nempel "sticky left-1" di
+  // kiri tiap baris track, gayanya diambil dari repo Mock-up). Kalau
+  // offset ini nggak ada, garis putih playhead pas di detik 0 nongkrong
+  // di x=0 (mentok kiri banget, ketutupan pill label), padahal klip
+  // aslinya baru mulai gambar setelah pill — jadi playhead keliatan
+  // "nggak nyambung"/ketinggalan dari klip. Makanya playhead & ruler
+  // ikut digeser sebesar offset ini biar titik 0 mereka SAMA PERSIS
   // sama titik mulai klip yang keliatan di layar.
-  const TIMELINE_CLIP_OFFSET_PX = 40;
+  // 104px lebar pill label kiri + jarak sticky (left-1 = 4px) + sedikit
+  // gap sebelum klip mulai.
+  const TIMELINE_CLIP_OFFSET_PX = 116;
 
   // decorLayers dipisah "back" (di belakang slot foto/video) & "front"
   // (di depan/atas slot), dipakai di render loop biar urutan gambarnya
@@ -2416,14 +2447,13 @@ export default function Editor({
                         key={layer.id}
                         className="relative flex h-11 items-center rounded-md border border-mute/10 bg-editor-track"
                       >
-                        <TrackEyeButton
+                        <TrackLabel
                           hidden={isTextHidden}
-                          onToggle={(e) => toggleElementHidden(layer.id, e)}
-                          title={
-                            isTextHidden
-                              ? `Tampilkan "${layer.label}"`
-                              : `Sembunyikan "${layer.label}"`
-                          }
+                          onToggleHidden={(e) => toggleElementHidden(layer.id, e)}
+                          icon={Type}
+                          label={layer.label}
+                          hiddenTitle={`Tampilkan "${layer.label}"`}
+                          shownTitle={`Sembunyikan "${layer.label}"`}
                         />
                         <div
                           onClick={() => {
@@ -2432,12 +2462,15 @@ export default function Editor({
                             setSelectedTextLayerId(layer.id);
                             if (layer.id === "airplayDevice") dismissAirplayHint();
                           }}
-                          className={`absolute inset-y-0.5 left-10 cursor-pointer overflow-hidden rounded border transition ${
+                          className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded border transition ${
                             isSelected
                               ? "border-paper ring-2 ring-paper bg-amber-400/20"
                               : "border-amber-400/40 bg-amber-400/15"
                           } ${isTextHidden ? "opacity-40 grayscale" : ""}`}
-                          style={{ width: Math.max(28, DURATION * effectivePxPerSec - 4) }}
+                          style={{
+                            left: TIMELINE_CLIP_OFFSET_PX,
+                            width: Math.max(28, DURATION * effectivePxPerSec - 4),
+                          }}
                           title={layer.label}
                         >
                           <div className="flex h-full items-center gap-1 px-1.5">
@@ -2450,6 +2483,7 @@ export default function Editor({
                             </span>
                           </div>
                         </div>
+                        <TrackMenuButton title={`Menu "${layer.label}"`} />
                       </div>
                     );
                   })}
@@ -2481,21 +2515,26 @@ export default function Editor({
                     disembunyiin biar timeline-nya bersih cuma isi audio. */}
                 {customBackground && activeTool !== "audio" && (
                   <div className="relative flex h-11 items-center rounded-md border border-mute/10 bg-editor-track">
-                    <TrackEyeButton
+                    <TrackLabel
                       hidden={hiddenElements.has(BACKGROUND_LAYER_ID)}
-                      onToggle={(e) => toggleElementHidden(BACKGROUND_LAYER_ID, e)}
+                      onToggleHidden={(e) => toggleElementHidden(BACKGROUND_LAYER_ID, e)}
+                      icon={Layers}
+                      label="Background"
                     />
                     <div
                       onClick={() => {
                         setSelectedSlotId(null);
                         setSelectedLayerId(BACKGROUND_LAYER_ID);
                       }}
-                      className={`absolute inset-y-0.5 left-10 cursor-pointer overflow-hidden rounded border transition ${
+                      className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded border transition ${
                         isBackgroundLayerSelected
                           ? "border-paper ring-2 ring-paper bg-sky-400/20"
                           : "border-sky-400/40 bg-sky-400/15"
                       } ${hiddenElements.has(BACKGROUND_LAYER_ID) ? "opacity-40 grayscale" : ""}`}
-                      style={{ width: Math.max(28, DURATION * effectivePxPerSec - 4) }}
+                      style={{
+                        left: TIMELINE_CLIP_OFFSET_PX,
+                        width: Math.max(28, DURATION * effectivePxPerSec - 4),
+                      }}
                       title="Background"
                     >
                       {/* Thumbnail asli foto background (bukan cuma blok
@@ -2522,6 +2561,7 @@ export default function Editor({
                         </span>
                       </div>
                     </div>
+                    <TrackMenuButton title="Menu Background" />
                   </div>
                 )}
 
@@ -2588,6 +2628,7 @@ export default function Editor({
                   if (isAudio) {
                     if (!filled) return null;
                     const sourceDuration = audioInfo?.duration ?? DURATION;
+                    const isAudioHidden = hiddenElements.has(slot.id);
                     return (
                       <div
                         key={slot.id}
@@ -2595,13 +2636,22 @@ export default function Editor({
                           setSelectedLayerId(null);
                           setSelectedSlotId(slot.id);
                         }}
-                        className={`relative h-11 rounded-md border bg-black/20 transition ${
+                        className={`relative flex h-11 items-center rounded-md border bg-black/20 transition ${
                           isSelected ? "border-paper/40" : "border-mute/10"
                         }`}
                       >
+                        <TrackLabel
+                          hidden={isAudioHidden}
+                          onToggleHidden={(e) => toggleElementHidden(slot.id, e)}
+                          icon={Music2}
+                          label={slot.label ?? "Audio"}
+                          hiddenTitle={`Tampilkan "${slot.label ?? "Audio"}"`}
+                          shownTitle={`Sembunyikan "${slot.label ?? "Audio"}"`}
+                        />
                         {audioClips.map((clip) => {
                           const clipDuration = clip.trimEnd - clip.trimStart;
-                          const clipLeft = clip.offset * effectivePxPerSec + 2;
+                          const clipLeft =
+                            clip.offset * effectivePxPerSec + TIMELINE_CLIP_OFFSET_PX;
                           const clipWidth = Math.max(
                             22,
                             clipDuration * effectivePxPerSec - 4,
@@ -2667,7 +2717,7 @@ export default function Editor({
                                 isClipSelected
                                   ? "cursor-grabbing border-paper ring-2 ring-paper bg-emerald-500/25"
                                   : "cursor-grab border-emerald-500/40 bg-emerald-500/15 active:cursor-grabbing"
-                              }`}
+                              } ${isAudioHidden ? "opacity-40 grayscale" : ""}`}
                               style={{ left: clipLeft, width: clipWidth }}
                               title="Musik latar — tahan & geser buat pindah posisi"
                             >
@@ -2731,6 +2781,7 @@ export default function Editor({
                             </div>
                           );
                         })}
+                        <TrackMenuButton title={`Menu "${slot.label ?? "Audio"}"`} />
                       </div>
                     );
                   }
@@ -2751,14 +2802,13 @@ export default function Editor({
                       key={slot.id}
                       className="relative flex h-11 items-center rounded-md border border-mute/10 bg-editor-track"
                     >
-                      <TrackEyeButton
+                      <TrackLabel
                         hidden={isSlotHidden}
-                        onToggle={(e) => toggleElementHidden(slot.id, e)}
-                        title={
-                          isSlotHidden
-                            ? `Tampilkan "${slot.label}"`
-                            : `Sembunyikan "${slot.label}"`
-                        }
+                        onToggleHidden={(e) => toggleElementHidden(slot.id, e)}
+                        icon={Icon}
+                        label={slot.label}
+                        hiddenTitle={`Tampilkan "${slot.label}"`}
+                        shownTitle={`Sembunyikan "${slot.label}"`}
                       />
                       <div
                         onClick={() => {
@@ -2817,6 +2867,7 @@ export default function Editor({
                           </span>
                         </div>
                       </div>
+                      <TrackMenuButton title={`Menu "${slot.label}"`} />
                     </div>
                   );
                 })}
@@ -2836,26 +2887,28 @@ export default function Editor({
                       key={layer.id}
                       className="relative flex h-11 items-center rounded-md border border-mute/10 bg-editor-track"
                     >
-                      <TrackEyeButton
+                      <TrackLabel
                         hidden={isLayerHidden}
-                        onToggle={(e) => toggleElementHidden(layer.id, e)}
-                        title={
-                          isLayerHidden
-                            ? `Tampilkan "${layer.label}"`
-                            : `Sembunyikan "${layer.label}"`
-                        }
+                        onToggleHidden={(e) => toggleElementHidden(layer.id, e)}
+                        icon={SlidersHorizontal}
+                        label={layer.label}
+                        hiddenTitle={`Tampilkan "${layer.label}"`}
+                        shownTitle={`Sembunyikan "${layer.label}"`}
                       />
                       <div
                         onClick={() => {
                           setSelectedSlotId(null);
                           setSelectedLayerId(layer.id);
                         }}
-                        className={`absolute inset-y-0.5 left-10 cursor-pointer overflow-hidden rounded border transition ${
+                        className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded border transition ${
                           isSelected
                             ? "border-paper ring-2 ring-paper bg-violet-400/20"
                             : "border-violet-400/40 bg-violet-400/15"
                         } ${isLayerHidden ? "opacity-40 grayscale" : ""}`}
-                        style={{ width: Math.max(28, DURATION * effectivePxPerSec - 4) }}
+                        style={{
+                          left: TIMELINE_CLIP_OFFSET_PX,
+                          width: Math.max(28, DURATION * effectivePxPerSec - 4),
+                        }}
                         title={layer.label}
                       >
                         {/* Thumbnail asset PNG asli layer ini (kartu
@@ -2883,6 +2936,7 @@ export default function Editor({
                           </span>
                         </div>
                       </div>
+                      <TrackMenuButton title={`Menu "${layer.label}"`} />
                     </div>
                   );
                 })}
