@@ -503,12 +503,24 @@ export const TEMPLATES: Template[] = [
       {
         id: "musicplayer",
         label: "Kontrol",
-        // Cuma rewind/pause/fast-forward — ikon star & volume sudah
-        // dipisah ke layer "layout" sendiri (lihat di bawah) biar
-        // opacity-nya bisa diatur terpisah dari tombol play/skip.
+        // Cuma rewind/fast-forward — ikon pause/play tengah sudah
+        // dipecah ke layer "musicplayerCenter" sendiri (lihat di bawah)
+        // biar opacity-nya bisa diatur terpisah dari tombol rewind/skip.
         // Opacity default full (100%), nggak diubah.
         assetSrc: "/templates/iphone-music-player-v4/musicplayer.png",
         order: "front",
+      },
+      {
+        // Ikon pause/play (dua batang) yang dulu nempel jadi satu file
+        // sama rewind/fast-forward di "musicplayer.png" — di-crop keluar
+        // jadi asset sendiri biar opacity-nya independen dari 2 ikon
+        // lain. Posisi sama persis (full-canvas 1080x1920). Opacity
+        // default full, nggak diredupin.
+        id: "musicplayerCenter",
+        label: "Tombol Pause/Play",
+        assetSrc: "/templates/iphone-music-player-v4/musicplayer-center.png",
+        order: "front",
+        adjustable: true,
       },
       {
         // Dulu isinya star + volume (icon speaker kiri/kanan + bar).
