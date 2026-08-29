@@ -2861,13 +2861,6 @@ export default function Editor({
                  munculin input edit teks khusus layer itu di toolbar bawah. */
               template.textLayers?.length ? (
                 <div style={{ width: TRACK_WIDTH }} className="flex flex-col gap-0.5 pb-1">
-                  {/* Track audio ikut ditampilkan di sini (digabung sama
-                      track teks) — biar user bisa lihat & atur posisi/
-                      trim musik latar sambil masih di mode edit Teks,
-                      nggak perlu bolak-balik pindah tab "Audio". Pakai
-                      helper yang sama kayak di mode Media/Audio, jadi
-                      perilaku drag/trim/klip-nya identik. */}
-                  {audioSlotDef && renderAudioTrack(audioSlotDef)}
                   {template.textLayers.map((layer) => {
                     const isSelected = selectedTextLayerId === layer.id;
                     const value = textValues[layer.id] || layer.defaultText;
@@ -2998,11 +2991,15 @@ export default function Editor({
                 {visibleSlots.map((slot) => {
 
                   const isAudio = slot.type === "audio";
-                  // Isolasi per tool: tool "Audio" cuma nampilin track
-                  // audio, tool lain (Media/Gaya/dll) cuma nampilin track
-                  // non-audio (foto/video) — biar nggak nyampur kayak
-                  // sebelumnya.
-                  if (isAudio && activeTool !== "audio") return null;
+                  // Track audio digabung ke tab "Edit" (activeTool ===
+                  // "media") juga — biar musik latar kelihatan bareng
+                  // track foto/video pas lagi ngedit klip media, nggak
+                  // perlu pindah-pindah tab. Tab "Audio" tetap fokus cuma
+                  // nampilin track audio doang (non-audio disembunyikan),
+                  // dan tab lain (mis. "Gaya") tetap nggak nampilin audio.
+                  if (isAudio && activeTool !== "audio" && activeTool !== "media") {
+                    return null;
+                  }
                   if (!isAudio && activeTool === "audio") return null;
                   const filled = Boolean(slotMedia[slot.id]);
                   const isSelected = selectedSlotId === slot.id;
