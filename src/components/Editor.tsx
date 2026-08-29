@@ -35,7 +35,6 @@ import {
   Crop,
   Music2,
   Palette,
-  MoreVertical,
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import { getDominantColor } from "../lib/color";
@@ -403,23 +402,6 @@ function TrackLabel({
       <Icon className="h-[14px] w-[14px] shrink-0" />
       <span className="truncate">{label}</span>
     </div>
-  );
-}
-
-// Titik tiga di kanan tiap baris track — juga sticky (nempel ke tepi
-// kanan area scroll). Class-nya persis punya Mock-up:
-// <MoreVertical className="h-4 w-4 shrink-0 text-ed-dim" />
-function TrackMenuButton({ title }: { title?: string }) {
-  return (
-    <button
-      type="button"
-      title={title ?? "Menu track"}
-      aria-label={title ?? "Menu track"}
-      onClick={(e) => e.stopPropagation()}
-      className="sticky right-1 z-20 flex h-8 w-6 shrink-0 items-center justify-center transition active:scale-90"
-    >
-      <MoreVertical className="h-4 w-4 shrink-0 text-ed-dim" />
-    </button>
   );
 }
 
@@ -2449,7 +2431,6 @@ export default function Editor({
             </div>
           );
         })}
-        <TrackMenuButton title={`Menu "${slot.label ?? "Audio"}"`} />
       </div>
     );
   }
@@ -2499,7 +2480,6 @@ export default function Editor({
             </span>
           </div>
         </div>
-        <TrackMenuButton title={`Menu "${layer.label}"`} />
       </div>
     );
   }
@@ -2994,7 +2974,6 @@ export default function Editor({
                         {backgroundBlur > 0 ? ` · Blur ${Math.round(backgroundBlur)}` : ""}
                       </span>
                     </div>
-                    <TrackMenuButton title="Menu Background" />
                   </div>
                 )}
 
@@ -3098,7 +3077,6 @@ export default function Editor({
                           </div>
                         )}
                       </div>
-                      <TrackMenuButton title={`Menu "${slot.label}"`} />
                     </div>
                   );
                 })}
@@ -3177,7 +3155,6 @@ export default function Editor({
                           </span>
                         </div>
                       </div>
-                      <TrackMenuButton title={`Menu "${layer.label}"`} />
                     </div>
                   );
                 })}
