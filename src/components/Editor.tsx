@@ -1426,7 +1426,29 @@ export default function Editor({
         setGlowIntensity(record.glowIntensity ?? 0);
         setTextValues((prev) => ({ ...prev, ...record.textValues }));
         setTextColors(record.textColors ?? {});
-        setCustomLyricsLayers(record.customLyricsLayers ?? []);
+        const restoredLyrics = record.customLyricsLayers ?? [];
+        setCustomLyricsLayers(restoredLyrics);
+        // PENTING: sinkronin ulang counter ID "Add teks" ke angka
+        // TERTINGGI yang udah kepakai di draft ini. Kalau nggak,
+        // counter selalu reset ke 0 tiap Editor dibuka ulang (habis
+        // keluar-masuk) sedangkan customLyricsLayers hasil restore di
+        // atas udah punya id "custom-lyrics-1", "custom-lyrics-2", dst
+        // — jadi klik "Add teks" abis itu bakal generate id yang
+        // TABRAKAN sama klip lama (custom-lyrics-1 lagi). Dua klip beda
+        // isi tapi id sama bikin lyricsSettings/textValues/hiddenElements
+        // & animasinya kecampur random antara keduanya (durasi salah satu
+        // "membajak" yang lain -> animasi tiba-tiba jadi cepat), dan React
+        // bingung mana row yang mana (key duplikat) -> track jadi gak
+        // kepencet.
+        let maxN = 0;
+        for (const l of restoredLyrics) {
+          const m = /^custom-lyrics-(\d+)$/.exec(l.id);
+          if (m) maxN = Math.max(maxN, Number(m[1]));
+        }
+        customLyricsCounterRef.current = Math.max(
+          customLyricsCounterRef.current,
+          maxN,
+        );
         setRemovedLyricsIds(new Set(record.removedLyricsIds ?? []));
         setLyricsSettings(record.lyricsSettings ?? {});
         setAudioClips(record.audioClips.map((c) => ({ ...c })));
@@ -2065,7 +2087,17 @@ export default function Editor({
   // "Animasi". Langsung terseleksi & masuk mode edit teks kosong.
   function addCustomTextLayer(style: "purple" | "white") {
     customLyricsCounterRef.current += 1;
-    const n = customLyricsCounterRef.current;
+    let n = customLyricsCounterRef.current;
+    // Pengaman ekstra: kalau id ini SOMEHOW udah kepakai (mis. skenario
+    // restore draft yang belum ke-cover di atas), lompat ke angka
+    // berikutnya yang beneran belum dipakai — daripada bikin 2 klip
+    // ber-id sama yang bisa bikin animasi/timing kecampur & track jadi
+    // gak kepencet (lihat catatan sinkronisasi customLyricsCounterRef
+    // di effect restore draft).
+    while (customLyricsLayers.some((l) => l.id === `custom-lyrics-${n}`)) {
+      customLyricsCounterRef.current += 1;
+      n = customLyricsCounterRef.current;
+    }
     const newId = `custom-lyrics-${n}`;
     const isPurple = style === "purple";
     const newLayer = defaultLyricsLayer({
