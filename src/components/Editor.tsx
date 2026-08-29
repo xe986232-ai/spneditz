@@ -1931,16 +1931,39 @@ export default function Editor({
     e: React.PointerEvent,
     baseId: string,
     eff: TemplateLyricsTextLayer,
+    textLayerId: string,
   ) {
     e.preventDefault();
     e.stopPropagation();
+    // PENTING: pilih klip ini LANGSUNG di sini (pointerdown), JANGAN
+    // digantungin ke onClick di div yang sama. Di touchscreen, manggil
+    // preventDefault() pas pointerdown bikin browser MEMBATALKAN event
+    // "click" susulannya (bagian dari spek Pointer Events) — jadi kalau
+    // seleksi cuma ditaro di onClick, klip ini gak akan PERNAH kepilih
+    // lewat tap di HP (cuma bisa lewat drag-nya doang). Ini yang bikin
+    // klip lirik lain (mis. abis di-Cut, klip yang gak otomatis kepilih)
+    // jadi kerasa "ga bisa diklik" di HP. Pola ini nyamain
+    // handleAudioClipDragStart yang emang udah bener dari awal.
+    setSelectedSlotId(null);
+    setSelectedLayerId(null);
+    setSelectedTextLayerId(textLayerId);
+    setTextToolbarMode("quick");
+    setShowAddTextStyles(false);
     const startX = e.clientX;
     const clipDuration = eff.endSec - eff.startSec;
     const originalStart = eff.startSec;
     const maxStart = Math.max(0, DURATION - clipDuration);
+    // Anggap ini "cuma tap" (bukan drag) kalau jari/pointer gak geser
+    // lebih dari threshold ini — biar gerakan tremor kecil pas nge-tap
+    // gak keliru bikin klip ikut geser dikit.
+    const TAP_THRESHOLD_PX = 4;
+    let didMove = false;
 
     const handleMove = (ev: PointerEvent) => {
-      const dSec = (ev.clientX - startX) / effectivePxPerSec;
+      const dPx = ev.clientX - startX;
+      if (Math.abs(dPx) > TAP_THRESHOLD_PX) didMove = true;
+      if (!didMove) return;
+      const dSec = dPx / effectivePxPerSec;
       const newStart = clampNum(originalStart + dSec, 0, maxStart);
       const newEnd = newStart + clipDuration;
       setLyricsSettings((prev) => ({
@@ -3417,7 +3440,7 @@ export default function Editor({
           }}
           onPointerDown={
             dragCtx
-              ? (e) => handleLyricsClipDragStart(e, dragCtx.baseId, dragCtx.eff)
+              ? (e) => handleLyricsClipDragStart(e, dragCtx.baseId, dragCtx.eff, layer.id)
               : undefined
           }
           className={`absolute inset-y-0.5 overflow-hidden rounded-md border transition ${
