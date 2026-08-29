@@ -40,7 +40,6 @@ import {
   RectangleHorizontal,
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
-import { getDominantColor } from "../lib/color";
 import type { Template, TemplateSlot, TemplateTextLayer, TemplateLyricsTextLayer, SlotType, LiquidGlassSettings } from "../types";
 import { LYRICS_FONTS, LyricsAnimationPresets } from "../lib/lyricsAnim";
 import {
@@ -818,11 +817,6 @@ export default function Editor({
   // canvas (lihat applyGlowBloom di lib/render.ts), diatur lewat tab
   // "Efek" di toolbar bawah. Default 0 = mati.
   const [glowIntensity, setGlowIntensity] = useState(0);
-  // Warna dominan (vivid) hasil ekstraksi dari foto yang lagi diupload
-  // user — dipakai buat ambient glow/shadow di belakang canvas preview,
-  // biar nyatu sama warna foto-nya (mirip "Canvas" Spotify). Default abu2
-  // netral selama belum ada foto/belum selesai dianalisis.
-  const [dominantColor, setDominantColor] = useState("110, 110, 120");
   const [renderTick, setRenderTick] = useState(0);
   // Canvas 2D fillText() TIDAK auto-refresh kayak teks DOM begitu webfont
   // (lihat <link> Google Fonts di index.html) kelar di-load — kalau
@@ -1457,30 +1451,6 @@ export default function Editor({
   // punya progress bar, tab-nya tetap kelihatan tapi gak nampilin apa-apa
   // pas ditekan (bukan ke-hide kayak sebelumnya).
   const visibleTools = TOOLS;
-
-  // Foto sumber buat glow ambient di belakang canvas — sampul yang
-  // diupload user (slot media pertama non-audio), fallback ke background
-  // kustom kalau itu yang aktif. Cuma dipakai kalau bukan sample bawaan
-  // (biar glow-nya representasi foto ASLI user, bukan placeholder).
-  const coverSourceUrl =
-    (mediaSlotDef && slotMedia[mediaSlotDef.id]?.kind === "file"
-      ? slotMedia[mediaSlotDef.id]?.url
-      : undefined) ?? customBackground?.url;
-
-  // Ekstrak ulang warna dominan tiap kali foto sumbernya ganti.
-  useEffect(() => {
-    if (!coverSourceUrl) {
-      setDominantColor("110, 110, 120");
-      return;
-    }
-    let cancelled = false;
-    getDominantColor(coverSourceUrl).then((rgb) => {
-      if (!cancelled) setDominantColor(rgb);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [coverSourceUrl]);
 
   useEffect(() => {
     const el = timelineScrollRef.current;
@@ -3019,27 +2989,6 @@ export default function Editor({
           isFullscreen ? "" : "px-4 sm:px-8"
         }`}
       >
-        {/* Ambient glow — warnanya ngikutin warna dominan foto sampul user,
-            di-refresh otomatis tiap foto sampul ganti (lihat efek yang
-            manggil getDominantColor). Dua lapis: satu radial lebar buat
-            ngisi seluruh area belakang canvas, satu lagi lebih rapat/pekat
-            biar ada "inti" cahaya persis di belakang bodi canvas-nya. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 transition-[background] duration-700 ease-out"
-          style={{
-            background: `radial-gradient(75% 70% at 50% 42%, rgba(${dominantColor}, 0.65), rgba(${dominantColor}, 0.3) 40%, rgba(${dominantColor}, 0.08) 65%, rgba(${dominantColor}, 0) 85%)`,
-            filter: "blur(50px)",
-          }}
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 transition-[background] duration-700 ease-out"
-          style={{
-            background: `radial-gradient(45% 42% at 50% 46%, rgba(${dominantColor}, 0.55), rgba(${dominantColor}, 0) 70%)`,
-            filter: "blur(24px)",
-          }}
-        />
         <div
           // TIDAK pakai `aspect-[...]`/`h-full` lagi (lihat catatan di
           // previewBoxSize) — lebar & tinggi eksplisit dari hasil ukur
@@ -3048,11 +2997,14 @@ export default function Editor({
           // Fallback w-full h-full dipakai sebelum ResizeObserver sempat
           // ngukur pertama kali (cuma sekejap, useLayoutEffect jadi
           // biasanya udah keburu keitung sebelum paint pertama).
-          className="relative mx-auto max-h-full max-w-full overflow-hidden bg-black transition-[box-shadow] duration-700 ease-out"
+          // Dulu ada ambient glow radial-gradient (2 layer) di belakang
+          // boks + boxShadow warna-warni ngikut dominantColor foto
+          // sampul — dihapus (diganti outline tipis polos) karena
+          // kesannya norak/ganggu & bikin fokus teralih dari canvas.
+          className="relative mx-auto max-h-full max-w-full overflow-hidden rounded-sm bg-black outline outline-1 outline-white/15"
           style={{
             width: previewBoxSize?.width ?? "100%",
             height: previewBoxSize?.height ?? "100%",
-            boxShadow: `0 25px 70px -18px rgba(${dominantColor}, 0.65), 0 0 90px -10px rgba(${dominantColor}, 0.45)`,
           }}
         >
           {template.baseAssetSrc || template.solidBackground ? (
