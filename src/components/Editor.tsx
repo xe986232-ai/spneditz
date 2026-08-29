@@ -38,7 +38,9 @@ import {
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import { getDominantColor } from "../lib/color";
-import type { Template, TemplateSlot, TemplateTextLayer, SlotType, LiquidGlassSettings } from "../types";import {
+import type { Template, TemplateSlot, TemplateTextLayer, TemplateLyricsTextLayer, SlotType, LiquidGlassSettings } from "../types";
+import { LYRICS_FONTS, LyricsAnimationPresets } from "../lib/lyricsAnim";
+import {
   parseDurationSec,
   initialSlotMedia,
   initialLayerOpacity,
@@ -446,6 +448,207 @@ function generateTimeMarks(duration: number): number[] {
 // daftar Firebase/Unsplash kebaca.
 const SKIP_DYNAMIC_COVER_TEMPLATE_IDS = new Set<string>([]);
 
+// Label ID buat tiap opsi mode animasi / stagger / loop behavior —
+// key mentahnya (char/word/whole, dst) tetep dipakai sebagai value yang
+// disimpen ke data (TemplateLyricsTextLayer), cuma labelnya yang di-Indo-in.
+const LYRICS_ANIM_MODE_LABELS: Record<string, string> = {
+  char: "Huruf",
+  word: "Kata",
+  whole: "Baris",
+};
+const LYRICS_STAGGER_ORDER_LABELS: Record<string, string> = {
+  normal: "Normal",
+  reverse: "Terbalik",
+  random: "Acak",
+};
+const LYRICS_LOOP_BEHAVIOR_LABELS: Record<string, string> = {
+  standard: "Berurutan",
+  continuous: "Menumpuk",
+};
+
+// Baris pemilih chip generik (dipakai buat font, mode animasi, stagger
+// order, loop behavior, style in/loop/out) — gaya tombol pill konsisten
+// sama chip lain di panel edit (mis. tab Teks/Animasi, swatch warna).
+function LyricsChipRow({
+  label,
+  options,
+  value,
+  labels,
+  onChange,
+}: {
+  label: string;
+  options: readonly string[];
+  value: string;
+  labels?: Record<string, string>;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[10px] font-medium text-mute">{label}</span>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((opt) => (
+          <button
+            key={opt}
+            onClick={() => onChange(opt)}
+            className={`rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize transition active:scale-95 ${
+              value === opt
+                ? "bg-editor-accent text-paper"
+                : "bg-graphite text-mute"
+            }`}
+          >
+            {labels?.[opt] ?? opt}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Slider durasi/delay (detik) — dipakai buat stagger delay & durasi in/out.
+function LyricsRangeRow({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="flex items-center justify-between text-[10px] font-medium text-mute">
+        {label}
+        <span className="text-paper">{value.toFixed(2)}s</span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="w-full accent-editor-accent"
+      />
+    </div>
+  );
+}
+
+// Panel "Animasi" khusus klip Lyrics — porting dari settingan di prototype
+// standalone (LyricsTemplatePreview), tapi UI-nya dibikin nyatu sama gaya
+// panel edit spneditz (chip pill + range slider bawaan Tailwind), BUKAN
+// styling asli prototype (yang HTML/CSS custom sendiri). Satu klip lirik =
+// satu setting, berlaku buat baris atas & bawah sekaligus (sesuai data
+// model TemplateLyricsTextLayer yang sekarang).
+function LyricsAnimPanel({
+  layer,
+  onChange,
+}: {
+  layer: TemplateLyricsTextLayer;
+  onChange: <K extends keyof TemplateLyricsTextLayer>(
+    key: K,
+    value: TemplateLyricsTextLayer[K],
+  ) => void;
+}) {
+  return (
+    <div className="flex max-h-[52vh] flex-col gap-4 overflow-y-auto px-3 pb-4 pt-3">
+      <LyricsChipRow
+        label="Font"
+        options={LYRICS_FONTS}
+        value={layer.fontFamily}
+        onChange={(v) => onChange("fontFamily", v)}
+      />
+      <LyricsChipRow
+        label="Mode animasi"
+        options={["char", "word", "whole"]}
+        value={layer.animMode}
+        labels={LYRICS_ANIM_MODE_LABELS}
+        onChange={(v) => onChange("animMode", v as TemplateLyricsTextLayer["animMode"])}
+      />
+      <LyricsChipRow
+        label="Urutan stagger"
+        options={["normal", "reverse", "random"]}
+        value={layer.staggerOrder}
+        labels={LYRICS_STAGGER_ORDER_LABELS}
+        onChange={(v) =>
+          onChange("staggerOrder", v as TemplateLyricsTextLayer["staggerOrder"])
+        }
+      />
+      <LyricsRangeRow
+        label="Stagger delay"
+        value={layer.staggerDelaySec}
+        min={0}
+        max={0.2}
+        step={0.01}
+        onChange={(v) => onChange("staggerDelaySec", v)}
+      />
+      <LyricsChipRow
+        label="Loop behavior"
+        options={["standard", "continuous"]}
+        value={layer.loopBehavior}
+        labels={LYRICS_LOOP_BEHAVIOR_LABELS}
+        onChange={(v) =>
+          onChange("loopBehavior", v as TemplateLyricsTextLayer["loopBehavior"])
+        }
+      />
+
+      <div className="h-px bg-mute/10" />
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-mute">
+        In (masuk)
+      </span>
+      <LyricsChipRow
+        label="Gaya masuk"
+        options={Object.keys(LyricsAnimationPresets.IN)}
+        value={layer.inStyle}
+        onChange={(v) => onChange("inStyle", v)}
+      />
+      <LyricsRangeRow
+        label="Durasi in"
+        value={layer.inDurationSec}
+        min={0.1}
+        max={2}
+        step={0.05}
+        onChange={(v) => onChange("inDurationSec", v)}
+      />
+
+      <div className="h-px bg-mute/10" />
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-mute">
+        Loop
+      </span>
+      <LyricsChipRow
+        label="Gaya loop"
+        options={Object.keys(LyricsAnimationPresets.LOOP)}
+        value={layer.loopStyle}
+        onChange={(v) => onChange("loopStyle", v)}
+      />
+
+      <div className="h-px bg-mute/10" />
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-mute">
+        Out (keluar)
+      </span>
+      <LyricsChipRow
+        label="Gaya keluar"
+        options={Object.keys(LyricsAnimationPresets.OUT)}
+        value={layer.outStyle}
+        onChange={(v) => onChange("outStyle", v)}
+      />
+      <LyricsRangeRow
+        label="Durasi out"
+        value={layer.outDurationSec}
+        min={0.1}
+        max={2}
+        step={0.05}
+        onChange={(v) => onChange("outDurationSec", v)}
+      />
+    </div>
+  );
+}
+
 export default function Editor({
   template,
   onBack,
@@ -496,6 +699,20 @@ export default function Editor({
   // di sini, berarti belum di-custom user -> fallback ke layer.color bawaan
   // template (lihat penggunaan di bawah & di handleExport).
   const [textColors, setTextColors] = useState<Record<string, string>>({});
+  // Override setting animasi layer "Lyrics" (font, mode animasi, stagger,
+  // loop behavior, style+durasi in/loop/out) — key = id KLIP lirik (mis.
+  // "lyric1", BUKAN "lyric1__top"/"__bottom", karena 1 klip lirik = 1 set
+  // setting animasi buat 2 barisnya sekaligus). Kalau id belum ada di
+  // sini, fallback ke default dari data template (lihat
+  // getEffectiveLyricsLayer di bawah).
+  const [lyricsSettings, setLyricsSettings] = useState<
+    Record<string, Partial<TemplateLyricsTextLayer>>
+  >({});
+  // Tab aktif di panel edit klip lirik: "teks" (isi & warna, UI lama) atau
+  // "anim" (setting animasi baru). Reset ke "teks" tiap ganti seleksi teks.
+  const [lyricsPanelTab, setLyricsPanelTab] = useState<"teks" | "anim">(
+    "teks",
+  );
   // Mode "Teks" lagi aktif/nggak — begitu true, timeline berganti tampilan:
   // cuma nampilin track teks (sejumlah textLayers template ini), track lain
   // (Background/slot/decor) disembunyikan sementara.
@@ -505,6 +722,11 @@ export default function Editor({
   const [selectedTextLayerId, setSelectedTextLayerId] = useState<string | null>(
     null,
   );
+  // Reset panel klip lirik ("Teks"/"Animasi") ke tab "Teks" tiap kali
+  // seleksi teks/lirik yang aktif berubah.
+  useEffect(() => {
+    setLyricsPanelTab("teks");
+  }, [selectedTextLayerId]);
 
   // Hint bubble sekali-tampil ("teks ini bisa diubah") yang nunjuk ke
   // textLayer nama perangkat AirPlay di canvas — cuma buat kasih tau user
@@ -1407,6 +1629,36 @@ export default function Editor({
     ...(template.textLayers ?? []),
     ...lyricsTextEntries,
   ].find((l) => l.id === selectedTextLayerId);
+  // id entri teks lirik selalu "<lyricsId>__top"/"<lyricsId>__bottom" (lihat
+  // lyricsTextEntries di atas) — helper ini buat balikin lyricsId asli-nya,
+  // dan null kalau id yang dikasih BUKAN entri lirik (text layer biasa).
+  const lyricsBaseIdOf = (id: string): string | null => {
+    const m = id.match(/^(.+)__(top|bottom)$/);
+    return m ? m[1] : null;
+  };
+  const selectedLyricsBaseId = selectedTextLayer
+    ? lyricsBaseIdOf(selectedTextLayer.id)
+    : null;
+  // Setting animasi efektif 1 klip lirik: default dari template + override
+  // user (lyricsSettings), dipakai baik di render loop maupun di panel
+  // "Animasi" (form controlled langsung dari sini, tanpa state duplikat).
+  const getEffectiveLyricsLayer = (
+    baseId: string,
+  ): TemplateLyricsTextLayer | null => {
+    const base = template.lyricsTextLayers?.find((l) => l.id === baseId);
+    if (!base) return null;
+    return { ...base, ...lyricsSettings[baseId] };
+  };
+  function updateLyricsSetting<K extends keyof TemplateLyricsTextLayer>(
+    baseId: string,
+    key: K,
+    value: TemplateLyricsTextLayer[K],
+  ) {
+    setLyricsSettings((prev) => ({
+      ...prev,
+      [baseId]: { ...prev[baseId], [key]: value },
+    }));
+  }
   // Track pseudo "Background" (bukan decorLayer template) — aktif kalau
   // customBackground ada & lagi diseleksi user di timeline.
   const isBackgroundLayerSelected =
@@ -1692,6 +1944,7 @@ export default function Editor({
         if (hiddenElements.has(layer.id)) continue;
         const effectiveLayer = {
           ...layer,
+          ...lyricsSettings[layer.id],
           colorTop: textColors[`${layer.id}__top`] ?? layer.colorTop,
           colorBottom: textColors[`${layer.id}__bottom`] ?? layer.colorBottom,
         };
@@ -1779,6 +2032,7 @@ export default function Editor({
     glowIntensity,
     textValues,
     textColors,
+    lyricsSettings,
     hiddenElements,
     DURATION,
     progressStyle,
@@ -3695,8 +3949,39 @@ export default function Editor({
           // ada, fallback ke warna default dari data template.
           const activeTextColor =
             textColors[selectedTextLayer.id] ?? selectedTextLayer.color ?? "#FFFFFF";
+          const effLyrics = selectedLyricsBaseId
+            ? getEffectiveLyricsLayer(selectedLyricsBaseId)
+            : null;
           content = (
             <>
+              {/* Tab "Teks" / "Animasi" — cuma muncul buat entri lirik
+                  (baris atas/bawah klip Lyrics), text layer biasa (judul,
+                  artist, dst) gak punya setting animasi jadi gak perlu tab. */}
+              {selectedLyricsBaseId && effLyrics && (
+                <div className="flex gap-1.5 px-3 pt-2.5">
+                  {(["teks", "anim"] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setLyricsPanelTab(tab)}
+                      className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition active:scale-95 ${
+                        lyricsPanelTab === tab
+                          ? "bg-editor-accent text-paper"
+                          : "bg-graphite text-mute"
+                      }`}
+                    >
+                      {tab === "teks" ? "Teks" : "Animasi"}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {selectedLyricsBaseId && effLyrics && lyricsPanelTab === "anim" ? (
+                <LyricsAnimPanel
+                  layer={effLyrics}
+                  onChange={(key, value) =>
+                    updateLyricsSetting(selectedLyricsBaseId, key, value)
+                  }
+                />
+              ) : (
               <div className="flex flex-col gap-2 px-3 pb-3 pt-2.5">
                 <span className="text-[10px] font-medium text-mute">
                   {selectedTextLayer.label}
@@ -3784,6 +4069,7 @@ export default function Editor({
                   </label>
                 </div>
               </div>
+              )}
             </>
           );
         } else {
