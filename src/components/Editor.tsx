@@ -38,6 +38,7 @@ import {
   MonitorSmartphone,
   RectangleVertical,
   RectangleHorizontal,
+  Pencil,
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import type { Template, TemplateSlot, TemplateTextLayer, TemplateLyricsTextLayer, SlotType, LiquidGlassSettings } from "../types";
@@ -755,6 +756,28 @@ export default function Editor({
   // seleksi teks/lirik yang aktif berubah.
   useEffect(() => {
     setLyricsPanelTab("teks");
+  }, [selectedTextLayerId]);
+  // Sub-mode toolbar teks: begitu track teks diketuk, JANGAN langsung
+  // nongolin menu editing (input + swatch dst) — tampilin quick menu dulu
+  // (tombol pensil "Edit" & tombol "Add teks" + 2 pilihan style Ungu/
+  // Putih). "quick" = quick menu (default tiap kali ganti seleksi),
+  // "edit" = menu editing penuh (dibuka lewat tombol pensil ATAU setelah
+  // milih salah satu style di "Add teks"). Direset ke "quick" tiap kali
+  // seleksi teks yang aktif berubah, biar konsisten di semua template.
+  const [textToolbarMode, setTextToolbarMode] = useState<"quick" | "edit">(
+    "quick",
+  );
+  useEffect(() => {
+    setTextToolbarMode("quick");
+  }, [selectedTextLayerId]);
+  // Sub-state quick menu: begitu tombol "Add teks" diketuk, JANGAN
+  // langsung masuk mode edit — tampilin dulu 2 pilihan style (Ungu/
+  // Putih), baru abis pilih salah satu, textToolbarMode pindah ke
+  // "edit" biar user bisa ngetik teksnya. Direset bareng textToolbarMode
+  // tiap ganti seleksi teks.
+  const [showAddTextStyles, setShowAddTextStyles] = useState(false);
+  useEffect(() => {
+    setShowAddTextStyles(false);
   }, [selectedTextLayerId]);
 
   // Hint bubble sekali-tampil ("teks ini bisa diubah") yang nunjuk ke
@@ -4027,7 +4050,101 @@ export default function Editor({
           const effLyrics = selectedLyricsBaseId
             ? getEffectiveLyricsLayer(selectedLyricsBaseId)
             : null;
-          content = (
+          content = textToolbarMode === "quick" ? (
+            // ---- Quick menu — muncul PERTAMA KALI begitu track teks
+            // diketuk, BUKAN langsung menu editing (input+swatch dst).
+            // Cuma 2 (atau 3, kalau lagi milih style) tombol simpel:
+            // pensil buat ke menu editing penuh, & "Add teks" buat
+            // nambah teks baru dgn style siap pakai (Ungu/Putih).
+            <div className="flex flex-col gap-2.5 px-3 pb-3 pt-2.5">
+              <span className="text-[10px] font-medium text-mute">
+                {selectedTextLayer.label}
+              </span>
+              {!showAddTextStyles ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setTextToolbarMode("edit")}
+                    className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-graphite text-xs font-semibold text-paper transition active:scale-95"
+                  >
+                    <Pencil size={14} />
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => setShowAddTextStyles(true)}
+                    className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-editor-accent/20 text-xs font-semibold text-editor-accent transition active:scale-95"
+                  >
+                    <Plus size={14} />
+                    Add teks
+                  </button>
+                  <button
+                    onClick={() => setSelectedTextLayerId(null)}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-graphite text-mute transition active:scale-95"
+                    title="Tutup"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <span className="text-[10px] font-medium text-mute">
+                    Pilih style teksnya
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setTextColors((prev) => ({
+                          ...prev,
+                          [selectedTextLayer.id]: "#c3b0ff",
+                        }));
+                        setTextValues((prev) => ({
+                          ...prev,
+                          [selectedTextLayer.id]: "",
+                        }));
+                        setTextToolbarMode("edit");
+                      }}
+                      className="flex h-14 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-mute/20 bg-graphite transition active:scale-95"
+                    >
+                      <span
+                        className="h-4 w-4 rounded-full border border-white/30"
+                        style={{ backgroundColor: "#c3b0ff" }}
+                      />
+                      <span className="text-[10px] font-semibold text-paper">
+                        Ungu
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setTextColors((prev) => ({
+                          ...prev,
+                          [selectedTextLayer.id]: "#FFFFFF",
+                        }));
+                        setTextValues((prev) => ({
+                          ...prev,
+                          [selectedTextLayer.id]: "",
+                        }));
+                        setTextToolbarMode("edit");
+                      }}
+                      className="flex h-14 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-mute/20 bg-graphite transition active:scale-95"
+                    >
+                      <span
+                        className="h-4 w-4 rounded-full border border-mute/30"
+                        style={{ backgroundColor: "#FFFFFF" }}
+                      />
+                      <span className="text-[10px] font-semibold text-paper">
+                        Putih
+                      </span>
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setShowAddTextStyles(false)}
+                    className="self-start text-[10px] font-medium text-mute underline underline-offset-2"
+                  >
+                    Batal
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
             <>
               {/* Tab "Teks" / "Animasi" — cuma muncul buat entri lirik
                   (baris atas/bawah klip Lyrics), text layer biasa (judul,
