@@ -35,6 +35,9 @@ import {
   Crop,
   Music2,
   Palette,
+  MonitorSmartphone,
+  RectangleVertical,
+  RectangleHorizontal,
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import { getDominantColor } from "../lib/color";
@@ -106,7 +109,24 @@ const TOOLS: Tool[] = [
   { id: "audio", label: "Audio", icon: Music2 },
   { id: "text", label: "Teks", icon: Type },
   { id: "progress", label: "Gaya", icon: AudioWaveform },
+  // Tab "Rasio" — ganti orientasi canvas (9:16 potret / 16:9 lanskap).
+  // Resolusi tetap 1920x1080 (cuma tukar mana yang jadi lebar/tinggi),
+  // lihat canvasRatio & getRatioCanvasSize di bawah.
+  { id: "ratio", label: "Rasio", icon: MonitorSmartphone },
 ];
+
+/** Ukuran canvas efektif buat tiap pilihan Rasio — SELALU dari budget
+ *  resolusi 1920x1080 (cuma orientasinya yang beda), independen dari
+ *  canvasWidth/canvasHeight bawaan template (yang semuanya masih 1080x1920
+ *  fixed di data/templates.ts). Dipakai di preview (canvas asli & CSS
+ *  aspect-ratio-nya) DAN di export (webcodecs-export.ts baca dari
+ *  exportTemplate.canvasWidth/Height, lihat handleExport). */
+function getRatioCanvasSize(ratio: "9:16" | "16:9"): {
+  width: number;
+  height: number;
+} {
+  return ratio === "16:9" ? { width: 1920, height: 1080 } : { width: 1080, height: 1920 };
+}
 
 const SLOT_ICON: Record<SlotType, LucideIcon> = {
   image: ImageIcon,
@@ -673,6 +693,10 @@ export default function Editor({
   resumeDraftId?: string | null;
 }) {
   const [activeTool, setActiveTool] = useState<string>("media");
+  // Rasio canvas: "9:16" (potret, default — samain sama semua template
+  // yang ada sekarang) atau "16:9" (lanskap). Resolusi TETAP di budget
+  // 1920x1080, cuma tukar mana yang lebar/tinggi (lihat getRatioCanvasSize).
+  const [canvasRatio, setCanvasRatio] = useState<"9:16" | "16:9">("9:16");
   const [isPlaying, setIsPlaying] = useState(false);
 
   const [currentSec, setCurrentSec] = useState(0);
@@ -1772,8 +1796,7 @@ export default function Editor({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const canvasW = template.canvasWidth ?? 1080;
-    const canvasH = template.canvasHeight ?? 1920;
+    const { width: canvasW, height: canvasH } = getRatioCanvasSize(canvasRatio);
     canvas.width = canvasW;
     canvas.height = canvasH;
     ctx.clearRect(0, 0, canvasW, canvasH);
@@ -2044,6 +2067,7 @@ export default function Editor({
     progressStyle,
     audioInfo,
     isPlaying,
+    canvasRatio,
   ]);
 
   // Drag playhead: geser langsung ke posisi jari/kursor, pause dulu selama digeser
@@ -2435,8 +2459,7 @@ export default function Editor({
       // Foto -> jangan langsung dipakai, suguhkan overlay crop dulu biar
       // user bisa atur posisi/zoom sebelum ditempel ke slot (lihat
       // <ImageCropModal> & handleCropConfirm di bawah).
-      const canvasW = template.canvasWidth ?? 1080;
-      const canvasH = template.canvasHeight ?? 1920;
+      const { width: canvasW, height: canvasH } = getRatioCanvasSize(canvasRatio);
       const targetWidth = slot.width ? (slot.width / 100) * canvasW : canvasW;
       const targetHeight = slot.height ? (slot.height / 100) * canvasH : canvasH;
       openCropWithFile(slotId, file, targetWidth, targetHeight);
@@ -2459,8 +2482,7 @@ export default function Editor({
   // Firebase/Unsplash — itu URL remote biasa, bukan blob, jadi aman
   // dipakai langsung tanpa perlu bikin object URL baru).
   function handleOpenCropForSlot(slot: TemplateSlot) {
-    const canvasW = template.canvasWidth ?? 1080;
-    const canvasH = template.canvasHeight ?? 1920;
+    const { width: canvasW, height: canvasH } = getRatioCanvasSize(canvasRatio);
     const targetWidth = slot.width ? (slot.width / 100) * canvasW : canvasW;
     const targetHeight = slot.height ? (slot.height / 100) * canvasH : canvasH;
 
@@ -2515,8 +2537,7 @@ export default function Editor({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const canvasW = template.canvasWidth ?? 1080;
-    const canvasH = template.canvasHeight ?? 1920;
+    const { width: canvasW, height: canvasH } = getRatioCanvasSize(canvasRatio);
     const scaleX = canvasW / rect.width;
     const scaleY = canvasH / rect.height;
     const px = (e.clientX - rect.left) * scaleX;
@@ -2566,6 +2587,12 @@ export default function Editor({
       // balik ke default template.
       const exportTemplate: Template = {
         ...template,
+        // Rasio dipilih user di tab "Rasio" (default 9:16 = tetap sama
+        // seperti sebelumnya) — override di sini biar webcodecs-export.ts
+        // (baca canvasWidth/canvasHeight dari exportTemplate) render video
+        // final di orientasi yang sama persis kayak preview.
+        canvasWidth: getRatioCanvasSize(canvasRatio).width,
+        canvasHeight: getRatioCanvasSize(canvasRatio).height,
         slots: template.slots.filter((slot) => !hiddenElements.has(slot.id)),
         textLayers: template.textLayers
           ?.filter((l) => !hiddenElements.has(l.id))
@@ -2942,7 +2969,7 @@ export default function Editor({
           }}
         />
         <div
-          className="relative mx-auto aspect-[9/16] h-full max-h-full max-w-full overflow-hidden bg-black transition-[box-shadow] duration-700 ease-out"
+          className={`relative mx-auto ${canvasRatio === "16:9" ? "aspect-[16/9]" : "aspect-[9/16]"} h-full max-h-full max-w-full overflow-hidden bg-black transition-[box-shadow] duration-700 ease-out`}
           style={{
             boxShadow: `0 25px 70px -18px rgba(${dominantColor}, 0.65), 0 0 90px -10px rgba(${dominantColor}, 0.45)`,
           }}
@@ -3620,7 +3647,8 @@ export default function Editor({
         // ResizeObserver nyusul ngukur ulang, mending overlay-nya gak usah
         // di-mount sama sekali kalau kosong.
         const hasDefaultContent =
-          activeTool === "progress" && !!template.progressLayer;
+          (activeTool === "progress" && !!template.progressLayer) ||
+          activeTool === "ratio";
 
         if (panelMode === "background") {
           content = (
@@ -4081,6 +4109,53 @@ export default function Editor({
         } else {
           content = (
             <>
+              {/* Tab "Rasio" — pilih orientasi canvas (potret 9:16 /
+                  lanskap 16:9). Resolusi tetap di budget 1920x1080, cuma
+                  tukar mana yang lebar/tinggi (lihat getRatioCanvasSize). */}
+              {activeTool === "ratio" && (
+                <div className="flex items-center justify-center gap-3 border-b border-mute/10 px-3 py-3">
+                  <button
+                    onClick={() => setCanvasRatio("9:16")}
+                    className={`flex flex-col items-center gap-1.5 rounded-xl border px-3.5 py-2.5 transition active:scale-95 ${
+                      canvasRatio === "9:16"
+                        ? "border-paper bg-paper/10"
+                        : "border-mute/15 bg-graphite/40"
+                    }`}
+                  >
+                    <RectangleVertical
+                      size={22}
+                      className={canvasRatio === "9:16" ? "text-paper" : "text-mute"}
+                    />
+                    <span
+                      className={`text-[10px] font-medium ${
+                        canvasRatio === "9:16" ? "text-paper" : "text-mute"
+                      }`}
+                    >
+                      9:16
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setCanvasRatio("16:9")}
+                    className={`flex flex-col items-center gap-1.5 rounded-xl border px-3.5 py-2.5 transition active:scale-95 ${
+                      canvasRatio === "16:9"
+                        ? "border-paper bg-paper/10"
+                        : "border-mute/15 bg-graphite/40"
+                    }`}
+                  >
+                    <RectangleHorizontal
+                      size={22}
+                      className={canvasRatio === "16:9" ? "text-paper" : "text-mute"}
+                    />
+                    <span
+                      className={`text-[10px] font-medium ${
+                        canvasRatio === "16:9" ? "text-paper" : "text-mute"
+                      }`}
+                    >
+                      16:9
+                    </span>
+                  </button>
+                </div>
+              )}
               {/* Tab "Gaya" — preview visual tiap opsi progress bar SEBELUM
                   dipilih (bukan cuma teks label doang). */}
               {activeTool === "progress" && template.progressLayer && (
@@ -4348,7 +4423,7 @@ export default function Editor({
             {isExporting && (
               <div className="relative">
                 {exportSnapshot ? (
-                  <div className="relative mx-auto mb-4 aspect-[9/16] w-full overflow-hidden rounded-2xl border border-white/10 bg-black">
+                  <div className={`relative mx-auto mb-4 ${canvasRatio === "16:9" ? "aspect-[16/9]" : "aspect-[9/16]"} w-full overflow-hidden rounded-2xl border border-white/10 bg-black`}>
                     <img
                       src={exportSnapshot}
                       alt=""
@@ -4435,7 +4510,7 @@ export default function Editor({
                 <video
                   src={exportResultUrl}
                   controls
-                  className="mt-3 aspect-[9/16] w-full rounded-2xl border border-white/10 bg-black"
+                  className={`mt-3 ${canvasRatio === "16:9" ? "aspect-[16/9]" : "aspect-[9/16]"} w-full rounded-2xl border border-white/10 bg-black`}
                 />
                 <div className="mt-3 flex gap-2">
                   <a
