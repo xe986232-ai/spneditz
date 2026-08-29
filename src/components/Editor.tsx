@@ -1439,6 +1439,14 @@ export default function Editor({
 
   const audioSlotDef = template.slots.find((s) => s.type === "audio");
   const audioMedia = audioSlotDef ? slotMedia[audioSlotDef.id] : undefined;
+  // Dulu blok track slot di timeline cuma nyala kalau template punya
+  // baseAssetSrc (foto/video dasar) — template kayak "Lyrics" yang
+  // background-nya solidBackground (bukan baseAssetSrc) jadi ketimpa
+  // placeholder statis walau sekarang udah dikasih slots (lihat
+  // data/templates.ts). Gating yang bener: selama template ini PUNYA
+  // slot sama sekali (media dan/atau audio), track-nya harus dirender —
+  // baseAssetSrc cuma salah satu cara nyediain visual dasarnya.
+  const hasSlotTracks = Boolean(template.baseAssetSrc) || template.slots.length > 0;
   // Slot media pertama (foto/video, bukan audio) — dipakai tombol "Media"
   // di toolbar bawah buat langsung menuju slot itu (sama seperti nge-tap
   // slot-nya langsung di timeline), tanpa buka file picker duluan.
@@ -3332,7 +3340,7 @@ export default function Editor({
                   Template ini belum punya teks yang bisa di-custom.
                 </div>
               )
-            ) : template.baseAssetSrc && activeTool === "progress" ? (
+            ) : hasSlotTracks && activeTool === "progress" ? (
               /* Tab "Gaya" cuma buat atur setelan tampilan progress lagu
                  (Standar/Waveform, dst) lewat panel di toolbar bawah —
                  nggak ada klip/track yang relevan buat diedit di
@@ -3344,7 +3352,7 @@ export default function Editor({
               >
                 Pengaturan gaya ada di panel bawah — nggak ada track di sini.
               </div>
-            ) : template.baseAssetSrc ? (
+            ) : hasSlotTracks ? (
               /* Layer per elemen — tiap slot (foto/video/audio) punya
                  baris/track sendiri, kayak editor video beneran. Klik
                  buat SELECT (bukan langsung buka file picker) — ganti

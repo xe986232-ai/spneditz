@@ -867,10 +867,35 @@ export const TEMPLATES: Template[] = [
     gradientTo: "#050505",
     canvasWidth: 1080,
     canvasHeight: 1920,
-    // SENGAJA tanpa baseAssetSrc — background-nya solid hitam (ciri khas
-    // template ini, bukan foto/video), lihat solidBackground di bawah.
+    // SENGAJA tanpa baseAssetSrc — defaultnya solid hitam (ciri khas
+    // template ini), TAPI beda dari sebelumnya: sekarang ada slot
+    // "background" (type image, tanpa x/y/width/height) yang otomatis
+    // jadi coverSlotId begitu diisi (lihat coverSlotId di Editor.tsx) —
+    // efeknya sama kayak upload foto di template lain, langsung nimpa
+    // solidBackground ini full-canvas. Kalau belum diisi user, tetap
+    // fallback ke solid hitam di bawah (backgroundSrc kosong).
     solidBackground: "#000000",
-    slots: [],
+    // Struktur slot disamakan sama template V4 (media + audio) biar
+    // "Tambah Media"/"Tambah Audio" & track-nya tersusun rapi di
+    // timeline — sebelumnya slots: [] bikin timeline lyric nggak
+    // pernah render track sama sekali (ketimpa placeholder statis di
+    // Editor.tsx karena gak ada baseAssetSrc).
+    slots: [
+      {
+        id: "background",
+        type: "image",
+        label: "Background",
+        startSec: 0,
+        endSec: 6,
+      },
+      {
+        id: "audio1",
+        type: "audio",
+        label: "Musik latar",
+        startSec: 0,
+        endSec: 6,
+      },
+    ],
     // 1 klip lirik default di awal timeline. Teks, style in/loop/out,
     // & panjang klip semuanya bisa diubah manual lewat panel edit —
     // TIDAK ada preset siap pakai (by design).
