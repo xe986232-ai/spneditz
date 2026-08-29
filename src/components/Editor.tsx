@@ -39,6 +39,7 @@ import {
   RectangleVertical,
   RectangleHorizontal,
   Pencil,
+  GripVertical,
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import type { Template, TemplateSlot, TemplateTextLayer, TemplateLyricsTextLayer, SlotType, LiquidGlassSettings } from "../types";
@@ -411,6 +412,7 @@ function TrackLabel({
   label,
   hiddenTitle,
   shownTitle,
+  onReorderPointerDown,
 }: {
   hidden: boolean;
   onToggleHidden: (e: React.MouseEvent) => void;
@@ -418,9 +420,23 @@ function TrackLabel({
   label: string;
   hiddenTitle?: string;
   shownTitle?: string;
+  // Opsional: kalau diisi, track ini bisa di-drag naik/turun buat ubah
+  // urutan (dipakai khusus track teks custom hasil "Add teks" — reorder
+  // sekaligus ngatur mana yang di depan/belakang pas overlap di canvas).
+  onReorderPointerDown?: (e: React.PointerEvent) => void;
 }) {
   return (
-    <div className="sticky left-1 z-20 flex h-8 w-[104px] shrink-0 items-center gap-2 rounded-lg bg-ed-card px-2 text-[11px] text-ed-text">
+    <div className="sticky left-1 z-20 flex h-8 w-[104px] shrink-0 items-center gap-1.5 rounded-lg bg-ed-card px-2 text-[11px] text-ed-text">
+      {onReorderPointerDown && (
+        <button
+          onPointerDown={onReorderPointerDown}
+          title="Tahan & geser buat ubah urutan"
+          aria-label="Ubah urutan track"
+          className="flex h-[14px] w-[10px] shrink-0 cursor-ns-resize touch-none items-center justify-center active:scale-90"
+        >
+          <GripVertical className="h-[14px] w-[14px] shrink-0 text-ed-dim" />
+        </button>
+      )}
       <button
         onClick={onToggleHidden}
         title={hidden ? (hiddenTitle ?? "Tampilkan elemen") : (shownTitle ?? "Sembunyikan elemen")}
@@ -1766,6 +1782,73 @@ export default function Editor({
       [baseId]: { ...prev[baseId], [key]: value },
     }));
   }
+  // Drag klip teks/lirik KIRI-KANAN di sepanjang timeline — geser
+  // startSec & endSec bareng (durasi klip tetap sama), diklem ke
+  // [0, DURATION]. Pola sama persis kayak handleAudioClipDragStart.
+  function handleLyricsClipDragStart(
+    e: React.PointerEvent,
+    baseId: string,
+    eff: TemplateLyricsTextLayer,
+  ) {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const clipDuration = eff.endSec - eff.startSec;
+    const originalStart = eff.startSec;
+    const maxStart = Math.max(0, DURATION - clipDuration);
+
+    const handleMove = (ev: PointerEvent) => {
+      const dSec = (ev.clientX - startX) / effectivePxPerSec;
+      const newStart = clampNum(originalStart + dSec, 0, maxStart);
+      const newEnd = newStart + clipDuration;
+      setLyricsSettings((prev) => ({
+        ...prev,
+        [baseId]: { ...prev[baseId], startSec: newStart, endSec: newEnd },
+      }));
+    };
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  }
+  // Drag track ATAS-BAWAH di daftar buat ubah URUTAN (customLyricsLayers)
+  // — sekaligus ngatur mana yang digambar belakangan/di depan pas
+  // beberapa teks custom overlap posisinya di canvas (lihat allLyricsLayers
+  // di render loop: makin belakang urutannya, makin di atas/depan).
+  // Cuma track hasil "Add teks" yang bisa di-reorder gini — text layer
+  // bawaan template (judul/artist/dst) urutannya tetap, gak disentuh.
+  function handleCustomLyricsReorderStart(e: React.PointerEvent, baseId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const startY = e.clientY;
+    const startIndex = customLyricsLayers.findIndex((l) => l.id === baseId);
+    if (startIndex === -1) return;
+    // Tinggi 1 row track (h-8 = 32px) + gap antar row (gap-0.5 = 2px).
+    const ROW_STEP_PX = 34;
+
+    const handleMove = (ev: PointerEvent) => {
+      const dY = ev.clientY - startY;
+      const steps = Math.round(dY / ROW_STEP_PX);
+      setCustomLyricsLayers((prev) => {
+        const maxIndex = prev.length - 1;
+        const targetIndex = clampNum(startIndex + steps, 0, maxIndex);
+        const fromIndex = prev.findIndex((l) => l.id === baseId);
+        if (fromIndex === -1 || fromIndex === targetIndex) return prev;
+        const arr = [...prev];
+        const [moved] = arr.splice(fromIndex, 1);
+        arr.splice(targetIndex, 0, moved);
+        return arr;
+      });
+    };
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  }
   // Bikin 1 klip teks lirik BARU (engine animasi sama persis dgn "BUAH"/
   // "MANGGIS") dgn style warna yg dipilih user di "Add teks" — Ungu
   // (baris atas aktif) atau Putih (baris bawah aktif). Baris yang gak
@@ -3110,6 +3193,12 @@ export default function Editor({
     // artist, dst) nggak punya startSec/endSec di tipenya sama sekali,
     // jadi tetap 1 blok statis sepanjang DURATION kalau param ini kosong.
     timeRange?: { start: number; end: number },
+    // Opsional: cuma diisi buat track teks custom hasil "Add teks" — bikin
+    // klipnya bisa di-drag KIRI-KANAN (pindah posisi waktu) & row-nya bisa
+    // di-drag ATAS-BAWAH (ubah urutan/z-order). Text layer bawaan template
+    // (judul/artist/dst) & baris lirik nonaktif TIDAK dikasih ini, jadi
+    // tetap statis kayak sebelumnya.
+    dragCtx?: { baseId: string; eff: TemplateLyricsTextLayer },
   ) {
     const isSelected = selectedTextLayerId === layer.id;
     const value = textValues[layer.id] || layer.defaultText;
@@ -3127,6 +3216,11 @@ export default function Editor({
           label={layer.label}
           hiddenTitle={`Tampilkan "${layer.label}"`}
           shownTitle={`Sembunyikan "${layer.label}"`}
+          onReorderPointerDown={
+            dragCtx
+              ? (e) => handleCustomLyricsReorderStart(e, dragCtx.baseId)
+              : undefined
+          }
         />
         <div
           onClick={() => {
@@ -3137,7 +3231,18 @@ export default function Editor({
             setShowAddTextStyles(false);
             if (layer.id === "airplayDevice") dismissAirplayHint();
           }}
-          className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded-md border transition ${
+          onPointerDown={
+            dragCtx
+              ? (e) => handleLyricsClipDragStart(e, dragCtx.baseId, dragCtx.eff)
+              : undefined
+          }
+          className={`absolute inset-y-0.5 overflow-hidden rounded-md border transition ${
+            dragCtx
+              ? isSelected
+                ? "cursor-grabbing touch-none"
+                : "cursor-grab touch-none active:cursor-grabbing"
+              : "cursor-pointer"
+          } ${
             isSelected
               ? "border-paper ring-2 ring-paper bg-emerald-400/20"
               : "border-emerald-400/40 bg-emerald-400/15"
@@ -3568,6 +3673,7 @@ export default function Editor({
                     return renderTextTrack(
                       layer,
                       eff ? { start: eff.startSec, end: eff.endSec } : undefined,
+                      baseId && eff ? { baseId, eff } : undefined,
                     );
                   })}
                 </div>
