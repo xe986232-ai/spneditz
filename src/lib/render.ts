@@ -370,6 +370,119 @@ export function drawTextLayers(
   }
 }
 
+/* ==========================================================================
+   SPRITE CACHE untuk 1 huruf/kata layer Lyrics.
+   Kenapa ada ini: efek halo blur + RGB-split ghost + shadow glow tiap huruf
+   dulu di-render ULANG dari nol tiap frame pakai ctx.filter="blur(...)" +
+   shadowBlur — itu operasi PALING MAHAL di Canvas 2D, dan kalau mode "char"
+   (tiap huruf unit sendiri) bisa jadi puluhan panggilan blur per frame di
+   canvas full-res (1080x1920), bikin preview lag/patah-patah berat.
+   Fix: render efek tiap huruf SEKALI ke offscreen canvas ("sprite"), simpan
+   di cache (key: teks+font+warna+level blur), lalu tiap frame tinggal
+   ctx.drawImage() sprite itu (murah) + transform posisi/scale/rotate/opacity
+   yang emang beda tiap frame. Animasinya tetap identik — cuma cara
+   nggambarnya yang dioptimasi, bukan efeknya yang dikurangi.
+   Level blur (s.blur, dipakai preset "blur" & "glowPulse") dibulatkan ke
+   integer terdekat sebelum jadi cache key, jadi tetap smooth kelihatannya
+   (beda <1px nggak kelihatan mata) tapi jumlah sprite unik yang perlu
+   di-render tetap kecil & di-reuse lintas frame.
+   ========================================================================== */
+interface LyricsLetterSprite {
+  canvas: HTMLCanvasElement;
+  cx: number;
+  cy: number;
+}
+
+const lyricsSpriteCache = new Map<string, LyricsLetterSprite>();
+const LYRICS_SPRITE_CACHE_MAX = 600;
+
+function buildLyricsLetterSprite(
+  text: string,
+  fontSize: number,
+  fontStack: string,
+  fontStyle: string,
+  color: string,
+  blurBucket: number,
+): LyricsLetterSprite {
+  const font = `900 ${fontStyle} ${fontSize}px ${fontStack}`;
+  const measure = document.createElement("canvas").getContext("2d")!;
+  measure.font = font;
+  const textW = Math.max(1, measure.measureText(text).width);
+
+  // Padding generous buat nampung "bleed" blur/shadow (halo blur radiusnya
+  // sampai 16+blurBucket px, shadowBlur 22px) biar nggak kepotong di tepi.
+  const pad = Math.ceil(fontSize * 0.5 + blurBucket * 3 + 48);
+  const w = Math.ceil(textW + pad * 2);
+  const h = Math.ceil(fontSize * 1.6 + pad * 2);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  const cx = w / 2;
+  const cy = h / 2;
+  ctx.font = font;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  // 1) halo blur putih (paling belakang)
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  ctx.filter = `blur(${16 + blurBucket}px)`;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(text, cx, cy);
+  ctx.restore();
+
+  // 2) ghost merah (RGB split)
+  ctx.save();
+  ctx.globalAlpha = 0.7;
+  ctx.filter = `blur(${2 + blurBucket}px)`;
+  ctx.fillStyle = "#ff4433";
+  ctx.fillText(text, cx - 2, cy - 1.5);
+  ctx.restore();
+
+  // 3) ghost biru (RGB split)
+  ctx.save();
+  ctx.globalAlpha = 0.7;
+  ctx.filter = `blur(${2 + blurBucket}px)`;
+  ctx.fillStyle = "#3358ff";
+  ctx.fillText(text, cx + 2, cy + 1.5);
+  ctx.restore();
+
+  // 4) teks utama + glow tipis (paling depan)
+  ctx.save();
+  ctx.filter = blurBucket > 0.05 ? `blur(${blurBucket}px)` : "none";
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 22;
+  ctx.fillStyle = color;
+  ctx.fillText(text, cx, cy);
+  ctx.restore();
+
+  return { canvas, cx, cy };
+}
+
+function getLyricsLetterSprite(
+  text: string,
+  fontSize: number,
+  fontStack: string,
+  fontStyle: string,
+  color: string,
+  blurBucket: number,
+): LyricsLetterSprite {
+  const key = `${text}\u0001${fontSize}\u0001${fontStack}\u0001${fontStyle}\u0001${color}\u0001${blurBucket}`;
+  let sprite = lyricsSpriteCache.get(key);
+  if (!sprite) {
+    if (lyricsSpriteCache.size >= LYRICS_SPRITE_CACHE_MAX) {
+      // Cache penuh (jarang kejadian) — buang entry paling lama (FIFO).
+      const oldestKey = lyricsSpriteCache.keys().next().value;
+      if (oldestKey !== undefined) lyricsSpriteCache.delete(oldestKey);
+    }
+    sprite = buildLyricsLetterSprite(text, fontSize, fontStack, fontStyle, color, blurBucket);
+    lyricsSpriteCache.set(key, sprite);
+  }
+  return sprite;
+}
+
 /** Gambar 1 layer teks "Lyrics" (2 baris, animasi in/loop/out per
  *  huruf/kata/baris + signature effect skew miring & RGB split/halo blur).
  *  Beda dari drawTextLayers (statis) — ini dipanggil TIAP FRAME pas playhead
@@ -483,48 +596,28 @@ export function drawLyricsTextLayer(
         : { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1, blur: 0 }; // pause -> statis, full opacity
       if (s.opacity <= 0.01) return;
 
+      // Bulatkan level blur ke integer terdekat buat cache key sprite —
+      // beda <1px nggak kelihatan mata tapi bikin sprite bisa di-reuse
+      // lintas banyak frame (lihat catatan di getLyricsLetterSprite di
+      // atas). Ini kunci utama fix lag: SEMUA ctx.filter/shadowBlur yang
+      // mahal sekarang cuma jalan sekali per kombinasi unik, bukan tiap
+      // frame per huruf.
+      const blurBucket = Math.round(Math.min(32, Math.max(0, s.blur)));
+      const sprite = getLyricsLetterSprite(
+        u.text,
+        fontSize,
+        fontStack,
+        fontStyle,
+        color,
+        blurBucket,
+      );
+
       ctx.save();
+      ctx.globalAlpha = s.opacity;
       ctx.translate(unitCenterX + s.x, lineCenterY + s.y);
       ctx.rotate((s.rotate * Math.PI) / 180);
       ctx.scale(s.scale, s.scale);
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.font = `900 ${fontStyle} ${fontSize}px ${fontStack}`;
-
-      // 1) halo blur putih (paling belakang)
-      ctx.save();
-      ctx.globalAlpha = 0.35 * s.opacity;
-      ctx.filter = `blur(${16 + s.blur}px)`;
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(u.text, 0, 0);
-      ctx.restore();
-
-      // 2) ghost merah (RGB split)
-      ctx.save();
-      ctx.globalAlpha = 0.7 * s.opacity;
-      ctx.filter = `blur(${2 + s.blur}px)`;
-      ctx.fillStyle = "#ff4433";
-      ctx.fillText(u.text, -2, -1.5);
-      ctx.restore();
-
-      // 3) ghost biru (RGB split)
-      ctx.save();
-      ctx.globalAlpha = 0.7 * s.opacity;
-      ctx.filter = `blur(${2 + s.blur}px)`;
-      ctx.fillStyle = "#3358ff";
-      ctx.fillText(u.text, 2, 1.5);
-      ctx.restore();
-
-      // 4) teks utama + glow tipis (paling depan)
-      ctx.save();
-      ctx.globalAlpha = s.opacity;
-      ctx.filter = s.blur > 0.05 ? `blur(${s.blur}px)` : "none";
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 22;
-      ctx.fillStyle = color;
-      ctx.fillText(u.text, 0, 0);
-      ctx.restore();
-
+      ctx.drawImage(sprite.canvas, -sprite.cx, -sprite.cy);
       ctx.restore();
     });
   };
