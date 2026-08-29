@@ -1424,15 +1424,7 @@ export default function Editor({
         setBackgroundBlur(record.backgroundBlur);
         setProgressStyle(record.progressStyle);
         setGlowIntensity(record.glowIntensity ?? 0);
-        setTextValues((prev) => {
-          const next = { ...prev };
-          for (const key of Object.keys(next)) {
-            if (record.textValues[key] !== undefined) {
-              next[key] = record.textValues[key];
-            }
-          }
-          return next;
-        });
+        setTextValues((prev) => ({ ...prev, ...record.textValues }));
         setTextColors(record.textColors ?? {});
         setCustomLyricsLayers(record.customLyricsLayers ?? []);
         setRemovedLyricsIds(new Set(record.removedLyricsIds ?? []));
