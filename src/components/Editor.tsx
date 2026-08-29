@@ -362,12 +362,15 @@ function formatClock(sec: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-// Label kecil di pojok kiri-atas TIAP klip track (bukan lagi pill
-// sticky terpisah di sisi kiri) — ikon dulu baru nama, font mini
-// banget, dan di belakangnya ada highlight hitam tipis yang
-// memanjang ke kanan sepanjang klip (gradient fade), biar teks tetap
-// kebaca kontras di atas thumbnail/warna apa pun di klip.
-function ClipLabel({
+// Pill label di kiri tiap baris track — nempel (sticky) ke tepi kiri
+// area timeline yang scrollable, jadi tetap keliatan/gampang diketuk
+// meskipun user geser timeline ke kanan. Markup & class-nya DIAMBIL
+// PERSIS dari repo Mock-up (bagian "Track: background/cover photo/
+// audio/text" di src/routes/index.tsx) — pakai token warna ed-* yang
+// sama, bukan diadaptasi ke palet lama (editor-*/mute/paper) di
+// spneditz. Bedanya cuma nambahin logic toggle hidden/show (di mockup
+// aslinya cuma ikon statis, di sini beneran bisa diklik).
+function TrackLabel({
   hidden,
   onToggleHidden,
   icon: Icon,
@@ -383,23 +386,21 @@ function ClipLabel({
   shownTitle?: string;
 }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex h-[13px] items-center gap-[3px] overflow-hidden bg-gradient-to-r from-black/80 via-black/35 to-transparent pl-[3px] pr-6">
+    <div className="sticky left-1 z-20 flex h-8 w-[104px] shrink-0 items-center gap-2 rounded-lg bg-ed-card px-2 text-[11px] text-ed-text">
       <button
         onClick={onToggleHidden}
         title={hidden ? (hiddenTitle ?? "Tampilkan elemen") : (shownTitle ?? "Sembunyikan elemen")}
         aria-label={hidden ? "Tampilkan elemen" : "Sembunyikan elemen"}
-        className="pointer-events-auto flex h-[11px] w-[11px] shrink-0 items-center justify-center transition active:scale-90"
+        className="flex h-[14px] w-[14px] shrink-0 items-center justify-center transition active:scale-90"
       >
         {hidden ? (
-          <EyeOff className="h-[10px] w-[10px] shrink-0 text-white/50" />
+          <EyeOff className="h-[14px] w-[14px] shrink-0 text-ed-dim" />
         ) : (
-          <Eye className="h-[10px] w-[10px] shrink-0 text-white/90" />
+          <Eye className="h-[14px] w-[14px] shrink-0 text-ed-text" />
         )}
       </button>
-      <Icon className="h-[9px] w-[9px] shrink-0 text-white/90" />
-      <span className="truncate text-[7px] font-semibold leading-none text-white/90">
-        {label}
-      </span>
+      <Icon className="h-[14px] w-[14px] shrink-0" />
+      <span className="truncate">{label}</span>
     </div>
   );
 }
@@ -1291,11 +1292,18 @@ export default function Editor({
   const selectedSlot = template.slots.find((s) => s.id === selectedSlotId);
 
   // Offset horizontal (px) buat nyamain posisi playhead & ruler sama
-  // posisi klip di track foto/video/teks — klip-klip itu sengaja
-  // dimulai agak ke kanan (bukan nempel x=0) biar ada jarak kecil di
-  // awal timeline sebelum klip pertama mulai digambar. Playhead &
-  // ruler ikut digeser sebesar offset ini biar titik 0 mereka SAMA
-  // PERSIS sama titik mulai klip yang keliatan di layar.
+  // posisi ASLI klip di track foto/video/teks — klip-klip itu sengaja
+  // digeser ke kanan (lihat clipLeft di bawah) biar nggak ketutupan
+  // TrackLabel (pill label + ikon mata yang nempel "sticky left-1" di
+  // kiri tiap baris track, gayanya diambil dari repo Mock-up). Kalau
+  // offset ini nggak ada, garis putih playhead pas di detik 0 nongkrong
+  // di x=0 (mentok kiri banget, ketutupan pill label), padahal klip
+  // aslinya baru mulai gambar setelah pill — jadi playhead keliatan
+  // "nggak nyambung"/ketinggalan dari klip. Makanya playhead & ruler
+  // ikut digeser sebesar offset ini biar titik 0 mereka SAMA PERSIS
+  // sama titik mulai klip yang keliatan di layar.
+  // 104px lebar pill label kiri + jarak sticky (left-1 = 4px) + sedikit
+  // gap sebelum klip mulai.
   const TIMELINE_CLIP_OFFSET_PX = 116;
 
   // decorLayers dipisah "back" (di belakang slot foto/video) & "front"
@@ -2282,6 +2290,14 @@ export default function Editor({
         }}
         className="relative flex h-8 items-center justify-between"
       >
+        <TrackLabel
+          hidden={isAudioHidden}
+          onToggleHidden={(e) => toggleElementHidden(slot.id, e)}
+          icon={Music2}
+          label={slot.label ?? "Audio"}
+          hiddenTitle={`Tampilkan "${slot.label ?? "Audio"}"`}
+          shownTitle={`Sembunyikan "${slot.label ?? "Audio"}"`}
+        />
         {audioClips.map((clip) => {
           const clipDuration = clip.trimEnd - clip.trimStart;
           const clipLeft =
@@ -2372,14 +2388,12 @@ export default function Editor({
                   />
                 ))}
               </div>
-              <ClipLabel
-                hidden={isAudioHidden}
-                onToggleHidden={(e) => toggleElementHidden(slot.id, e)}
-                icon={Music2}
-                label={slot.label ?? "Audio"}
-                hiddenTitle={`Tampilkan "${slot.label ?? "Audio"}"`}
-                shownTitle={`Sembunyikan "${slot.label ?? "Audio"}"`}
-              />
+              <div className="pointer-events-none absolute left-1 top-0.5 flex items-center gap-1 rounded bg-black/55 px-1 py-[1px]">
+                <Music size={9} className="shrink-0 text-emerald-300" />
+                <span className="max-w-[90px] truncate text-[8px] font-medium text-paper">
+                  Musik latar
+                </span>
+              </div>
 
               {/* Handle trim — cuma nongol pas klip ini
                   terseleksi, biar nggak numpuk-numpuk
@@ -2424,6 +2438,14 @@ export default function Editor({
     const isTextHidden = hiddenElements.has(layer.id);
     return (
       <div key={layer.id} className="relative flex h-8 items-center justify-between">
+        <TrackLabel
+          hidden={isTextHidden}
+          onToggleHidden={(e) => toggleElementHidden(layer.id, e)}
+          icon={Type}
+          label={layer.label}
+          hiddenTitle={`Tampilkan "${layer.label}"`}
+          shownTitle={`Sembunyikan "${layer.label}"`}
+        />
         <div
           onClick={() => {
             setSelectedSlotId(null);
@@ -2442,16 +2464,12 @@ export default function Editor({
           }}
           title={layer.label}
         >
-          <ClipLabel
-            hidden={isTextHidden}
-            onToggleHidden={(e) => toggleElementHidden(layer.id, e)}
-            icon={Type}
-            label={layer.label}
-            hiddenTitle={`Tampilkan "${layer.label}"`}
-            shownTitle={`Sembunyikan "${layer.label}"`}
-          />
-          <div className="flex h-full items-center justify-end px-1.5 pt-2.5">
-            <span className="max-w-full truncate text-[9px] text-amber-200/80">
+          <div className="flex h-full items-center gap-1 px-1.5">
+            <Type size={12} className="shrink-0 text-amber-200" />
+            <span className="truncate text-[10px] font-medium text-paper">
+              {layer.label}
+            </span>
+            <span className="ml-auto max-w-[45%] shrink-0 truncate text-[9px] text-amber-200/80">
               {value}
             </span>
           </div>
@@ -2907,6 +2925,12 @@ export default function Editor({
                     disembunyiin biar timeline-nya bersih cuma isi audio. */}
                 {customBackground && activeTool !== "audio" && (
                   <div className="relative flex h-8 items-center justify-between">
+                    <TrackLabel
+                      hidden={hiddenElements.has(BACKGROUND_LAYER_ID)}
+                      onToggleHidden={(e) => toggleElementHidden(BACKGROUND_LAYER_ID, e)}
+                      icon={Layers}
+                      label="Background"
+                    />
                     <div
                       onClick={() => {
                         setSelectedSlotId(null);
@@ -2926,8 +2950,10 @@ export default function Editor({
                       {/* Thumbnail asli foto background (bukan cuma blok
                           warna polos), diulang ("tile") sepanjang durasi
                           biar keliatan isinya kayak referensi CapCut.
-                          Label kecil di pojok kiri-atas (ClipLabel) +
-                          readout opacity/blur kecil di pojok kanan. */}
+                          Tampilan DISAMAIN sama Mock-up: polos tanpa
+                          outline/tint warna & tanpa label di atasnya —
+                          cuma readout opacity/blur kecil di pojok kanan
+                          (biar tetap kelihatan settingnya lagi berapa). */}
                       {customBackground?.url && (
                         <div
                           className="pointer-events-none absolute inset-0 bg-repeat-x"
@@ -2937,12 +2963,6 @@ export default function Editor({
                           }}
                         />
                       )}
-                      <ClipLabel
-                        hidden={hiddenElements.has(BACKGROUND_LAYER_ID)}
-                        onToggleHidden={(e) => toggleElementHidden(BACKGROUND_LAYER_ID, e)}
-                        icon={Layers}
-                        label="Background"
-                      />
                       <span className="pointer-events-none absolute right-1 top-1 rounded bg-black/55 px-1 py-[1px] text-[9px] text-paper">
                         {Math.round(backgroundOpacity)}%
                         {backgroundBlur > 0 ? ` · Blur ${Math.round(backgroundBlur)}` : ""}
@@ -2992,6 +3012,14 @@ export default function Editor({
                       key={slot.id}
                       className="relative flex h-8 items-center justify-between"
                     >
+                      <TrackLabel
+                        hidden={isSlotHidden}
+                        onToggleHidden={(e) => toggleElementHidden(slot.id, e)}
+                        icon={Icon}
+                        label={slot.label}
+                        hiddenTitle={`Tampilkan "${slot.label}"`}
+                        shownTitle={`Sembunyikan "${slot.label}"`}
+                      />
                       <div
                         onClick={() => {
                           setSelectedLayerId(null);
@@ -3010,7 +3038,11 @@ export default function Editor({
                         {/* Thumbnail asli isi klip (foto/frame video),
                             diulang ("tile") sepanjang durasi slot — biar
                             kelihatan isinya beneran kayak track media di
-                            CapCut, bukan cuma blok warna polos. */}
+                            CapCut, bukan cuma blok warna polos. Tampilan
+                            DISAMAIN sama Mock-up: polos tanpa
+                            outline/tint warna & tanpa label ikon-teks di
+                            atasnya begitu klip udah keisi — cuma
+                            thumbnail-nya doang yang keliatan. */}
                         {filled && slotMediaEntry && slot.type === "image" && (
                           <div
                             className="pointer-events-none absolute inset-0 bg-repeat-x"
@@ -3030,14 +3062,14 @@ export default function Editor({
                             preload="metadata"
                           />
                         )}
-                        <ClipLabel
-                          hidden={isSlotHidden}
-                          onToggleHidden={(e) => toggleElementHidden(slot.id, e)}
-                          icon={Icon}
-                          label={slot.label}
-                          hiddenTitle={`Tampilkan "${slot.label}"`}
-                          shownTitle={`Sembunyikan "${slot.label}"`}
-                        />
+                        {!filled && (
+                          <div className="relative flex h-full items-center gap-1 px-1.5">
+                            <Icon size={12} className="shrink-0 text-mute" />
+                            <span className="truncate text-[10px] font-medium text-mute">
+                              {slot.label}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -3068,6 +3100,14 @@ export default function Editor({
                       key={layer.id}
                       className="relative flex h-8 items-center justify-between"
                     >
+                      <TrackLabel
+                        hidden={isLayerHidden}
+                        onToggleHidden={(e) => toggleElementHidden(layer.id, e)}
+                        icon={SlidersHorizontal}
+                        label={layer.label}
+                        hiddenTitle={`Tampilkan "${layer.label}"`}
+                        shownTitle={`Sembunyikan "${layer.label}"`}
+                      />
                       <div
                         onClick={() => {
                           setSelectedSlotId(null);
@@ -3099,17 +3139,15 @@ export default function Editor({
                           />
                         )}
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-                        <ClipLabel
-                          hidden={isLayerHidden}
-                          onToggleHidden={(e) => toggleElementHidden(layer.id, e)}
-                          icon={SlidersHorizontal}
-                          label={layer.label}
-                          hiddenTitle={`Tampilkan "${layer.label}"`}
-                          shownTitle={`Sembunyikan "${layer.label}"`}
-                        />
-                        <span className="pointer-events-none absolute right-1 top-1 rounded bg-black/55 px-1 py-[1px] text-[9px] text-paper">
-                          {Math.round(op)}%
-                        </span>
+                        <div className="relative flex h-full items-center gap-1 px-1.5">
+                          <SlidersHorizontal size={12} className="shrink-0 text-violet-200" />
+                          <span className="truncate text-[10px] font-medium text-paper">
+                            {layer.label}
+                          </span>
+                          <span className="ml-auto shrink-0 text-[9px] text-violet-200/80">
+                            {Math.round(op)}%
+                          </span>
+                        </div>
                       </div>
                     </div>
                   );
