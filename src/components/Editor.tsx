@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import { getDominantColor } from "../lib/color";
-import type { Template, TemplateSlot, SlotType, LiquidGlassSettings } from "../types";import {
+import type { Template, TemplateSlot, TemplateTextLayer, SlotType, LiquidGlassSettings } from "../types";import {
   parseDurationSec,
   initialSlotMedia,
   initialLayerOpacity,
@@ -2288,13 +2288,12 @@ export default function Editor({
     exportAbortRef.current?.abort();
   }
 
-  // ---- Track audio (dipakai bareng di mode Media/Audio DAN mode Teks,
-  // biar track teks & track audio bisa "digabung" muncul bareng di
-  // timeline yang sama — user bisa lihat & atur klip audio tanpa harus
-  // keluar dari mode edit teks). Dirender sebagai kumpulan KLIP terpisah
-  // (bukan satu blok statis) — tiap klip bisa digeser (drag badan klip)
-  // & ditrim/dipotong (drag handle di tepi kiri/kanan-nya begitu klip
-  // diseleksi). Return null kalau slot audio ini belum ada isinya.
+  // ---- Track audio (dipakai bareng di tab Edit & tab Audio, biar musik
+  // latar kelihatan pas lagi ngedit klip media juga, nggak perlu pindah
+  // tab). Dirender sebagai kumpulan KLIP terpisah (bukan satu blok
+  // statis) — tiap klip bisa digeser (drag badan klip) & ditrim/dipotong
+  // (drag handle di tepi kiri/kanan-nya begitu klip diseleksi). Return
+  // null kalau slot audio ini belum ada isinya.
   function renderAudioTrack(slot: TemplateSlot) {
     const filled = Boolean(slotMedia[slot.id]);
     if (!filled) return null;
@@ -2451,6 +2450,56 @@ export default function Editor({
           );
         })}
         <TrackMenuButton title={`Menu "${slot.label ?? "Audio"}"`} />
+      </div>
+    );
+  }
+
+  // ---- Track teks (dipakai bareng di tab Edit & tab Teks, biar layer
+  // teks kelihatan pas lagi ngedit klip media juga). Klik track buat
+  // munculin input edit teks khusus layer itu di toolbar bawah.
+  function renderTextTrack(layer: TemplateTextLayer) {
+    const isSelected = selectedTextLayerId === layer.id;
+    const value = textValues[layer.id] || layer.defaultText;
+    const isTextHidden = hiddenElements.has(layer.id);
+    return (
+      <div key={layer.id} className="relative flex h-8 items-center">
+        <TrackLabel
+          hidden={isTextHidden}
+          onToggleHidden={(e) => toggleElementHidden(layer.id, e)}
+          icon={Type}
+          label={layer.label}
+          hiddenTitle={`Tampilkan "${layer.label}"`}
+          shownTitle={`Sembunyikan "${layer.label}"`}
+        />
+        <div
+          onClick={() => {
+            setSelectedSlotId(null);
+            setSelectedLayerId(null);
+            setSelectedTextLayerId(layer.id);
+            if (layer.id === "airplayDevice") dismissAirplayHint();
+          }}
+          className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded border transition ${
+            isSelected
+              ? "border-paper ring-2 ring-paper bg-amber-400/20"
+              : "border-amber-400/40 bg-amber-400/15"
+          } ${isTextHidden ? "opacity-40 grayscale" : ""}`}
+          style={{
+            left: TIMELINE_CLIP_OFFSET_PX,
+            width: Math.max(28, DURATION * effectivePxPerSec - 4),
+          }}
+          title={layer.label}
+        >
+          <div className="flex h-full items-center gap-1 px-1.5">
+            <Type size={12} className="shrink-0 text-amber-200" />
+            <span className="truncate text-[10px] font-medium text-paper">
+              {layer.label}
+            </span>
+            <span className="ml-auto max-w-[45%] shrink-0 truncate text-[9px] text-amber-200/80">
+              {value}
+            </span>
+          </div>
+        </div>
+        <TrackMenuButton title={`Menu "${layer.label}"`} />
       </div>
     );
   }
@@ -2861,55 +2910,7 @@ export default function Editor({
                  munculin input edit teks khusus layer itu di toolbar bawah. */
               template.textLayers?.length ? (
                 <div style={{ width: TRACK_WIDTH }} className="flex flex-col gap-0.5 pb-1">
-                  {template.textLayers.map((layer) => {
-                    const isSelected = selectedTextLayerId === layer.id;
-                    const value = textValues[layer.id] || layer.defaultText;
-                    const isTextHidden = hiddenElements.has(layer.id);
-                    return (
-                      <div
-                        key={layer.id}
-                        className="relative flex h-8 items-center"
-                      >
-                        <TrackLabel
-                          hidden={isTextHidden}
-                          onToggleHidden={(e) => toggleElementHidden(layer.id, e)}
-                          icon={Type}
-                          label={layer.label}
-                          hiddenTitle={`Tampilkan "${layer.label}"`}
-                          shownTitle={`Sembunyikan "${layer.label}"`}
-                        />
-                        <div
-                          onClick={() => {
-                            setSelectedSlotId(null);
-                            setSelectedLayerId(null);
-                            setSelectedTextLayerId(layer.id);
-                            if (layer.id === "airplayDevice") dismissAirplayHint();
-                          }}
-                          className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded border transition ${
-                            isSelected
-                              ? "border-paper ring-2 ring-paper bg-amber-400/20"
-                              : "border-amber-400/40 bg-amber-400/15"
-                          } ${isTextHidden ? "opacity-40 grayscale" : ""}`}
-                          style={{
-                            left: TIMELINE_CLIP_OFFSET_PX,
-                            width: Math.max(28, DURATION * effectivePxPerSec - 4),
-                          }}
-                          title={layer.label}
-                        >
-                          <div className="flex h-full items-center gap-1 px-1.5">
-                            <Type size={12} className="shrink-0 text-amber-200" />
-                            <span className="truncate text-[10px] font-medium text-paper">
-                              {layer.label}
-                            </span>
-                            <span className="ml-auto max-w-[45%] shrink-0 truncate text-[9px] text-amber-200/80">
-                              {value}
-                            </span>
-                          </div>
-                        </div>
-                        <TrackMenuButton title={`Menu "${layer.label}"`} />
-                      </div>
-                    );
-                  })}
+                  {template.textLayers.map((layer) => renderTextTrack(layer))}
                 </div>
               ) : (
                 <div
@@ -2919,6 +2920,18 @@ export default function Editor({
                   Template ini belum punya teks yang bisa di-custom.
                 </div>
               )
+            ) : template.baseAssetSrc && activeTool === "progress" ? (
+              /* Tab "Gaya" cuma buat atur setelan tampilan progress lagu
+                 (Standar/Waveform, dst) lewat panel di toolbar bawah —
+                 nggak ada klip/track yang relevan buat diedit di
+                 timeline, jadi timeline-nya dikosongin biar nggak
+                 membingungkan (nggak ada track yang bisa diklik di sini). */
+              <div
+                style={{ width: TRACK_WIDTH }}
+                className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-mute/25 bg-graphite/40 py-2.5 text-xs text-mute"
+              >
+                Pengaturan gaya ada di panel bawah — nggak ada track di sini.
+              </div>
             ) : template.baseAssetSrc ? (
               /* Layer per elemen — tiap slot (foto/video/audio) punya
                  baris/track sendiri, kayak editor video beneran. Klik
@@ -3098,6 +3111,16 @@ export default function Editor({
                     </div>
                   );
                 })}
+
+                {/* Track teks digabung di sini juga (tab Edit) — biar
+                    layer teks (judul, artist, dst) kelihatan bareng
+                    track foto/video/audio pas lagi ngedit klip media,
+                    nggak perlu pindah ke tab Teks buat lihatnya. Pakai
+                    helper yang sama kayak di tab Teks, jadi klik/edit-nya
+                    identik. Cuma di tab "Media" — di tab Audio/Gaya
+                    disembunyikan biar timeline-nya tetap fokus. */}
+                {activeTool === "media" &&
+                  template.textLayers?.map((layer) => renderTextTrack(layer))}
 
                 {/* Track khusus buat decorLayer yang "adjustable" (misal:
                     Card Player) — beda dari slot foto/video/audio karena
