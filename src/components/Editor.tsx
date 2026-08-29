@@ -56,6 +56,7 @@ import {
   drawSlotGlow,
   drawTextLayers,
   drawLyricsTextLayer,
+  measureLyricsBlockSize,
   drawDurationLayer,
   drawProgressFill,
   drawWaveformProgress,
@@ -1796,6 +1797,132 @@ export default function Editor({
       [baseId]: { ...prev[baseId], [key]: value },
     }));
   }
+  // ---- Kotak seleksi buat blok teks Lyrics yang lagi diseleksi (via track
+  // di timeline ATAU klik langsung di canvas) — dipakai gambar tanda
+  // seleksi + handle drag/resize LANGSUNG DI ATAS CANVAS (lihat JSX di
+  // area preview). Dihitung ulang tiap render (bukan useMemo) karena
+  // gampang & cukup murah (cuma 2x ctx.measureText), dan harus ikut
+  // berubah tiap textValues/lyricsSettings/canvasRatio/hiddenElements
+  // berubah — bikin daftar dependency useMemo yang presisi lebih ribet
+  // drpd untungnya di sini.
+  const lyricsSelectionBox = (() => {
+    if (!selectedLyricsBaseId) return null;
+    const eff = getEffectiveLyricsLayer(selectedLyricsBaseId);
+    const ctx2d = canvasRef.current?.getContext("2d");
+    if (!eff || !ctx2d) return null;
+    const { width: canvasW, height: canvasH } = getRatioCanvasSize(canvasRatio);
+    const topHidden = hiddenElements.has(`${selectedLyricsBaseId}__top`);
+    const bottomHidden = hiddenElements.has(`${selectedLyricsBaseId}__bottom`);
+    const topText = topHidden
+      ? " "
+      : textValues[`${selectedLyricsBaseId}__top`] ?? eff.defaultTopText;
+    const bottomText = bottomHidden
+      ? " "
+      : textValues[`${selectedLyricsBaseId}__bottom`] ?? eff.defaultBottomText;
+    const { width, height } = measureLyricsBlockSize(
+      ctx2d,
+      canvasH,
+      eff,
+      topText,
+      bottomText,
+    );
+    // Dikasih sedikit napas (padding) di sekeliling teks aslinya, biar
+    // kotak seleksi nggak mepet banget ke tepi huruf.
+    const padPx = Math.max(canvasW, canvasH) * 0.012;
+    const widthPct = ((width + padPx * 2) / canvasW) * 100;
+    const heightPct = ((height + padPx * 2) / canvasH) * 100;
+    return {
+      baseId: selectedLyricsBaseId,
+      eff,
+      leftPct: eff.x - widthPct / 2,
+      topPct: eff.y - heightPct / 2,
+      widthPct,
+      heightPct,
+      skewDeg: eff.skewDeg ?? -8,
+    };
+  })();
+  // Geser kotak seleksi lirik LANGSUNG DI CANVAS — update posisi x/y
+  // (persen) blok teksnya. Pola konversi client-px -> persen sama kayak
+  // handleCanvasClick, tapi dipakai buat GESER posisi, bukan hit-test.
+  function handleLyricsCanvasDragStart(
+    e: React.PointerEvent,
+    baseId: string,
+    eff: TemplateLyricsTextLayer,
+  ) {
+    e.preventDefault();
+    e.stopPropagation();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const originalX = eff.x;
+    const originalY = eff.y;
+    const handleMove = (ev: PointerEvent) => {
+      const dxPct = ((ev.clientX - startX) / rect.width) * 100;
+      const dyPct = ((ev.clientY - startY) / rect.height) * 100;
+      const newX = clampNum(originalX + dxPct, 0, 100);
+      const newY = clampNum(originalY + dyPct, 0, 100);
+      setLyricsSettings((prev) => ({
+        ...prev,
+        [baseId]: { ...prev[baseId], x: newX, y: newY },
+      }));
+    };
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  }
+  // Drag handle pojok kanan-bawah kotak seleksi buat BESAR/KECILIN ukuran
+  // font baris atas & bawah SEKALIGUS (proporsional) — dihitung dari
+  // rasio jarak pointer-ke-titik-tengah SEKARANG dibanding jarak awal.
+  function handleLyricsCanvasResizeStart(
+    e: React.PointerEvent,
+    baseId: string,
+    eff: TemplateLyricsTextLayer,
+  ) {
+    e.preventDefault();
+    e.stopPropagation();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const { width: canvasW, height: canvasH } = getRatioCanvasSize(canvasRatio);
+    const scaleX = canvasW / rect.width;
+    const scaleY = canvasH / rect.height;
+    const centerXPx = (eff.x / 100) * canvasW;
+    const centerYPx = (eff.y / 100) * canvasH;
+    const toCanvasPx = (clientX: number, clientY: number) => ({
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY,
+    });
+    const startPt = toCanvasPx(e.clientX, e.clientY);
+    const startDist = Math.max(1, Math.hypot(startPt.x - centerXPx, startPt.y - centerYPx));
+    const originalTopFontSize = eff.topFontSize;
+    const originalBottomFontSize = eff.bottomFontSize;
+    const handleMove = (ev: PointerEvent) => {
+      const pt = toCanvasPx(ev.clientX, ev.clientY);
+      const dist = Math.max(1, Math.hypot(pt.x - centerXPx, pt.y - centerYPx));
+      const scale = clampNum(dist / startDist, 0.3, 4);
+      setLyricsSettings((prev) => ({
+        ...prev,
+        [baseId]: {
+          ...prev[baseId],
+          topFontSize: clampNum(originalTopFontSize * scale, 10, 400),
+          bottomFontSize: clampNum(originalBottomFontSize * scale, 10, 400),
+        },
+      }));
+    };
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  }
   // Drag klip teks/lirik KIRI-KANAN di sepanjang timeline — geser
   // startSec & endSec bareng (durasi klip tetap sama), diklem ke
   // [0, DURATION]. Pola sama persis kayak handleAudioClipDragStart.
@@ -3445,6 +3572,62 @@ export default function Editor({
             aria-hidden
             className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-editor-bg"
           />
+
+          {/* Tanda seleksi buat blok teks Lyrics yang lagi keseleksi —
+              muncul persis di atas teksnya di canvas, bisa digeser (drag
+              badan kotak) buat pindah posisi, & di-resize (drag handle
+              pojok kanan-bawah) buat besar/kecilin ukuran font baris
+              atas+bawah sekaligus. Di-skip pas lagi export biar snapshot
+              hasil render bersih tanpa UI editor. */}
+          {lyricsSelectionBox && !isExporting && (
+            <div
+              className="absolute z-20"
+              style={{
+                left: `${lyricsSelectionBox.leftPct}%`,
+                top: `${lyricsSelectionBox.topPct}%`,
+                width: `${lyricsSelectionBox.widthPct}%`,
+                height: `${lyricsSelectionBox.heightPct}%`,
+              }}
+            >
+              <div
+                className="relative h-full w-full"
+                style={{ transform: `skewX(${lyricsSelectionBox.skewDeg}deg)` }}
+              >
+                {/* Badan kotak — drag buat geser posisi. */}
+                <div
+                  onPointerDown={(e) =>
+                    handleLyricsCanvasDragStart(
+                      e,
+                      lyricsSelectionBox.baseId,
+                      lyricsSelectionBox.eff,
+                    )
+                  }
+                  className="absolute inset-0 cursor-move touch-none rounded-md border-2 border-dashed border-editor-accent bg-editor-accent/10 active:cursor-grabbing"
+                  title="Tahan & geser buat pindah posisi teks"
+                />
+                {/* Dot pojok kiri-atas & kanan-atas — dekoratif, nunjukin
+                    batas kotak seleksi kayak editor desain pada umumnya. */}
+                <span className="pointer-events-none absolute -left-1.5 -top-1.5 h-3 w-3 rounded-full border-2 border-editor-accent bg-paper" />
+                <span className="pointer-events-none absolute -right-1.5 -top-1.5 h-3 w-3 rounded-full border-2 border-editor-accent bg-paper" />
+                <span className="pointer-events-none absolute -left-1.5 -bottom-1.5 h-3 w-3 rounded-full border-2 border-editor-accent bg-paper" />
+                {/* Handle pojok kanan-bawah — drag buat ubah ukuran teks
+                    (topFontSize/bottomFontSize, proporsional). */}
+                <div
+                  onPointerDown={(e) =>
+                    handleLyricsCanvasResizeStart(
+                      e,
+                      lyricsSelectionBox.baseId,
+                      lyricsSelectionBox.eff,
+                    )
+                  }
+                  className="absolute -bottom-3 -right-3 flex h-7 w-7 cursor-nwse-resize touch-none items-center justify-center rounded-full border-2 border-editor-accent bg-paper shadow-md active:scale-95"
+                  title="Tahan & geser buat ubah ukuran teks"
+                >
+                  <Maximize2 size={12} className="text-editor-accent" />
+                </div>
+              </div>
+            </div>
+          )}
           {customBackground && (
             <button
               onClick={() => {

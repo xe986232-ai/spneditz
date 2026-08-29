@@ -483,6 +483,46 @@ function getLyricsLetterSprite(
   return sprite;
 }
 
+/** Ukur lebar & tinggi blok teks "Lyrics" (2 baris) dalam koordinat px
+ *  canvas ASLI (bukan yang direferensikan 1080x1920) — dipakai UI editor
+ *  buat gambar kotak seleksi/drag/resize di atas canvas, tanpa perlu
+ *  duplikat logika layout dari drawLyricsTextLayer di atas. Sengaja TIDAK
+ *  ikut ngitung animasi in/loop/out (unit offset dsb) — kotak seleksi cukup
+ *  ngikutin ukuran STATIS blok teksnya aja, cukup akurat buat drag/resize. */
+export function measureLyricsBlockSize(
+  ctx: CanvasRenderingContext2D,
+  canvasH: number,
+  layer: TemplateLyricsTextLayer,
+  topTextOverride?: string,
+  bottomTextOverride?: string,
+): { width: number; height: number } {
+  const topText = (topTextOverride ?? layer.defaultTopText) || " ";
+  const bottomText = (bottomTextOverride ?? layer.defaultBottomText) || " ";
+  const isArchivo = layer.fontFamily === "Archivo Black";
+  const fontStyle = isArchivo ? "normal" : "italic";
+  const fontStack = `'${layer.fontFamily}', sans-serif`;
+
+  const REFERENCE_CANVAS_HEIGHT = 1920;
+  const lyricsScale = canvasH / REFERENCE_CANVAS_HEIGHT;
+  const topFontSize = layer.topFontSize * lyricsScale;
+  const bottomFontSize = layer.bottomFontSize * lyricsScale;
+
+  ctx.save();
+  ctx.font = `900 ${fontStyle} ${topFontSize}px ${fontStack}`;
+  const topLineWidth = ctx.measureText(topText).width;
+  ctx.font = `900 ${fontStyle} ${bottomFontSize}px ${fontStack}`;
+  const bottomLineWidth = ctx.measureText(bottomText).width;
+  ctx.restore();
+
+  const topLineHeight = topFontSize * 0.92;
+  const bottomLineHeight = bottomFontSize * 0.92;
+  const lineGap = bottomFontSize * 0.16;
+  const blockHeight = topLineHeight + lineGap + bottomLineHeight;
+  const blockWidth = Math.max(topLineWidth, bottomLineWidth, 1);
+
+  return { width: blockWidth, height: Math.max(blockHeight, 1) };
+}
+
 /** Gambar 1 layer teks "Lyrics" (2 baris, animasi in/loop/out per
  *  huruf/kata/baris + signature effect skew miring & RGB split/halo blur).
  *  Beda dari drawTextLayers (statis) — ini dipanggil TIAP FRAME pas playhead
