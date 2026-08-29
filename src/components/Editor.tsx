@@ -1545,6 +1545,20 @@ export default function Editor({
   // pas ditekan (bukan ke-hide kayak sebelumnya).
   const visibleTools = TOOLS;
 
+  // Ngukur lebar viewport timeline (buat effectivePxPerSec/TRACK_WIDTH)
+  // via ResizeObserver. PENTING: deps-nya HARUS ikut `isFullscreen`,
+  // bukan `[]` kosong — soalnya seluruh panel timeline (termasuk elemen
+  // `timelineScrollRef` ini) di-UNMOUNT total pas isFullscreen jadi true
+  // (lihat `{!isFullscreen && (<div>...timeline...</div>)}` di JSX), lalu
+  // di-MOUNT ULANG jadi elemen DOM BARU pas balik ke false. Kalau efek
+  // ini cuma jalan sekali (deps `[]`), ResizeObserver-nya bakal terus
+  // "ngunci" ke elemen DOM LAMA yang udah dibuang (detached) tiap kali
+  // user keluar-masuk fullscreen — elemen detached itu clientWidth-nya
+  // 0/gak pernah update lagi, jadi effectivePxPerSec collapse ke minimum
+  // & TRACK_WIDTH ikut nyusut, tapi observer-nya udah gak "hidup" buat
+  // benerin diri sendiri pas ukuran window berubah lagi. Efeknya: timeline
+  // keliatan "nyusut ngebug" & nyangkut kecil terus sampe di-reload. Fix:
+  // re-attach observer ke elemen BARU tiap kali isFullscreen berubah.
   useEffect(() => {
     const el = timelineScrollRef.current;
     if (!el) return;
@@ -1553,7 +1567,7 @@ export default function Editor({
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [isFullscreen]);
 
   // Munculin label "Background kustom" tiap kali background kustom baru
   // dipasang, lalu otomatis fade-out sendiri setelah 3 detik.
@@ -3660,7 +3674,17 @@ export default function Editor({
         >
           <div className="h-1 w-10 rounded-full bg-mute/30" />
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">
+        {/* scrollbar-gutter:stable — reservasi ruang scrollbar vertikal
+            PERMANEN (baik lagi kepake atau nggak), biar clientWidth
+            `timelineScrollRef` di bawah nggak tiba-tiba nyusut/ngelebar
+            pas jumlah track berubah-ubah nyampe/nggak nyampe batas
+            overflow (mis. abis nambah "Add teks" baru, atau abis nge-
+            drag handle timeline jadi lebih pendek). Tanpa ini,
+            munculnya scrollbar vertikal makan ~15px lebar horizontal,
+            effectivePxPerSec ngikut turun, & seluruh track/klip di
+            timeline keliatan "nyusut" tiba-tiba — persis bug yang
+            dilaporin. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2 [scrollbar-gutter:stable]">
         <div ref={timelineScrollRef} className="overflow-x-auto">
           <div className="relative" style={{ width: TRACK_WIDTH }}>
             {/* Ruler gaya baru — label lebih tipis + dot ticks kecil
