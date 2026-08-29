@@ -602,13 +602,19 @@ export function drawLyricsTextLayer(
             localT,
             timeline,
             layer.staggerOrder,
-            layer.staggerDelaySec,
+            // Pakai versi EFEKTIF (bisa lebih kecil dari nilai layer
+            // aslinya) — sudah di-skalakan di getLyricsTimeline supaya
+            // IN+OUT selalu muat & selesai persis di klip yang (mungkin)
+            // sudah lebih pendek gara-gara di-cut. Lihat komentar
+            // effInDurationSec/effOutDurationSec/effStaggerDelaySec di
+            // lib/lyricsAnim.ts.
+            timeline.effStaggerDelaySec,
             layer.loopBehavior,
             layer.inStyle,
-            layer.inDurationSec,
+            timeline.effInDurationSec,
             layer.loopStyle,
             layer.outStyle,
-            layer.outDurationSec,
+            timeline.effOutDurationSec,
           )
         : { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1, blur: 0 }; // pause -> statis, full opacity
       // Offset x/y preset (slideUp/slideDown/dst) juga dalam px absolut

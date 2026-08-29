@@ -200,6 +200,18 @@ export interface LyricsTimeline {
   loopTotal: number;
   outTotal: number;
   totalDuration: number;
+  // Versi EFEKTIF dari inDurationSec/outDurationSec/staggerDelaySec —
+  // sama persis dengan nilai layer aslinya SELAMA klip cukup panjang.
+  // Tapi kalau klip hasil CUT/trim jadi lebih pendek dari
+  // (inTotal + outTotal) bawaan, ketiganya di-skalakan turun bareng-
+  // bareng (proporsional) biar IN & OUT tetap MUAT & SELESAI persis di
+  // dalam durasi klip yang baru (cuma jadi lebih cepat), bukan kepotong
+  // di tengah jalan gara-gara klipnya keburu abis. Dipakai gantiin nilai
+  // mentah layer.inDurationSec/outDurationSec/staggerDelaySec pas manggil
+  // computeLyricsUnitTransform (lihat lib/render.ts).
+  effInDurationSec: number;
+  effOutDurationSec: number;
+  effStaggerDelaySec: number;
 }
 
 export function getLyricsTimeline(
@@ -210,8 +222,32 @@ export function getLyricsTimeline(
   clipDurationSec: number,
 ): LyricsTimeline {
   const staggerTotal = Math.max(0, (totalUnits - 1) * staggerDelaySec);
-  const inTotal = inDurationSec + staggerTotal;
-  const outTotal = outDurationSec + staggerTotal;
+  let inTotal = inDurationSec + staggerTotal;
+  let outTotal = outDurationSec + staggerTotal;
+
+  let effStaggerDelaySec = staggerDelaySec;
+  let effInDurationSec = inDurationSec;
+  let effOutDurationSec = outDurationSec;
+
+  // Klip hasil CUT bisa lebih pendek dari inTotal+outTotal bawaan (mis.
+  // dipotong deket ujung). Kalau dibiarkan, OUT animasinya kepotong
+  // sebelum sempat selesai (localT abis duluan sebelum outStartTime +
+  // outDurationSec tercapai) — teks jadi "ilang mendadak" bukan animasi
+  // keluar yang mulus. Fix: skalakan IN, OUT, & stagger dengan faktor
+  // yang SAMA biar (inTotal + outTotal) selalu pas <= clipDurationSec,
+  // jadi animasi OUT-nya tetap lengkap (mulai -> selesai) walau klipnya
+  // pendek, cuma jadi lebih cepat/rapat (loopTotal otomatis jadi 0).
+  const totalNeeded = inTotal + outTotal;
+  if (totalNeeded > clipDurationSec && totalNeeded > 0) {
+    const scale = Math.max(0, clipDurationSec) / totalNeeded;
+    effStaggerDelaySec = staggerDelaySec * scale;
+    effInDurationSec = inDurationSec * scale;
+    effOutDurationSec = outDurationSec * scale;
+    const scaledStaggerTotal = Math.max(0, (totalUnits - 1) * effStaggerDelaySec);
+    inTotal = effInDurationSec + scaledStaggerTotal;
+    outTotal = effOutDurationSec + scaledStaggerTotal;
+  }
+
   const loopTotal = Math.max(0, clipDurationSec - inTotal - outTotal);
   return {
     totalUnits,
@@ -220,6 +256,9 @@ export function getLyricsTimeline(
     loopTotal,
     outTotal,
     totalDuration: clipDurationSec,
+    effInDurationSec,
+    effOutDurationSec,
+    effStaggerDelaySec,
   };
 }
 
