@@ -168,21 +168,24 @@ function NavAction({
   icon: Icon,
   label,
   active = false,
+  disabled = false,
   onClick,
 }: {
   icon: LucideIcon;
   label: string;
   active?: boolean;
+  disabled?: boolean;
   onClick?: () => void;
 }) {
   return (
     <button
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
       className={`flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl transition active:scale-90 ${
         active
           ? "bg-editor-accent/20 text-editor-accent"
           : "text-paper/55 hover:text-paper"
-      }`}
+      } ${disabled ? "opacity-30" : ""}`}
       title={label}
       aria-label={label}
     >
@@ -3987,6 +3990,12 @@ export default function Editor({
             : undefined;
 
         let content: ReactNode;
+        // Kalau ini keisi (bukan null), row menu utama (Media/Audio/Teks/
+        // Gaya/Preset) di bawah DIGANTI TOTAL sama isi ini, bukan cuma
+        // ditumpuk overlay di atasnya — dipakai khusus buat quick action
+        // teks (Edit/Add teks/Cut/Delete/Tutup) begitu 1 track teks/lirik
+        // diketuk, biar gak ada 2 baris menu numpuk kayak sebelumnya.
+        let quickTextNavActions: ReactNode = null;
         // Overlay panel cuma perlu dirender kalau beneran ada isinya. Di
         // mode "default", Media & Audio emang sengaja kosong (gak ada
         // pengaturan apa-apa) — cuma tab Gaya (activeTool "progress") yang
@@ -4342,114 +4351,97 @@ export default function Editor({
               currentSec > effLyrics.startSec + MIN_LYRICS_CLIP_DURATION &&
               currentSec < effLyrics.endSec - MIN_LYRICS_CLIP_DURATION,
           );
-          content = textToolbarMode === "quick" ? (
-            // ---- Quick menu — muncul PERTAMA KALI begitu track teks
-            // diketuk, BUKAN langsung menu editing (input+swatch dst).
-            // Cuma 2 (atau 3, kalau lagi milih style) tombol simpel:
-            // pensil buat ke menu editing penuh, & "Add teks" buat
-            // nambah teks baru dgn style siap pakai (Ungu/Putih).
-            <div className="flex flex-col gap-2.5 px-3 pb-3 pt-2.5">
-              <span className="text-[10px] font-medium text-mute">
-                {selectedTextLayer.label}
-              </span>
-              {!showAddTextStyles ? (
+          if (textToolbarMode === "quick" && !showAddTextStyles) {
+            // ---- Quick action row — GANTI TOTAL row menu utama Media/
+            // Audio/Teks/Gaya/Preset di bawah (bukan numpuk overlay lagi),
+            // begitu track teks/lirik diketuk pertama kali. Semua tombol
+            // SATU warna (putih polos, gaya sama kayak NavAction biasa) —
+            // TANPA background ungu/merah, cuma ikon + label.
+            quickTextNavActions = (
+              <>
+                <NavAction
+                  icon={Pencil}
+                  label="Edit"
+                  onClick={() => setTextToolbarMode("edit")}
+                />
+                <NavAction
+                  icon={Plus}
+                  label="Add"
+                  onClick={() => setShowAddTextStyles(true)}
+                />
+                {/* Potong & Hapus — cuma buat klip LIRIK (yang beneran
+                    punya posisi/durasi sendiri di timeline & bisa
+                    dipecah). Text layer biasa (judul/artist/dst) sengaja
+                    TIDAK bisa dipotong/dihapus, karena itu field tetap
+                    bawaan template, bukan track lepas. */}
+                {selectedLyricsBaseId && (
+                  <NavAction
+                    icon={Scissors}
+                    label="Cut"
+                    disabled={!canCutSelectedLyrics}
+                    onClick={() => handleCutLyricsClip(selectedLyricsBaseId)}
+                  />
+                )}
+                {selectedLyricsBaseId && (
+                  <NavAction
+                    icon={Trash2}
+                    label="Delete"
+                    onClick={() => handleDeleteLyricsClip(selectedLyricsBaseId)}
+                  />
+                )}
+                <NavAction
+                  icon={X}
+                  label="Tutup"
+                  onClick={() => setSelectedTextLayerId(null)}
+                />
+              </>
+            );
+          } else if (textToolbarMode === "quick") {
+            // showAddTextStyles true — submenu pilih style (Ungu/Putih)
+            // masih dirender sebagai overlay biasa (bukan gantiin nav row)
+            // karena butuh tampilan swatch besar, bukan cuma ikon simpel.
+            content = (
+              <div className="flex flex-col gap-2 px-3 pb-3 pt-2.5">
+                <span className="text-[10px] font-medium text-mute">
+                  Pilih style teksnya
+                </span>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setTextToolbarMode("edit")}
-                    className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-graphite text-xs font-semibold text-paper transition active:scale-95"
+                    onClick={() => addCustomTextLayer("purple")}
+                    className="flex h-14 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-mute/20 bg-graphite transition active:scale-95"
                   >
-                    <Pencil size={14} />
-                    Edit
+                    <span
+                      className="h-4 w-4 rounded-full border border-white/30"
+                      style={{ backgroundColor: "#c3b0ff" }}
+                    />
+                    <span className="text-[10px] font-semibold text-paper">
+                      Ungu
+                    </span>
                   </button>
                   <button
-                    onClick={() => setShowAddTextStyles(true)}
-                    className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-editor-accent/20 text-xs font-semibold text-editor-accent transition active:scale-95"
+                    onClick={() => addCustomTextLayer("white")}
+                    className="flex h-14 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-mute/20 bg-graphite transition active:scale-95"
                   >
-                    <Plus size={14} />
-                    Add teks
-                  </button>
-                  {/* Potong & Hapus — cuma buat klip LIRIK (yang beneran
-                      punya posisi/durasi sendiri di timeline & bisa
-                      dipecah). Text layer biasa (judul/artist/dst) sengaja
-                      TIDAK bisa dipotong/dihapus, karena itu field tetap
-                      bawaan template, bukan track lepas. */}
-                  {selectedLyricsBaseId && (
-                    <button
-                      onClick={() =>
-                        handleCutLyricsClip(selectedLyricsBaseId)
-                      }
-                      disabled={!canCutSelectedLyrics}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-graphite text-paper transition active:scale-95 disabled:opacity-30"
-                      title={
-                        canCutSelectedLyrics
-                          ? "Potong teks di posisi playhead"
-                          : "Geser playhead ke tengah klip ini dulu buat motong"
-                      }
-                    >
-                      <Scissors size={14} />
-                    </button>
-                  )}
-                  {selectedLyricsBaseId && (
-                    <button
-                      onClick={() =>
-                        handleDeleteLyricsClip(selectedLyricsBaseId)
-                      }
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rec/15 text-rec transition active:scale-95"
-                      title="Hapus track teks ini"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setSelectedTextLayerId(null)}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-graphite text-mute transition active:scale-95"
-                    title="Tutup"
-                  >
-                    <X size={14} />
+                    <span
+                      className="h-4 w-4 rounded-full border border-mute/30"
+                      style={{ backgroundColor: "#FFFFFF" }}
+                    />
+                    <span className="text-[10px] font-semibold text-paper">
+                      Putih
+                    </span>
                   </button>
                 </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <span className="text-[10px] font-medium text-mute">
-                    Pilih style teksnya
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => addCustomTextLayer("purple")}
-                      className="flex h-14 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-mute/20 bg-graphite transition active:scale-95"
-                    >
-                      <span
-                        className="h-4 w-4 rounded-full border border-white/30"
-                        style={{ backgroundColor: "#c3b0ff" }}
-                      />
-                      <span className="text-[10px] font-semibold text-paper">
-                        Ungu
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => addCustomTextLayer("white")}
-                      className="flex h-14 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-mute/20 bg-graphite transition active:scale-95"
-                    >
-                      <span
-                        className="h-4 w-4 rounded-full border border-mute/30"
-                        style={{ backgroundColor: "#FFFFFF" }}
-                      />
-                      <span className="text-[10px] font-semibold text-paper">
-                        Putih
-                      </span>
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => setShowAddTextStyles(false)}
-                    className="self-start text-[10px] font-medium text-mute underline underline-offset-2"
-                  >
-                    Batal
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <>
+                <button
+                  onClick={() => setShowAddTextStyles(false)}
+                  className="self-start text-[10px] font-medium text-mute underline underline-offset-2"
+                >
+                  Batal
+                </button>
+              </div>
+            );
+          } else {
+            content = (
+              <>
               {/* Tab "Teks" / "Animasi" — cuma muncul buat entri lirik
                   (baris atas/bawah klip Lyrics), text layer biasa (judul,
                   artist, dst) gak punya setting animasi jadi gak perlu tab. */}
@@ -4566,8 +4558,9 @@ export default function Editor({
                 </div>
               </div>
               )}
-            </>
-          );
+              </>
+            );
+          }
         } else {
           content = (
             <>
@@ -4680,7 +4673,13 @@ export default function Editor({
         // edit teks) lagi kebuka/ganti. Panel kontekstual itu sendiri
         // di-render sebagai overlay yang "naik" nutupin timeline dari bawah
         // (absolute, bottom-full), bukan bikin timeline/row menu ikut geser.
-        const showOverlay = panelMode !== "default" || hasDefaultContent;
+        //
+        // PENGECUALIAN: quick action teks/lirik (quickTextNavActions) BUKAN
+        // overlay numpuk di atas row ini — dia GANTI ISI row nav utama itu
+        // sendiri (lihat return di bawah), jadi showOverlay-nya dimatiin
+        // biar gak dobel.
+        const showOverlay =
+          !quickTextNavActions && (panelMode !== "default" || hasDefaultContent);
 
         return (
           <div className="relative z-30 shrink-0">
@@ -4696,59 +4695,66 @@ export default function Editor({
             )}
 
             <div className="flex items-center justify-between gap-1 border-t border-white/5 bg-editor-panel px-3 pb-3 pt-2">
-              {visibleTools.map(({ id, label, icon: Icon }) => (
-                <NavAction
-                  key={id}
-                  icon={Icon}
-                  label={label}
-                  active={activeTool === id}
-                  onClick={() => {
-                    setActiveTool(id);
-                    if (id === "media") {
-                      setIsTextMode(false);
-                      setSelectedTextLayerId(null);
-                      setSelectedLayerId(null);
-                      setSelectedAudioClipId(null);
-                      // Sengaja NGGAK langsung setSelectedSlotId di sini —
-                      // itu bikin toolbar "nyasar" ke mode "Ganti Foto".
-                      // Slot beneran dipilih lewat tombol "Ganti Media"
-                      // di atas (activeTool === "media"), sama kayak pola
-                      // tombol "Tambah Audio" buat tool Audio.
-                      setSelectedSlotId(null);
-                    }
-                    if (id === "audio") {
-                      setIsTextMode(false);
-                      setSelectedTextLayerId(null);
-                      setSelectedSlotId(null);
-                      setSelectedLayerId(null);
-                      setSelectedAudioClipId(null);
-                    }
-                    if (id === "text") {
-                      setSelectedSlotId(null);
-                      setSelectedLayerId(null);
-                      setSelectedAudioClipId(null);
-                      setIsTextMode(true);
-                    }
-                    if (id === "progress") {
-                      setIsTextMode(false);
-                      setSelectedTextLayerId(null);
-                      setSelectedSlotId(null);
-                      setSelectedLayerId(null);
-                      setSelectedAudioClipId(null);
-                    }
-                  }}
-                />
-              ))}
+              {quickTextNavActions ? (
+                quickTextNavActions
+              ) : (
+                <>
+                  {visibleTools.map(({ id, label, icon: Icon }) => (
+                    <NavAction
+                      key={id}
+                      icon={Icon}
+                      label={label}
+                      active={activeTool === id}
+                      onClick={() => {
+                        setActiveTool(id);
+                        if (id === "media") {
+                          setIsTextMode(false);
+                          setSelectedTextLayerId(null);
+                          setSelectedLayerId(null);
+                          setSelectedAudioClipId(null);
+                          // Sengaja NGGAK langsung setSelectedSlotId di sini —
+                          // itu bikin toolbar "nyasar" ke mode "Ganti Foto".
+                          // Slot beneran dipilih lewat tombol "Ganti Media"
+                          // di atas (activeTool === "media"), sama kayak pola
+                          // tombol "Tambah Audio" buat tool Audio.
+                          setSelectedSlotId(null);
+                        }
+                        if (id === "audio") {
+                          setIsTextMode(false);
+                          setSelectedTextLayerId(null);
+                          setSelectedSlotId(null);
+                          setSelectedLayerId(null);
+                          setSelectedAudioClipId(null);
+                        }
+                        if (id === "text") {
+                          setSelectedSlotId(null);
+                          setSelectedLayerId(null);
+                          setSelectedAudioClipId(null);
+                          setIsTextMode(true);
+                        }
+                        if (id === "progress") {
+                          setIsTextMode(false);
+                          setSelectedTextLayerId(null);
+                          setSelectedSlotId(null);
+                          setSelectedLayerId(null);
+                          setSelectedAudioClipId(null);
+                        }
+                      }}
+                    />
+                  ))}
 
-              <NavAction
-                icon={Bookmark}
-                label="Preset"
-                onClick={() => setShowPresetPanel(true)}
-              />
+                  <NavAction
+                    icon={Bookmark}
+                    label="Preset"
+                    onClick={() => setShowPresetPanel(true)}
+                  />
+                </>
+              )}
             </div>
           </div>
         );
       })()}
+
 
 
       {/* Modal Preset — simpan pengaturan sekarang jadi preset baru, atau
