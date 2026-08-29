@@ -386,6 +386,12 @@ export function drawLyricsTextLayer(
   currentSec: number,
   topTextOverride?: string,
   bottomTextOverride?: string,
+  // Default true (dipakai export/case lain yang belum wiring isPlaying) —
+  // Editor.tsx kirim isPlaying state asli. Kalau false (preview lagi
+  // pause), teks digambar STATIS full opacity (skip in/loop/out), jadi
+  // frame diam (mis. t=0 pas pertama buka template) nggak keliatan kosong
+  // gara-gara animasi masuknya emang mulai dari opacity 0.
+  isPlaying: boolean = true,
 ) {
   const topText = (topTextOverride ?? layer.defaultTopText) || " ";
   const bottomText = (bottomTextOverride ?? layer.defaultBottomText) || " ";
@@ -459,20 +465,22 @@ export function drawLyricsTextLayer(
       const unitCenterX = cursorX + w / 2;
       cursorX += w;
 
-      const s = computeLyricsUnitTransform(
-        u.globalIndex,
-        units.length,
-        localT,
-        timeline,
-        layer.staggerOrder,
-        layer.staggerDelaySec,
-        layer.loopBehavior,
-        layer.inStyle,
-        layer.inDurationSec,
-        layer.loopStyle,
-        layer.outStyle,
-        layer.outDurationSec,
-      );
+      const s = isPlaying
+        ? computeLyricsUnitTransform(
+            u.globalIndex,
+            units.length,
+            localT,
+            timeline,
+            layer.staggerOrder,
+            layer.staggerDelaySec,
+            layer.loopBehavior,
+            layer.inStyle,
+            layer.inDurationSec,
+            layer.loopStyle,
+            layer.outStyle,
+            layer.outDurationSec,
+          )
+        : { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1, blur: 0 }; // pause -> statis, full opacity
       if (s.opacity <= 0.01) return;
 
       ctx.save();

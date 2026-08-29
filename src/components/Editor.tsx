@@ -1705,6 +1705,7 @@ export default function Editor({
           currentSec,
           topHidden ? " " : textValues[`${layer.id}__top`],
           bottomHidden ? " " : textValues[`${layer.id}__bottom`],
+          isPlaying,
         );
       }
     }
@@ -1782,6 +1783,7 @@ export default function Editor({
     DURATION,
     progressStyle,
     audioInfo,
+    isPlaying,
   ]);
 
   // Drag playhead: geser langsung ke posisi jari/kursor, pause dulu selama digeser
