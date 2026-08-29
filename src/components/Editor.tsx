@@ -2288,6 +2288,173 @@ export default function Editor({
     exportAbortRef.current?.abort();
   }
 
+  // ---- Track audio (dipakai bareng di mode Media/Audio DAN mode Teks,
+  // biar track teks & track audio bisa "digabung" muncul bareng di
+  // timeline yang sama — user bisa lihat & atur klip audio tanpa harus
+  // keluar dari mode edit teks). Dirender sebagai kumpulan KLIP terpisah
+  // (bukan satu blok statis) — tiap klip bisa digeser (drag badan klip)
+  // & ditrim/dipotong (drag handle di tepi kiri/kanan-nya begitu klip
+  // diseleksi). Return null kalau slot audio ini belum ada isinya.
+  function renderAudioTrack(slot: TemplateSlot) {
+    const filled = Boolean(slotMedia[slot.id]);
+    if (!filled) return null;
+    const sourceDuration = audioInfo?.duration ?? DURATION;
+    const isAudioHidden = hiddenElements.has(slot.id);
+    return (
+      <div
+        key={slot.id}
+        onClick={() => {
+          setSelectedLayerId(null);
+          setSelectedSlotId(slot.id);
+        }}
+        className="relative flex h-8 items-center"
+      >
+        <TrackLabel
+          hidden={isAudioHidden}
+          onToggleHidden={(e) => toggleElementHidden(slot.id, e)}
+          icon={Music2}
+          label={slot.label ?? "Audio"}
+          hiddenTitle={`Tampilkan "${slot.label ?? "Audio"}"`}
+          shownTitle={`Sembunyikan "${slot.label ?? "Audio"}"`}
+        />
+        {audioClips.map((clip) => {
+          const clipDuration = clip.trimEnd - clip.trimStart;
+          const clipLeft =
+            clip.offset * effectivePxPerSec + TIMELINE_CLIP_OFFSET_PX;
+          const clipWidth = Math.max(
+            22,
+            clipDuration * effectivePxPerSec - 4,
+          );
+          const isClipSelected = selectedAudioClipId === clip.id;
+
+          // Target jumlah bar mengikuti LEBAR KLIP DI LAYAR
+          // (bukan angka tetap) — sekitar 1 bar tiap 3px,
+          // biar klip pendek tetap padat & klip panjang
+          // nggak keriting/numpuk. Ini yang bikin waveform
+          // kerasa "mengalir" kayak di CapCut, bukan cuma
+          // segelintir batang gemuk.
+          const targetBarCount = clampNum(
+            Math.round(clipWidth / 3),
+            8,
+            400,
+          );
+
+          // Sumber data: pakai bassPeaks (resolusi jauh
+          // lebih rapat, ~30 titik/detik lagu) kalau ada,
+          // fallback ke peaks broadband (120 titik/lagu),
+          // baru fallback flat kalau audio belum selesai
+          // dianalisis sama sekali.
+          const richSource =
+            audioInfo?.bassPeaks?.length
+              ? audioInfo.bassPeaks
+              : audioInfo?.peaks?.length
+                ? audioInfo.peaks
+                : null;
+
+          let clipPeaks: number[];
+          if (richSource) {
+            const total = richSource.length;
+            const startIdx = clampNum(
+              Math.floor((clip.trimStart / sourceDuration) * total),
+              0,
+              total - 1,
+            );
+            const endIdx = clampNum(
+              Math.ceil((clip.trimEnd / sourceDuration) * total),
+              startIdx + 1,
+              total,
+            );
+            const rawSlice = richSource.slice(startIdx, endIdx);
+            clipPeaks = downsamplePeaks(rawSlice, targetBarCount);
+          } else {
+            clipPeaks = FALLBACK_PEAKS.slice(0, targetBarCount);
+          }
+
+          return (
+            <div
+              key={clip.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedLayerId(null);
+                setSelectedSlotId(slot.id);
+                setSelectedAudioClipId(clip.id);
+              }}
+              onPointerDown={(e) =>
+                handleAudioClipDragStart(e, clip)
+              }
+              className={`absolute inset-y-0.5 touch-none overflow-hidden rounded border transition ${
+                isClipSelected
+                  ? "cursor-grabbing border-paper ring-2 ring-paper bg-emerald-500/25"
+                  : "cursor-grab border-emerald-500/40 bg-emerald-500/15 active:cursor-grabbing"
+              } ${isAudioHidden ? "opacity-40 grayscale" : ""}`}
+              style={{ left: clipLeft, width: clipWidth }}
+              title="Musik latar — tahan & geser buat pindah posisi"
+            >
+              {/* Waveform beneran, ngikutin amplitude/frekuensi
+                  asli potongan file audio klip ini. Bar rapat
+                  (nggak ada gap, lebar ngisi % penuh) biar
+                  keliatan "mengalir" kayak gelombang asli,
+                  bukan segelintir batang gemuk berjarak
+                  lebar. */}
+              <div className="pointer-events-none absolute inset-0 flex items-center px-1">
+                {clipPeaks.map((p, i) => (
+                  <span
+                    key={i}
+                    className="shrink-0 rounded-[1px] bg-emerald-300/80"
+                    style={{
+                      width: `${100 / clipPeaks.length}%`,
+                      // Sedikit "gap" optis lewat border kiri
+                      // tipis, bukan margin/gap flex — biar
+                      // nggak ngurangin lebar total pas bar
+                      // dikit (klip pendek).
+                      borderLeft: "1px solid rgba(0,0,0,0.35)",
+                      height: `${Math.max(10, Math.min(100, p * 100))}%`,
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="pointer-events-none absolute left-1 top-0.5 flex items-center gap-1 rounded bg-black/55 px-1 py-[1px]">
+                <Music size={9} className="shrink-0 text-emerald-300" />
+                <span className="max-w-[90px] truncate text-[8px] font-medium text-paper">
+                  Musik latar
+                </span>
+              </div>
+
+              {/* Handle trim — cuma nongol pas klip ini
+                  terseleksi, biar nggak numpuk-numpuk
+                  keliatannya pas klip masih kecil/banyak. */}
+              {isClipSelected && (
+                <>
+                  <div
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      handleAudioClipTrimStart(e, clip, "left");
+                    }}
+                    className="absolute inset-y-0 left-0 z-20 w-3 cursor-ew-resize touch-none bg-paper/90"
+                    title="Geser buat trim awal klip"
+                  >
+                    <div className="absolute left-1/2 top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-graphite" />
+                  </div>
+                  <div
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      handleAudioClipTrimStart(e, clip, "right");
+                    }}
+                    className="absolute inset-y-0 right-0 z-20 w-3 cursor-ew-resize touch-none bg-paper/90"
+                    title="Geser buat trim akhir klip"
+                  >
+                    <div className="absolute left-1/2 top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-graphite" />
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
+        <TrackMenuButton title={`Menu "${slot.label ?? "Audio"}"`} />
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex h-[100dvh] w-screen flex-col overflow-hidden bg-editor-bg font-sans">
       {/* Top bar — restyle ala mockup "iPhone Music Player V4": grid 3 kolom
@@ -2694,6 +2861,13 @@ export default function Editor({
                  munculin input edit teks khusus layer itu di toolbar bawah. */
               template.textLayers?.length ? (
                 <div style={{ width: TRACK_WIDTH }} className="flex flex-col gap-0.5 pb-1">
+                  {/* Track audio ikut ditampilkan di sini (digabung sama
+                      track teks) — biar user bisa lihat & atur posisi/
+                      trim musik latar sambil masih di mode edit Teks,
+                      nggak perlu bolak-balik pindah tab "Audio". Pakai
+                      helper yang sama kayak di mode Media/Audio, jadi
+                      perilaku drag/trim/klip-nya identik. */}
+                  {audioSlotDef && renderAudioTrack(audioSlotDef)}
                   {template.textLayers.map((layer) => {
                     const isSelected = selectedTextLayerId === layer.id;
                     const value = textValues[layer.id] || layer.defaultText;
@@ -2834,167 +3008,12 @@ export default function Editor({
                   const isSelected = selectedSlotId === slot.id;
                   const Icon = SLOT_ICON[slot.type];
 
-                  // ---- Track audio: dirender sebagai kumpulan KLIP
-                  // terpisah (bukan satu blok statis) — tiap klip bisa
-                  // digeser (drag badan klip) & ditrim/dipotong (drag
-                  // handle di tepi kiri/kanan-nya begitu klip diseleksi).
+                  // ---- Track audio: pakai helper renderAudioTrack, yang
+                  // sama juga dipakai di mode Teks di bawah — biar track
+                  // audio & track teks bisa "digabung" tampil bareng di
+                  // timeline yang sama.
                   if (isAudio) {
-                    if (!filled) return null;
-                    const sourceDuration = audioInfo?.duration ?? DURATION;
-                    const isAudioHidden = hiddenElements.has(slot.id);
-                    return (
-                      <div
-                        key={slot.id}
-                        onClick={() => {
-                          setSelectedLayerId(null);
-                          setSelectedSlotId(slot.id);
-                        }}
-                        className="relative flex h-8 items-center"
-                      >
-                        <TrackLabel
-                          hidden={isAudioHidden}
-                          onToggleHidden={(e) => toggleElementHidden(slot.id, e)}
-                          icon={Music2}
-                          label={slot.label ?? "Audio"}
-                          hiddenTitle={`Tampilkan "${slot.label ?? "Audio"}"`}
-                          shownTitle={`Sembunyikan "${slot.label ?? "Audio"}"`}
-                        />
-                        {audioClips.map((clip) => {
-                          const clipDuration = clip.trimEnd - clip.trimStart;
-                          const clipLeft =
-                            clip.offset * effectivePxPerSec + TIMELINE_CLIP_OFFSET_PX;
-                          const clipWidth = Math.max(
-                            22,
-                            clipDuration * effectivePxPerSec - 4,
-                          );
-                          const isClipSelected = selectedAudioClipId === clip.id;
-
-                          // Target jumlah bar mengikuti LEBAR KLIP DI LAYAR
-                          // (bukan angka tetap) — sekitar 1 bar tiap 3px,
-                          // biar klip pendek tetap padat & klip panjang
-                          // nggak keriting/numpuk. Ini yang bikin waveform
-                          // kerasa "mengalir" kayak di CapCut, bukan cuma
-                          // segelintir batang gemuk.
-                          const targetBarCount = clampNum(
-                            Math.round(clipWidth / 3),
-                            8,
-                            400,
-                          );
-
-                          // Sumber data: pakai bassPeaks (resolusi jauh
-                          // lebih rapat, ~30 titik/detik lagu) kalau ada,
-                          // fallback ke peaks broadband (120 titik/lagu),
-                          // baru fallback flat kalau audio belum selesai
-                          // dianalisis sama sekali.
-                          const richSource =
-                            audioInfo?.bassPeaks?.length
-                              ? audioInfo.bassPeaks
-                              : audioInfo?.peaks?.length
-                                ? audioInfo.peaks
-                                : null;
-
-                          let clipPeaks: number[];
-                          if (richSource) {
-                            const total = richSource.length;
-                            const startIdx = clampNum(
-                              Math.floor((clip.trimStart / sourceDuration) * total),
-                              0,
-                              total - 1,
-                            );
-                            const endIdx = clampNum(
-                              Math.ceil((clip.trimEnd / sourceDuration) * total),
-                              startIdx + 1,
-                              total,
-                            );
-                            const rawSlice = richSource.slice(startIdx, endIdx);
-                            clipPeaks = downsamplePeaks(rawSlice, targetBarCount);
-                          } else {
-                            clipPeaks = FALLBACK_PEAKS.slice(0, targetBarCount);
-                          }
-
-                          return (
-                            <div
-                              key={clip.id}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedLayerId(null);
-                                setSelectedSlotId(slot.id);
-                                setSelectedAudioClipId(clip.id);
-                              }}
-                              onPointerDown={(e) =>
-                                handleAudioClipDragStart(e, clip)
-                              }
-                              className={`absolute inset-y-0.5 touch-none overflow-hidden rounded border transition ${
-                                isClipSelected
-                                  ? "cursor-grabbing border-paper ring-2 ring-paper bg-emerald-500/25"
-                                  : "cursor-grab border-emerald-500/40 bg-emerald-500/15 active:cursor-grabbing"
-                              } ${isAudioHidden ? "opacity-40 grayscale" : ""}`}
-                              style={{ left: clipLeft, width: clipWidth }}
-                              title="Musik latar — tahan & geser buat pindah posisi"
-                            >
-                              {/* Waveform beneran, ngikutin amplitude/frekuensi
-                                  asli potongan file audio klip ini. Bar rapat
-                                  (nggak ada gap, lebar ngisi % penuh) biar
-                                  keliatan "mengalir" kayak gelombang asli,
-                                  bukan segelintir batang gemuk berjarak
-                                  lebar. */}
-                              <div className="pointer-events-none absolute inset-0 flex items-center px-1">
-                                {clipPeaks.map((p, i) => (
-                                  <span
-                                    key={i}
-                                    className="shrink-0 rounded-[1px] bg-emerald-300/80"
-                                    style={{
-                                      width: `${100 / clipPeaks.length}%`,
-                                      // Sedikit "gap" optis lewat border kiri
-                                      // tipis, bukan margin/gap flex — biar
-                                      // nggak ngurangin lebar total pas bar
-                                      // dikit (klip pendek).
-                                      borderLeft: "1px solid rgba(0,0,0,0.35)",
-                                      height: `${Math.max(10, Math.min(100, p * 100))}%`,
-                                    }}
-                                  />
-                                ))}
-                              </div>
-                              <div className="pointer-events-none absolute left-1 top-0.5 flex items-center gap-1 rounded bg-black/55 px-1 py-[1px]">
-                                <Music size={9} className="shrink-0 text-emerald-300" />
-                                <span className="max-w-[90px] truncate text-[8px] font-medium text-paper">
-                                  Musik latar
-                                </span>
-                              </div>
-
-                              {/* Handle trim — cuma nongol pas klip ini
-                                  terseleksi, biar nggak numpuk-numpuk
-                                  keliatannya pas klip masih kecil/banyak. */}
-                              {isClipSelected && (
-                                <>
-                                  <div
-                                    onPointerDown={(e) => {
-                                      e.stopPropagation();
-                                      handleAudioClipTrimStart(e, clip, "left");
-                                    }}
-                                    className="absolute inset-y-0 left-0 z-20 w-3 cursor-ew-resize touch-none bg-paper/90"
-                                    title="Geser buat trim awal klip"
-                                  >
-                                    <div className="absolute left-1/2 top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-graphite" />
-                                  </div>
-                                  <div
-                                    onPointerDown={(e) => {
-                                      e.stopPropagation();
-                                      handleAudioClipTrimStart(e, clip, "right");
-                                    }}
-                                    className="absolute inset-y-0 right-0 z-20 w-3 cursor-ew-resize touch-none bg-paper/90"
-                                    title="Geser buat trim akhir klip"
-                                  >
-                                    <div className="absolute left-1/2 top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-graphite" />
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          );
-                        })}
-                        <TrackMenuButton title={`Menu "${slot.label ?? "Audio"}"`} />
-                      </div>
-                    );
+                    return renderAudioTrack(slot);
                   }
 
                   // ---- Track slot lain (foto/video) — tetap seperti
