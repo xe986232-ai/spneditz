@@ -2687,7 +2687,7 @@ export default function Editor({
             boxShadow: `0 25px 70px -18px rgba(${dominantColor}, 0.65), 0 0 90px -10px rgba(${dominantColor}, 0.45)`,
           }}
         >
-          {template.baseAssetSrc ? (
+          {template.baseAssetSrc || template.solidBackground ? (
             <canvas
               ref={canvasRef}
               onClick={handleCanvasClick}
