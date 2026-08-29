@@ -94,6 +94,18 @@ export type DraftRecord = {
    *  (sebelum fitur ini ada) tidak punya field ini — dibaca undefined,
    *  di-fallback ke {} di sisi pemanggil (Editor.tsx). */
   textColors?: Record<string, string>;
+  /** Klip-klip lirik custom yang ditambahin user lewat "Add teks" pada
+   *  template Lyrics (mis. "lyrics-glitch") — template ini sendiri tidak
+   *  punya lyricsTextLayers bawaan, jadi SEMUA klip liriknya hidup di sini.
+   *  Draft lama (sebelum fix ini) tidak punya field ini — fallback ke []
+   *  di sisi pemanggil (Editor.tsx). */
+  customLyricsLayers?: import("../types").TemplateLyricsTextLayer[];
+  /** Id klip lirik bawaan template yang dihapus user (mata dicoret/hapus).
+   *  Draft lama tidak punya field ini — fallback ke [] di pemanggil. */
+  removedLyricsIds?: string[];
+  /** Override setting animasi/font per klip lirik (key = lyricsId). Draft
+   *  lama tidak punya field ini — fallback ke {} di pemanggil. */
+  lyricsSettings?: Record<string, Partial<import("../types").TemplateLyricsTextLayer>>;
   slotMedia: Record<string, StoredMedia>;
   customBackground: StoredMedia | null;
   /** Klip-klip potongan track audio (offset/trim) — biar posisi motong
@@ -157,6 +169,9 @@ export async function saveDraft(
     glowIntensity: number;
     textValues: TextValueState;
     textColors?: Record<string, string>;
+    customLyricsLayers?: import("../types").TemplateLyricsTextLayer[];
+    removedLyricsIds?: Set<string> | string[];
+    lyricsSettings?: Record<string, Partial<import("../types").TemplateLyricsTextLayer>>;
     slotMedia: SlotMediaState;
     customBackground: SlotMediaEntry | null;
     audioClips: { id: string; trimStart: number; trimEnd: number; offset: number }[];
@@ -191,6 +206,9 @@ export async function saveDraft(
     glowIntensity: params.glowIntensity,
     textValues: { ...params.textValues },
     textColors: { ...(params.textColors ?? {}) },
+    customLyricsLayers: (params.customLyricsLayers ?? []).map((l) => ({ ...l })),
+    removedLyricsIds: Array.from(params.removedLyricsIds ?? []),
+    lyricsSettings: { ...(params.lyricsSettings ?? {}) },
     slotMedia: slotMediaOut,
     customBackground: customBackgroundOut,
     audioClips: params.audioClips.map((c) => ({ ...c })),

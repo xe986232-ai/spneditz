@@ -1434,6 +1434,9 @@ export default function Editor({
           return next;
         });
         setTextColors(record.textColors ?? {});
+        setCustomLyricsLayers(record.customLyricsLayers ?? []);
+        setRemovedLyricsIds(new Set(record.removedLyricsIds ?? []));
+        setLyricsSettings(record.lyricsSettings ?? {});
         setAudioClips(record.audioClips.map((c) => ({ ...c })));
         setHiddenElements(new Set(record.hiddenElements));
         setCurrentSec(record.currentSec ?? 0);
@@ -1472,6 +1475,9 @@ export default function Editor({
         glowIntensity,
         textValues,
         textColors,
+        customLyricsLayers,
+        removedLyricsIds,
+        lyricsSettings,
         slotMedia,
         customBackground,
         audioClips,
@@ -1519,6 +1525,9 @@ export default function Editor({
     glowIntensity,
     textValues,
     textColors,
+    customLyricsLayers,
+    removedLyricsIds,
+    lyricsSettings,
     audioClips,
     hiddenElements,
   ]);
