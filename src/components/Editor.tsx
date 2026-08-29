@@ -556,7 +556,13 @@ function LyricsAnimPanel({
   ) => void;
 }) {
   return (
-    <div className="flex max-h-[52vh] flex-col gap-4 overflow-y-auto px-3 pb-4 pt-3">
+    // Sengaja DIBIKIN RENDAH (bukan 52vh kayak sebelumnya) — panel ini
+    // dulu bisa naik sampai setengah layar & nutupin canvas preview pas
+    // lagi ngatur animasi. 28vh cukup keliatan beberapa opsi tanpa geser
+    // scroll, sisanya (In/Loop/Out, dst) tinggal di-scroll ke bawah lewat
+    // overflow-y-auto — canvas di atas tetap kebuka jelas buat liat hasil
+    // animasi sambil diutak-atik.
+    <div className="flex max-h-[28vh] flex-col gap-4 overflow-y-auto px-3 pb-4 pt-3">
       <LyricsChipRow
         label="Font"
         options={LYRICS_FONTS}
