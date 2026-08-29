@@ -332,6 +332,11 @@ const FALLBACK_PEAKS = Array.from({ length: WAVEFORM_BAR_COUNT }, () => 0.22);
 // Durasi minimum satu potongan klip audio (detik) — dijaga biar nggak
 // bisa ditrim/dipotong sampai lebih pendek dari ini (biar nggak "hilang").
 const MIN_CLIP_DURATION = 0.3;
+// Sama kayak MIN_CLIP_DURATION, tapi buat track teks/lirik — dijaga biar
+// motong track teks nggak bisa bikin salah satu potongannya lebih pendek
+// dari ini (biar animasi in/out-nya masih kelihatan wajar, nggak "kepotong
+// abis" jadi 0 detik).
+const MIN_LYRICS_CLIP_DURATION = 0.4;
 // Berapa detik playhead digeser tiap klik tombol mundur/maju di sebelah
 // tombol play — 1 detik cukup presisi buat nyari posisi tanpa harus
 // drag manual di timeline.
@@ -375,6 +380,9 @@ type ProjectSnapshot = {
   textColors: Record<string, string>;
   audioClips: AudioClip[];
   hiddenElements: Set<string>;
+  customLyricsLayers: TemplateLyricsTextLayer[];
+  removedLyricsIds: Set<string>;
+  lyricsSettings: Record<string, Partial<TemplateLyricsTextLayer>>;
 };
 
 // Format detik jadi mm:ss buat label waktu di atas baris playback.
@@ -789,6 +797,17 @@ export default function Editor({
     TemplateLyricsTextLayer[]
   >([]);
   const customLyricsCounterRef = useRef(0);
+  // Id klip lirik (bawaan template MAUPUN custom) yang "dihapus" user lewat
+  // tombol Hapus di quick menu, atau id klip ASAL yang udah dipecah jadi 2
+  // lewat tombol Potong (Scissors) — di kedua kasus klip aslinya harus
+  // hilang dari timeline & canvas, tapi datanya TETAP ada di
+  // template.lyricsTextLayers/customLyricsLayers (nggak dimutasi langsung),
+  // makanya di-filter di allLyricsLayers di bawah. 1 Set dipakai buat 2
+  // skenario itu biar allLyricsLayers cuma butuh 1 filter, bukan 2 state
+  // terpisah yang gampang lupa disinkronin.
+  const [removedLyricsIds, setRemovedLyricsIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   // allTextLayers = cuma text layer BIASA (judul/artist/dst) bawaan
   // template — track custom sekarang semuanya lewat jalur lirik
   // (customLyricsLayers), bukan di sini lagi.
@@ -1208,6 +1227,9 @@ export default function Editor({
       textColors,
       audioClips,
       hiddenElements,
+      customLyricsLayers,
+      removedLyricsIds,
+      lyricsSettings,
     };
   }
 
@@ -1225,6 +1247,9 @@ export default function Editor({
     setTextColors(snap.textColors);
     setAudioClips(snap.audioClips);
     setHiddenElements(snap.hiddenElements);
+    setCustomLyricsLayers(snap.customLyricsLayers);
+    setRemovedLyricsIds(snap.removedLyricsIds);
+    setLyricsSettings(snap.lyricsSettings);
     lastSnapshotRef.current = snap;
   }
 
@@ -1333,6 +1358,9 @@ export default function Editor({
     textColors,
     audioClips,
     hiddenElements,
+    customLyricsLayers,
+    removedLyricsIds,
+    lyricsSettings,
   ]);
 
   // Hydrate semua state Editor dari draft lama (kalau resumeDraftId ada) —
@@ -1672,7 +1700,7 @@ export default function Editor({
   const allLyricsLayers: TemplateLyricsTextLayer[] = [
     ...(template.lyricsTextLayers ?? []),
     ...customLyricsLayers,
-  ];
+  ].filter((l) => !removedLyricsIds.has(l.id));
   const lyricsTextEntries: TemplateTextLayer[] = allLyricsLayers.flatMap(
     (l) => [
     {
@@ -1769,6 +1797,103 @@ export default function Editor({
     setShowAddTextStyles(false);
     setTextToolbarMode("edit");
     setLyricsPanelTab("teks");
+  }
+
+  // Tombol gunting di quick menu track teks — motong 1 klip lirik (baris
+  // atas+bawahnya sekaligus, karena 1 klip = 1 pasang baris) jadi DUA klip
+  // terpisah di titik playhead sekarang, PERSIS pola handleCutAudio di
+  // atas (klip lama "diganti" jadi 2 klip baru). Bedanya sama audio: di
+  // sini titik potongnya otomatis jadi batas endSec klip kiri (jadi
+  // animasi OUT klip kiri "pindah" ke titik potong) & startSec klip kanan
+  // (animasi IN klip kanan mulai dari situ) — style/durasi in & out-nya
+  // sendiri TETAP dipertahankan sama persis kayak klip asalnya, cuma
+  // posisinya yang ngikut ke titik potong baru (lihat getLyricsTimeline di
+  // lib/lyricsAnim.ts, yang emang selalu ngitung in/out relatif ke
+  // startSec/endSec klip, bukan posisi absolut tetap).
+  function handleCutLyricsClip(baseId: string) {
+    const eff = getEffectiveLyricsLayer(baseId);
+    if (!eff) return;
+    const cutSec = currentSec;
+    if (
+      cutSec <= eff.startSec + MIN_LYRICS_CLIP_DURATION ||
+      cutSec >= eff.endSec - MIN_LYRICS_CLIP_DURATION
+    ) {
+      return;
+    }
+    const leftId = makeClipId();
+    const rightId = makeClipId();
+    const leftLayer: TemplateLyricsTextLayer = {
+      ...eff,
+      id: leftId,
+      endSec: cutSec,
+    };
+    const rightLayer: TemplateLyricsTextLayer = {
+      ...eff,
+      id: rightId,
+      startSec: cutSec,
+    };
+    setCustomLyricsLayers((prev) => [...prev, leftLayer, rightLayer]);
+    // Klip asal (bawaan template ATAU custom) disembunyikan permanen —
+    // datanya sendiri dibiarkan apa adanya, cuma di-filter di
+    // allLyricsLayers (lihat komentar di deklarasi removedLyricsIds).
+    setRemovedLyricsIds((prev) => new Set(prev).add(baseId));
+
+    // Isi teks/warna/status sembunyi baris atas & bawah klip asal dibawa
+    // turun ke KEDUA klip hasil potongan, biar isinya identik dulu pas
+    // baru dipotong (user lanjut edit salah satu/keduanya kalau perlu).
+    const parts = ["top", "bottom"] as const;
+    setTextValues((prev) => {
+      const next = { ...prev };
+      for (const part of parts) {
+        const val = prev[`${baseId}__${part}`];
+        if (val !== undefined) {
+          next[`${leftId}__${part}`] = val;
+          next[`${rightId}__${part}`] = val;
+        }
+      }
+      return next;
+    });
+    setTextColors((prev) => {
+      const next = { ...prev };
+      for (const part of parts) {
+        const val = prev[`${baseId}__${part}`];
+        if (val !== undefined) {
+          next[`${leftId}__${part}`] = val;
+          next[`${rightId}__${part}`] = val;
+        }
+      }
+      return next;
+    });
+    setHiddenElements((prev) => {
+      const next = new Set(prev);
+      for (const part of parts) {
+        if (prev.has(`${baseId}__${part}`)) {
+          next.add(`${leftId}__${part}`);
+          next.add(`${rightId}__${part}`);
+        }
+      }
+      return next;
+    });
+
+    // Lanjut pilih klip KANAN (hasil potongan setelah playhead) — sama
+    // kayak handleCutAudio milih rightClip — pas di baris yang sama
+    // (atas/bawah) yang lagi diedit user sebelum motong.
+    const suffix = selectedTextLayerId?.endsWith("__bottom")
+      ? "bottom"
+      : "top";
+    setSelectedTextLayerId(`${rightId}__${suffix}`);
+  }
+
+  // Tombol tong sampah di quick menu track teks — hapus 1 klip lirik
+  // (baris atas+bawahnya) secara permanen dari timeline. Beda dari
+  // handleDeleteAudioClip: TIDAK ada "ripple" geser klip lain, soalnya
+  // klip lirik lain letaknya independen (nggak berurutan nempel kayak
+  // klip audio), jadi ngegeser otomatis malah bisa bikin ketimpa tempo
+  // klip lain yang nggak dimaksud.
+  function handleDeleteLyricsClip(baseId: string) {
+    setRemovedLyricsIds((prev) => new Set(prev).add(baseId));
+    setSelectedTextLayerId(null);
+    setTextToolbarMode("quick");
   }
 
   // Track pseudo "Background" (bukan decorLayer template) — aktif kalau
@@ -2973,10 +3098,23 @@ export default function Editor({
   // ---- Track teks (dipakai bareng di tab Edit & tab Teks, biar layer
   // teks kelihatan pas lagi ngedit klip media juga). Klik track buat
   // munculin input edit teks khusus layer itu di toolbar bawah.
-  function renderTextTrack(layer: TemplateTextLayer) {
+  function renderTextTrack(
+    layer: TemplateTextLayer,
+    // Opsional: rentang startSec..endSec klip ini di timeline. Cuma diisi
+    // buat entri LIRIK (baris atas/bawah klip TemplateLyricsTextLayer) —
+    // itu satu-satunya jenis track teks yang beneran punya posisi/panjang
+    // sendiri di waktu (bisa dipotong-potong). Text layer biasa (judul,
+    // artist, dst) nggak punya startSec/endSec di tipenya sama sekali,
+    // jadi tetap 1 blok statis sepanjang DURATION kalau param ini kosong.
+    timeRange?: { start: number; end: number },
+  ) {
     const isSelected = selectedTextLayerId === layer.id;
     const value = textValues[layer.id] || layer.defaultText;
     const isTextHidden = hiddenElements.has(layer.id);
+    const clipStart = timeRange?.start ?? 0;
+    const clipEnd = timeRange?.end ?? DURATION;
+    const clipLeft = clipStart * effectivePxPerSec + TIMELINE_CLIP_OFFSET_PX;
+    const clipWidth = Math.max(28, (clipEnd - clipStart) * effectivePxPerSec - 4);
     return (
       <div key={layer.id} className="relative flex h-8 items-center justify-between">
         <TrackLabel
@@ -3002,8 +3140,8 @@ export default function Editor({
               : "border-emerald-400/40 bg-emerald-400/15"
           } ${isTextHidden ? "opacity-40 grayscale" : ""}`}
           style={{
-            left: TIMELINE_CLIP_OFFSET_PX,
-            width: Math.max(28, DURATION * effectivePxPerSec - 4),
+            left: clipLeft,
+            width: clipWidth,
           }}
           title={layer.label}
         >
@@ -3423,7 +3561,14 @@ export default function Editor({
               allTextLayers.length || lyricsTextEntries.length ? (
                 <div style={{ width: TRACK_WIDTH }} className="flex flex-col gap-0.5 pb-1">
                   {allTextLayers.map((layer) => renderTextTrack(layer))}
-                  {lyricsTextEntries.map((layer) => renderTextTrack(layer))}
+                  {lyricsTextEntries.map((layer) => {
+                    const baseId = lyricsBaseIdOf(layer.id);
+                    const eff = baseId ? getEffectiveLyricsLayer(baseId) : null;
+                    return renderTextTrack(
+                      layer,
+                      eff ? { start: eff.startSec, end: eff.endSec } : undefined,
+                    );
+                  })}
                 </div>
               ) : !showAddTextStyles ? (
                 <div
@@ -4170,6 +4315,15 @@ export default function Editor({
           const effLyrics = selectedLyricsBaseId
             ? getEffectiveLyricsLayer(selectedLyricsBaseId)
             : null;
+          // Boleh motong cuma kalau klip lirik ini keseleksi & playhead lagi
+          // di TENGAH klipnya (bukan di tepi/luar), sama kayak canCutAudio
+          // — biar 2 hasil potongannya sama-sama nggak "hilang" (< durasi
+          // minimum).
+          const canCutSelectedLyrics = Boolean(
+            effLyrics &&
+              currentSec > effLyrics.startSec + MIN_LYRICS_CLIP_DURATION &&
+              currentSec < effLyrics.endSec - MIN_LYRICS_CLIP_DURATION,
+          );
           content = textToolbarMode === "quick" ? (
             // ---- Quick menu — muncul PERTAMA KALI begitu track teks
             // diketuk, BUKAN langsung menu editing (input+swatch dst).
@@ -4196,6 +4350,38 @@ export default function Editor({
                     <Plus size={14} />
                     Add teks
                   </button>
+                  {/* Potong & Hapus — cuma buat klip LIRIK (yang beneran
+                      punya posisi/durasi sendiri di timeline & bisa
+                      dipecah). Text layer biasa (judul/artist/dst) sengaja
+                      TIDAK bisa dipotong/dihapus, karena itu field tetap
+                      bawaan template, bukan track lepas. */}
+                  {selectedLyricsBaseId && (
+                    <button
+                      onClick={() =>
+                        handleCutLyricsClip(selectedLyricsBaseId)
+                      }
+                      disabled={!canCutSelectedLyrics}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-graphite text-paper transition active:scale-95 disabled:opacity-30"
+                      title={
+                        canCutSelectedLyrics
+                          ? "Potong teks di posisi playhead"
+                          : "Geser playhead ke tengah klip ini dulu buat motong"
+                      }
+                    >
+                      <Scissors size={14} />
+                    </button>
+                  )}
+                  {selectedLyricsBaseId && (
+                    <button
+                      onClick={() =>
+                        handleDeleteLyricsClip(selectedLyricsBaseId)
+                      }
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rec/15 text-rec transition active:scale-95"
+                      title="Hapus track teks ini"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                   <button
                     onClick={() => setSelectedTextLayerId(null)}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-graphite text-mute transition active:scale-95"
