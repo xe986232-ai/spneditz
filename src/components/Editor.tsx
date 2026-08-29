@@ -1813,6 +1813,48 @@ export default function Editor({
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("pointerup", handleUp);
   }
+  // Handle drag di TEPI KANAN klip teks/lirik buat stretch/pendekin
+  // DURASI klip (ubah endSec doang, startSec/posisi awal klip TETAP) —
+  // beda sama handleLyricsClipDragStart di atas yang GESER seluruh klip
+  // (startSec & endSec bareng, durasi tetap sama). Animasi in/loop/out
+  // otomatis nyesuain ke durasi baru karena getLyricsTimeline emang
+  // selalu ngitung ulang dari (endSec - startSec) terbaru tiap render
+  // (lihat lib/lyricsAnim.ts) — jadi manjangin klip di sini otomatis
+  // ngasih lebih banyak waktu buat LOOP, mendekin otomatis nge-skip
+  // LOOP dulu sebelum ngerapetin IN+OUT (lihat fix animasi OUT sebelumnya).
+  // Pola & clamp-nya sama kayak handleAudioClipTrimStart edge "right",
+  // cuma lebih sederhana karena di sini cuma 1 sisi (kanan) yang bisa
+  // di-stretch — sisi kiri (startSec) sengaja TIDAK dikasih handle biar
+  // gak bentrok/rancu sama drag-geser-seluruh-klip yang udah ada.
+  function handleLyricsClipStretchStart(
+    e: React.PointerEvent,
+    baseId: string,
+    eff: TemplateLyricsTextLayer,
+  ) {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const { startSec, endSec } = eff;
+
+    const handleMove = (ev: PointerEvent) => {
+      const dSec = (ev.clientX - startX) / effectivePxPerSec;
+      const newEnd = clampNum(
+        endSec + dSec,
+        startSec + MIN_LYRICS_CLIP_DURATION,
+        DURATION,
+      );
+      setLyricsSettings((prev) => ({
+        ...prev,
+        [baseId]: { ...prev[baseId], endSec: newEnd },
+      }));
+    };
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  }
   // Drag track ATAS-BAWAH di daftar buat ubah URUTAN (customLyricsLayers)
   // — sekaligus ngatur mana yang digambar belakangan/di depan pas
   // beberapa teks custom overlap posisinya di canvas (lihat allLyricsLayers
@@ -3264,6 +3306,25 @@ export default function Editor({
               {value}
             </span>
           </div>
+
+          {/* Handle stretch di tepi KANAN — cuma nongol pas klip ini
+              terseleksi (sama kayak pola handle trim audio), biar nggak
+              numpuk-numpuk keliatannya pas klip masih kecil/banyak. Geser
+              ke kanan = panjangin durasi, geser ke kiri = pendekin —
+              startSec/posisi awal klip nggak ikut kegeser (beda sama drag
+              badan klip yang mindahin seluruh klip). */}
+          {dragCtx && isSelected && (
+            <div
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                handleLyricsClipStretchStart(e, dragCtx.baseId, dragCtx.eff);
+              }}
+              className="absolute inset-y-0 right-0 z-20 w-3 cursor-ew-resize touch-none bg-paper/90"
+              title="Geser buat panjangin/pendekin durasi teks ini"
+            >
+              <div className="absolute left-1/2 top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-graphite" />
+            </div>
+          )}
         </div>
       </div>
     );
