@@ -2371,25 +2371,19 @@ export default function Editor({
               style={{ left: clipLeft, width: clipWidth }}
               title="Musik latar — tahan & geser buat pindah posisi"
             >
-              {/* Waveform beneran, ngikutin amplitude/frekuensi
-                  asli potongan file audio klip ini. Bar rapat
-                  (nggak ada gap, lebar ngisi % penuh) biar
-                  keliatan "mengalir" kayak gelombang asli,
-                  bukan segelintir batang gemuk berjarak
-                  lebar. */}
-              <div className="pointer-events-none absolute inset-0 flex items-center px-1">
+              {/* Waveform beneran, ngikutin amplitude/frekuensi asli
+                  potongan file audio klip ini. Bentuk batang DISAMAIN
+                  sama Mock-up: rata bawah (items-end, bukan tumbuh
+                  dari tengah), ujung batang bulat penuh (rounded-full
+                  kayak pil), & gap tipis beneran lewat gap-px —
+                  bukan trik border kiri lagi. */}
+              <div className="pointer-events-none absolute inset-0 flex items-end gap-px overflow-hidden px-1 pb-0.5">
                 {clipPeaks.map((p, i) => (
                   <span
                     key={i}
-                    className="shrink-0 rounded-[1px] bg-emerald-300/80"
+                    className="min-w-[1.5px] flex-1 shrink-0 rounded-full bg-emerald-300/80"
                     style={{
-                      width: `${100 / clipPeaks.length}%`,
-                      // Sedikit "gap" optis lewat border kiri
-                      // tipis, bukan margin/gap flex — biar
-                      // nggak ngurangin lebar total pas bar
-                      // dikit (klip pendek).
-                      borderLeft: "1px solid rgba(0,0,0,0.35)",
-                      height: `${Math.max(10, Math.min(100, p * 100))}%`,
+                      height: `${Math.max(8, Math.min(100, p * 100))}%`,
                     }}
                   />
                 ))}
