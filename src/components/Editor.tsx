@@ -2306,7 +2306,7 @@ export default function Editor({
           setSelectedLayerId(null);
           setSelectedSlotId(slot.id);
         }}
-        className="relative flex h-8 items-center"
+        className="relative flex h-8 items-center justify-between"
       >
         <TrackLabel
           hidden={isAudioHidden}
@@ -2462,7 +2462,7 @@ export default function Editor({
     const value = textValues[layer.id] || layer.defaultText;
     const isTextHidden = hiddenElements.has(layer.id);
     return (
-      <div key={layer.id} className="relative flex h-8 items-center">
+      <div key={layer.id} className="relative flex h-8 items-center justify-between">
         <TrackLabel
           hidden={isTextHidden}
           onToggleHidden={(e) => toggleElementHidden(layer.id, e)}
@@ -2950,7 +2950,7 @@ export default function Editor({
                     Cuma nongol di tool "Media" — di tool "Audio" track ini
                     disembunyiin biar timeline-nya bersih cuma isi audio. */}
                 {customBackground && activeTool !== "audio" && (
-                  <div className="relative flex h-8 items-center">
+                  <div className="relative flex h-8 items-center justify-between">
                     <TrackLabel
                       hidden={hiddenElements.has(BACKGROUND_LAYER_ID)}
                       onToggleHidden={(e) => toggleElementHidden(BACKGROUND_LAYER_ID, e)}
@@ -3037,7 +3037,7 @@ export default function Editor({
                   return (
                     <div
                       key={slot.id}
-                      className="relative flex h-8 items-center"
+                      className="relative flex h-8 items-center justify-between"
                     >
                       <TrackLabel
                         hidden={isSlotHidden}
@@ -3126,7 +3126,7 @@ export default function Editor({
                   return (
                     <div
                       key={layer.id}
-                      className="relative flex h-8 items-center"
+                      className="relative flex h-8 items-center justify-between"
                     >
                       <TrackLabel
                         hidden={isLayerHidden}
