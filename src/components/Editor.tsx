@@ -844,6 +844,29 @@ export default function Editor({
   }, []);
   const imageCacheRef = useRef(new ImageCache());
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Container area preview (yang nge-flex-1 ngisi sisa ruang) — dipakai
+  // buat ngukur berapa px yang beneran available, biar boks canvas bisa
+  // di-"contain"-fit ke rasio yang dipilih user TANPA konflik CSS (lihat
+  // catatan panjang di previewBoxSize di bawah).
+  const previewAreaRef = useRef<HTMLDivElement | null>(null);
+  // Ukuran boks canvas (px) hasil hitungan manual JS, BUKAN Tailwind
+  // `aspect-[...]` class lagi. Kenapa: div boks sebelumnya pakai
+  // `h-full` (paksa tinggi = tinggi container) BARENGAN `aspect-[ratio]`
+  // — dua constraint itu SALING KONFLIK di CSS. Browser nge-resolve-nya
+  // dengan TETAP mempertahankan h-full (tinggi = penuh, "tinggi" kayak
+  // potret) terus lebar di-clamp ke max-w-full (sempit) TANPA
+  // nge-recompute tinggi biar rasio-nya bener — jadi boksnya nggak
+  // pernah beneran jadi bentuk landscape pas milih 16:9, tetap
+  // "tinggi&sempit", dan canvas 1920x1080 yang di-object-cover ke boks
+  // tinggi-sempit itu jadi ke-crop parah/"zoom" (persis yang dilaporin
+  // user). Fix: hitung sendiri lewat ResizeObserver — lebar & tinggi
+  // boks SELALU proporsional ke rasio target, di-"contain" ke ruang yang
+  // available (kayak object-fit:contain), gak ada lagi tarik-menarik
+  // constraint CSS.
+  const [previewBoxSize, setPreviewBoxSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingSlotRef = useRef<string | null>(null);
@@ -2070,6 +2093,42 @@ export default function Editor({
     canvasRatio,
   ]);
 
+  // ---- Hitung ukuran boks preview (px) tiap kali rasio ganti ATAU area
+  // preview di-resize (buka/tutup sidebar, rotate device, dst) — lihat
+  // catatan panjang di deklarasi previewBoxSize di atas soal kenapa ini
+  // TIDAK bisa diserahkan ke CSS `aspect-[...]` doang.
+  // useLayoutEffect (bukan useEffect) biar ukuran ke-set SEBELUM paint,
+  // gak ada frame "nyasar" nampilin ukuran lama pas ganti rasio.
+  useLayoutEffect(() => {
+    const el = previewAreaRef.current;
+    if (!el) return;
+    const { width: targetW, height: targetH } = getRatioCanvasSize(canvasRatio);
+    const targetRatio = targetW / targetH;
+
+    const recompute = () => {
+      const availW = el.clientWidth;
+      const availH = el.clientHeight;
+      if (availW <= 0 || availH <= 0) return;
+      // "Contain"-fit manual: coba lebar penuh dulu, kalau tingginya
+      // kepanjangan (ngelebihin ruang), turun ke tinggi penuh sebagai
+      // gantinya — persis logika object-fit:contain, tapi diterapkan ke
+      // BOKS-nya sendiri (bukan gambar di dalamnya), jadi lebar & tinggi
+      // boks selalu proporsional ke targetRatio, gak pernah konflik.
+      let w = availW;
+      let h = w / targetRatio;
+      if (h > availH) {
+        h = availH;
+        w = h * targetRatio;
+      }
+      setPreviewBoxSize({ width: Math.round(w), height: Math.round(h) });
+    };
+
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [canvasRatio]);
+
   // Drag playhead: geser langsung ke posisi jari/kursor, pause dulu selama digeser
   function handlePlayheadPointerDown(e: React.PointerEvent) {
     e.preventDefault();
@@ -2943,6 +3002,7 @@ export default function Editor({
       {/* Preview full-bleed — canvas nutup lebar penuh (cover), plus
           gradient fade di bawah biar nyambung ke background gelap. */}
       <div
+        ref={previewAreaRef}
         className={`relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-editor-bg transition-[padding] duration-300 ${
           isFullscreen ? "" : "px-4 sm:px-8"
         }`}
@@ -2969,8 +3029,17 @@ export default function Editor({
           }}
         />
         <div
-          className={`relative mx-auto ${canvasRatio === "16:9" ? "aspect-[16/9]" : "aspect-[9/16]"} h-full max-h-full max-w-full overflow-hidden bg-black transition-[box-shadow] duration-700 ease-out`}
+          // TIDAK pakai `aspect-[...]`/`h-full` lagi (lihat catatan di
+          // previewBoxSize) — lebar & tinggi eksplisit dari hasil ukur
+          // JS, jadi boks SELALU beneran berbentuk sesuai canvasRatio,
+          // gak pernah "ke-zoom" gara-gara constraint CSS yang konflik.
+          // Fallback w-full h-full dipakai sebelum ResizeObserver sempat
+          // ngukur pertama kali (cuma sekejap, useLayoutEffect jadi
+          // biasanya udah keburu keitung sebelum paint pertama).
+          className="relative mx-auto max-h-full max-w-full overflow-hidden bg-black transition-[box-shadow] duration-700 ease-out"
           style={{
+            width: previewBoxSize?.width ?? "100%",
+            height: previewBoxSize?.height ?? "100%",
             boxShadow: `0 25px 70px -18px rgba(${dominantColor}, 0.65), 0 0 90px -10px rgba(${dominantColor}, 0.45)`,
           }}
         >
