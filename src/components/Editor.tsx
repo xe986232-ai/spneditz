@@ -3524,25 +3524,6 @@ export default function Editor({
               })}
             </div>
 
-            {/* Tag pill mengambang — nampilin layer teks/decor yang aktif
-                di atas klip, lengkap dengan connector bulat kiri-kanan. */}
-            {(selectedTextLayer || selectedLayer) && (
-              <div className="relative mb-1.5 h-6">
-                <div className="absolute left-0 top-0 flex items-center gap-1.5 rounded-[7px] border border-editor-accent/50 bg-editor-tag px-2 py-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-editor-accent" />
-                  {selectedTextLayer ? (
-                    <Type size={10} className="text-paper/80" />
-                  ) : (
-                    <SlidersHorizontal size={10} className="text-paper/80" />
-                  )}
-                  <span className="max-w-[140px] truncate text-[9px] font-medium text-paper">
-                    {selectedTextLayer?.label ?? selectedLayer?.label}
-                  </span>
-                  <span className="h-1.5 w-1.5 rounded-full bg-editor-accent" />
-                </div>
-              </div>
-            )}
-
             {/* Playhead — hit area digedein (w-6) biar enak digeser di HP,
                 garis & segitiga visualnya tetap tipis di tengah. */}
             <div
