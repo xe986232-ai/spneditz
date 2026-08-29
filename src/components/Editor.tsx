@@ -2381,10 +2381,10 @@ export default function Editor({
               onPointerDown={(e) =>
                 handleAudioClipDragStart(e, clip)
               }
-              className={`absolute inset-y-0.5 touch-none overflow-hidden rounded-md border transition ${
+              className={`absolute inset-y-0.5 touch-none overflow-hidden rounded-md transition ${
                 isClipSelected
-                  ? "cursor-grabbing border-paper ring-2 ring-paper bg-emerald-500/25"
-                  : "cursor-grab border-emerald-500/40 bg-emerald-500/15 active:cursor-grabbing"
+                  ? "cursor-grabbing border border-paper ring-2 ring-paper bg-emerald-500/25"
+                  : "cursor-grab border-0 bg-emerald-500/15 active:cursor-grabbing"
               } ${isAudioHidden ? "opacity-40 grayscale" : ""}`}
               style={{ left: clipLeft, width: clipWidth }}
               title="Musik latar — tahan & geser buat pindah posisi"
@@ -2478,10 +2478,10 @@ export default function Editor({
             setSelectedTextLayerId(layer.id);
             if (layer.id === "airplayDevice") dismissAirplayHint();
           }}
-          className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded-md border transition ${
+          className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded-md transition ${
             isSelected
-              ? "border-paper ring-2 ring-paper bg-amber-400/20"
-              : "border-amber-400/40 bg-amber-400/15"
+              ? "border border-paper ring-2 ring-paper bg-amber-400/20"
+              : "border-0 bg-amber-400/15"
           } ${isTextHidden ? "opacity-40 grayscale" : ""}`}
           style={{
             left: TIMELINE_CLIP_OFFSET_PX,
@@ -3141,10 +3141,10 @@ export default function Editor({
                           setSelectedSlotId(null);
                           setSelectedLayerId(layer.id);
                         }}
-                        className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded-md border transition ${
+                        className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded-md transition ${
                           isSelected
-                            ? "border-paper ring-2 ring-paper bg-violet-400/20"
-                            : "border-violet-400/40 bg-violet-400/15"
+                            ? "border border-paper ring-2 ring-paper bg-violet-400/20"
+                            : "border-0 bg-violet-400/15"
                         } ${isLayerHidden ? "opacity-40 grayscale" : ""}`}
                         style={{
                           left: TIMELINE_CLIP_OFFSET_PX,
