@@ -405,6 +405,28 @@ function TrackLabel({
   );
 }
 
+// Label KECIL tambahan di pojok kiri-atas badan tiap klip (BUKAN
+// pengganti pill TrackLabel di atas — itu tetap apa adanya, nggak
+// disentuh). Cuma nama + ikon super kecil, dibekingi highlight hitam
+// tipis yang memanjang ke kanan (gradient fade) biar tetap kebaca
+// kontras di atas thumbnail/warna apa pun isi klipnya.
+function ClipCornerLabel({
+  icon: Icon,
+  label,
+}: {
+  icon: LucideIcon;
+  label: string;
+}) {
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex h-[13px] items-center gap-[3px] overflow-hidden bg-gradient-to-r from-black/80 via-black/35 to-transparent pl-1 pr-6">
+      <Icon className="h-[9px] w-[9px] shrink-0 text-white/90" />
+      <span className="truncate text-[7px] font-semibold leading-none text-white/90">
+        {label}
+      </span>
+    </div>
+  );
+}
+
 function generateTimeMarks(duration: number): number[] {
   const step = duration <= 20 ? 5 : 10;
   const marks: number[] = [];
@@ -2464,6 +2486,7 @@ export default function Editor({
           }}
           title={layer.label}
         >
+          <ClipCornerLabel icon={Type} label={layer.label} />
           <div className="flex h-full items-center gap-1 px-1.5">
             <Type size={12} className="shrink-0 text-amber-200" />
             <span className="truncate text-[10px] font-medium text-paper">
@@ -2963,6 +2986,7 @@ export default function Editor({
                           }}
                         />
                       )}
+                      <ClipCornerLabel icon={Layers} label="Background" />
                       <span className="pointer-events-none absolute right-1 top-1 rounded bg-black/55 px-1 py-[1px] text-[9px] text-paper">
                         {Math.round(backgroundOpacity)}%
                         {backgroundBlur > 0 ? ` · Blur ${Math.round(backgroundBlur)}` : ""}
@@ -3035,6 +3059,7 @@ export default function Editor({
                         style={{ left: clipLeft, width: clipWidth }}
                         title={slot.label}
                       >
+                        <ClipCornerLabel icon={Icon} label={slot.label} />
                         {/* Thumbnail asli isi klip (foto/frame video),
                             diulang ("tile") sepanjang durasi slot — biar
                             kelihatan isinya beneran kayak track media di
@@ -3139,6 +3164,7 @@ export default function Editor({
                           />
                         )}
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                        <ClipCornerLabel icon={SlidersHorizontal} label={layer.label} />
                         <div className="relative flex h-full items-center gap-1 px-1.5">
                           <SlidersHorizontal size={12} className="shrink-0 text-violet-200" />
                           <span className="truncate text-[10px] font-medium text-paper">
