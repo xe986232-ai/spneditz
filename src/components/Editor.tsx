@@ -3561,7 +3561,24 @@ export default function Editor({
               allTextLayers.length || lyricsTextEntries.length ? (
                 <div style={{ width: TRACK_WIDTH }} className="flex flex-col gap-0.5 pb-1">
                   {allTextLayers.map((layer) => renderTextTrack(layer))}
-                  {lyricsTextEntries.map((layer) => {
+                  {lyricsTextEntries
+                    // Klip "Add teks" (customLyricsLayers) sengaja cuma
+                    // punya 1 baris aktif — baris satunya di-set hidden +
+                    // transparan biar visualnya 1 baris (lihat
+                    // addCustomTextLayer). Baris nonaktif itu JANGAN
+                    // dimunculin sebagai track kosong di daftar (dulu
+                    // tetap kerender dicoret, bikin keliatan kayak nambah
+                    // 2 track padahal cuma "Add teks" sekali). Klip
+                    // "Lirik" bawaan template (bukan custom) tetap
+                    // tampilin 2 baris seperti biasa.
+                    .filter((layer) => {
+                      const baseId = lyricsBaseIdOf(layer.id);
+                      const isCustomSingleLine = baseId
+                        ? customLyricsLayers.some((l) => l.id === baseId)
+                        : false;
+                      return !(isCustomSingleLine && hiddenElements.has(layer.id));
+                    })
+                    .map((layer) => {
                     const baseId = lyricsBaseIdOf(layer.id);
                     const eff = baseId ? getEffectiveLyricsLayer(baseId) : null;
                     return renderTextTrack(
@@ -3570,6 +3587,7 @@ export default function Editor({
                     );
                   })}
                 </div>
+
               ) : !showAddTextStyles ? (
                 <div
                   style={{ width: TRACK_WIDTH }}
