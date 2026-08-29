@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import type { Template, TemplateSlot, TemplateTextLayer, TemplateLyricsTextLayer, SlotType, LiquidGlassSettings } from "../types";
-import { LYRICS_FONTS, LyricsAnimationPresets } from "../lib/lyricsAnim";
+import { LYRICS_FONTS, LyricsAnimationPresets, defaultLyricsLayer } from "../lib/lyricsAnim";
 import {
   parseDurationSec,
   initialSlotMedia,
@@ -775,46 +775,24 @@ export default function Editor({
   // Putih), baru abis pilih salah satu, track teks BARU dibikin & masuk
   // mode edit.
   const [showAddTextStyles, setShowAddTextStyles] = useState(false);
-  // Track teks custom yang dibikin user lewat "Add teks" (di luar
-  // textLayers bawaan template) — 1 track baru terpisah tiap kali dipakai,
-  // BUKAN nimpa track yang lagi diklik. Dipakai bareng template.textLayers
-  // di semua tempat yang butuh daftar lengkap track teks (render canvas,
-  // daftar track timeline, export).
-  const [customTextLayers, setCustomTextLayers] = useState<TemplateTextLayer[]>(
-    [],
-  );
-  const customTextCounterRef = useRef(0);
-  // Semua track teks "flat" (bawaan template + custom bikinan user) — jadi
-  // 1 sumber tunggal, dipakai gantiin template.textLayers polos di semua
-  // tempat yang relevan (kecuali lookup spesifik kayak airplayDevice).
-  const allTextLayers: TemplateTextLayer[] = [
-    ...(template.textLayers ?? []),
-    ...customTextLayers,
-  ];
-  // Bikin 1 track teks custom baru dgn style (warna) yg dipilih user di
-  // "Add teks", langsung terseleksi & masuk mode edit teks kosong.
-  function addCustomTextLayer(color: string) {
-    customTextCounterRef.current += 1;
-    const n = customTextCounterRef.current;
-    const newId = `custom-text-${n}`;
-    const newLayer: TemplateTextLayer = {
-      id: newId,
-      label: `Teks ${n}`,
-      defaultText: "",
-      x: 50,
-      y: 50,
-      fontSize: 64,
-      color,
-      align: "center",
-      maxLength: 60,
-    };
-    setCustomTextLayers((prev) => [...prev, newLayer]);
-    setSelectedSlotId(null);
-    setSelectedLayerId(null);
-    setSelectedTextLayerId(newId);
-    setShowAddTextStyles(false);
-    setTextToolbarMode("edit");
-  }
+  // Track teks custom yang dibikin user lewat "Add teks" — BUKAN
+  // TemplateTextLayer polos, tapi TemplateLyricsTextLayer (engine yang
+  // sama persis dgn klip "Lyrics" bawaan / "BUAH"-"MANGGIS"), biar teks
+  // baru otomatis kebawa efek animasi glitch in/loop/out + bisa di-
+  // custom lewat tab "Animasi" (LyricsAnimPanel) — BUKAN teks polos
+  // statis. 1 entri = 1 track baru terpisah, TIDAK nimpa track yang lagi
+  // diklik. Digabung sama template.lyricsTextLayers lewat allLyricsLayers
+  // (didefinisikan di bawah, dekat lyricsTextEntries) di semua tempat
+  // yang butuh daftar lengkap klip lirik (render canvas, timeline,
+  // panel edit/animasi).
+  const [customLyricsLayers, setCustomLyricsLayers] = useState<
+    TemplateLyricsTextLayer[]
+  >([]);
+  const customLyricsCounterRef = useRef(0);
+  // allTextLayers = cuma text layer BIASA (judul/artist/dst) bawaan
+  // template — track custom sekarang semuanya lewat jalur lirik
+  // (customLyricsLayers), bukan di sini lagi.
+  const allTextLayers: TemplateTextLayer[] = template.textLayers ?? [];
 
 
   // Hint bubble sekali-tampil ("teks ini bisa diubah") yang nunjuk ke
@@ -1687,9 +1665,16 @@ export default function Editor({
   // nol. id-nya sengaja "<lyricsId>__top"/"<lyricsId>__bottom" — dibaca
   // balik sama render loop (lihat drawLyricsTextLayer di useEffect di
   // atas) buat ngambil override teks & warna user.
-  const lyricsTextEntries: TemplateTextLayer[] = (
-    template.lyricsTextLayers ?? []
-  ).flatMap((l) => [
+  // allLyricsLayers = klip lirik bawaan template + custom bikinan user
+  // lewat "Add teks" (customLyricsLayers) — 1 sumber tunggal, dipakai
+  // gantiin template.lyricsTextLayers polos di semua tempat yang relevan
+  // (render canvas, daftar entri teks, getEffectiveLyricsLayer, export).
+  const allLyricsLayers: TemplateLyricsTextLayer[] = [
+    ...(template.lyricsTextLayers ?? []),
+    ...customLyricsLayers,
+  ];
+  const lyricsTextEntries: TemplateTextLayer[] = allLyricsLayers.flatMap(
+    (l) => [
     {
       id: `${l.id}__top`,
       label: `${l.label} (baris atas)`,
@@ -1736,7 +1721,7 @@ export default function Editor({
   const getEffectiveLyricsLayer = (
     baseId: string,
   ): TemplateLyricsTextLayer | null => {
-    const base = template.lyricsTextLayers?.find((l) => l.id === baseId);
+    const base = allLyricsLayers.find((l) => l.id === baseId);
     if (!base) return null;
     return { ...base, ...lyricsSettings[baseId] };
   };
@@ -1750,6 +1735,42 @@ export default function Editor({
       [baseId]: { ...prev[baseId], [key]: value },
     }));
   }
+  // Bikin 1 klip teks lirik BARU (engine animasi sama persis dgn "BUAH"/
+  // "MANGGIS") dgn style warna yg dipilih user di "Add teks" — Ungu
+  // (baris atas aktif) atau Putih (baris bawah aktif). Baris yang gak
+  // dipakai di-set transparan + font kecil + disembunyikan, jadi visualnya
+  // tetap 1 baris teks (bukan 2 baris kayak klip Lyrics bawaan), TAPI
+  // tetap kebawa full animasi in/loop/out + bisa di-custom lewat tab
+  // "Animasi". Langsung terseleksi & masuk mode edit teks kosong.
+  function addCustomTextLayer(style: "purple" | "white") {
+    customLyricsCounterRef.current += 1;
+    const n = customLyricsCounterRef.current;
+    const newId = `custom-lyrics-${n}`;
+    const isPurple = style === "purple";
+    const newLayer = defaultLyricsLayer({
+      id: newId,
+      label: `Teks ${n}`,
+      defaultTopText: "",
+      defaultBottomText: "",
+      colorTop: isPurple ? "#c3b0ff" : "transparent",
+      colorBottom: isPurple ? "transparent" : "#FFFFFF",
+      topFontSize: isPurple ? 90 : 1,
+      bottomFontSize: isPurple ? 1 : 90,
+      startSec: 0,
+      endSec: DURATION,
+    });
+    setCustomLyricsLayers((prev) => [...prev, newLayer]);
+    const activeLineId = `${newId}__${isPurple ? "top" : "bottom"}`;
+    const inactiveLineId = `${newId}__${isPurple ? "bottom" : "top"}`;
+    setHiddenElements((prev) => new Set(prev).add(inactiveLineId));
+    setSelectedSlotId(null);
+    setSelectedLayerId(null);
+    setSelectedTextLayerId(activeLineId);
+    setShowAddTextStyles(false);
+    setTextToolbarMode("edit");
+    setLyricsPanelTab("teks");
+  }
+
   // Track pseudo "Background" (bukan decorLayer template) — aktif kalau
   // customBackground ada & lagi diseleksi user di timeline.
   const isBackgroundLayerSelected =
@@ -2011,9 +2032,10 @@ export default function Editor({
       ctx.restore();
     }
 
-    // Teks custom (judul, artist, nama device) — di atas semua decor
-    // layer, biar selalu kebaca jelas. allTextLayers = template.textLayers
-    // + customTextLayers (track baru bikinan user lewat "Add teks").
+    // Teks custom (judul, artist, nama device) bawaan template — di atas
+    // semua decor layer, biar selalu kebaca jelas. Teks custom hasil
+    // "Add teks" render di blok lyrics layer di bawah (allLyricsLayers),
+    // bukan di sini.
     if (allTextLayers.length) {
       const visibleTextLayers = allTextLayers
         .filter((l) => !hiddenElements.has(l.id))
@@ -2030,8 +2052,8 @@ export default function Editor({
     // dengan textLayers biasa (key = id klip) buat override top/bottom,
     // jadi kalau nanti ditambah panel edit teks lirik, tinggal isi
     // textValues["<id>__top"]/["<id>__bottom"] tanpa ubah render loop ini.
-    if (template.lyricsTextLayers?.length) {
-      for (const layer of template.lyricsTextLayers) {
+    if (allLyricsLayers.length) {
+      for (const layer of allLyricsLayers) {
         if (hiddenElements.has(layer.id)) continue;
         const effectiveLayer = {
           ...layer,
@@ -2124,7 +2146,7 @@ export default function Editor({
     textValues,
     textColors,
     lyricsSettings,
-    customTextLayers,
+    customLyricsLayers,
     hiddenElements,
     DURATION,
     progressStyle,
@@ -2705,8 +2727,13 @@ export default function Editor({
         canvasWidth: getRatioCanvasSize(canvasRatio).width,
         canvasHeight: getRatioCanvasSize(canvasRatio).height,
         slots: template.slots.filter((slot) => !hiddenElements.has(slot.id)),
-        // allTextLayers = template.textLayers + customTextLayers (track
-        // baru bikinan user lewat "Add teks") — biar ikut ke-export juga.
+        // allTextLayers cuma text layer BIASA (judul/artist/dst) bawaan
+        // template — teks custom lewat "Add teks" sekarang jalur lirik
+        // (allLyricsLayers), TAPI export video ini emang belum pernah
+        // nangani lyricsTextLayers sama sekali (limitasi lama, bukan
+        // regresi dari perubahan ini) — jadi animasi lirik (termasuk teks
+        // custom baru) TIDAK ikut ke video hasil export, cuma tampil di
+        // preview.
         textLayers: allTextLayers
           .filter((l) => !hiddenElements.has(l.id))
           .map((l) => (textColors[l.id] ? { ...l, color: textColors[l.id] } : l)),
@@ -3425,7 +3452,7 @@ export default function Editor({
                     Style:
                   </span>
                   <button
-                    onClick={() => addCustomTextLayer("#c3b0ff")}
+                    onClick={() => addCustomTextLayer("purple")}
                     className="flex items-center gap-1.5 rounded-lg border border-mute/20 bg-graphite px-2.5 py-1.5 transition active:scale-95"
                   >
                     <span
@@ -3437,7 +3464,7 @@ export default function Editor({
                     </span>
                   </button>
                   <button
-                    onClick={() => addCustomTextLayer("#FFFFFF")}
+                    onClick={() => addCustomTextLayer("white")}
                     className="flex items-center gap-1.5 rounded-lg border border-mute/20 bg-graphite px-2.5 py-1.5 transition active:scale-95"
                   >
                     <span
@@ -4184,7 +4211,7 @@ export default function Editor({
                   </span>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => addCustomTextLayer("#c3b0ff")}
+                      onClick={() => addCustomTextLayer("purple")}
                       className="flex h-14 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-mute/20 bg-graphite transition active:scale-95"
                     >
                       <span
@@ -4196,7 +4223,7 @@ export default function Editor({
                       </span>
                     </button>
                     <button
-                      onClick={() => addCustomTextLayer("#FFFFFF")}
+                      onClick={() => addCustomTextLayer("white")}
                       className="flex h-14 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-mute/20 bg-graphite transition active:scale-95"
                     >
                       <span
