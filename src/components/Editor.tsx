@@ -760,25 +760,62 @@ export default function Editor({
   // Sub-mode toolbar teks: begitu track teks diketuk, JANGAN langsung
   // nongolin menu editing (input + swatch dst) — tampilin quick menu dulu
   // (tombol pensil "Edit" & tombol "Add teks" + 2 pilihan style Ungu/
-  // Putih). "quick" = quick menu (default tiap kali ganti seleksi),
-  // "edit" = menu editing penuh (dibuka lewat tombol pensil ATAU setelah
-  // milih salah satu style di "Add teks"). Direset ke "quick" tiap kali
-  // seleksi teks yang aktif berubah, biar konsisten di semua template.
+  // Putih). "quick" = quick menu, "edit" = menu editing penuh (dibuka
+  // lewat tombol pensil, ATAU otomatis begitu track teks BARU hasil
+  // "Add teks" langsung keseleksi buat diisi). SENGAJA diatur manual di
+  // tiap titik transisi (klik track / bikin track baru), BUKAN lewat
+  // useEffect yang listen selectedTextLayerId — soalnya bikin track baru
+  // juga ganti selectedTextLayerId, dan itu justru harus lolos ke "edit",
+  // bukan ke-reset paksa ke "quick".
   const [textToolbarMode, setTextToolbarMode] = useState<"quick" | "edit">(
     "quick",
   );
-  useEffect(() => {
-    setTextToolbarMode("quick");
-  }, [selectedTextLayerId]);
   // Sub-state quick menu: begitu tombol "Add teks" diketuk, JANGAN
   // langsung masuk mode edit — tampilin dulu 2 pilihan style (Ungu/
-  // Putih), baru abis pilih salah satu, textToolbarMode pindah ke
-  // "edit" biar user bisa ngetik teksnya. Direset bareng textToolbarMode
-  // tiap ganti seleksi teks.
+  // Putih), baru abis pilih salah satu, track teks BARU dibikin & masuk
+  // mode edit.
   const [showAddTextStyles, setShowAddTextStyles] = useState(false);
-  useEffect(() => {
+  // Track teks custom yang dibikin user lewat "Add teks" (di luar
+  // textLayers bawaan template) — 1 track baru terpisah tiap kali dipakai,
+  // BUKAN nimpa track yang lagi diklik. Dipakai bareng template.textLayers
+  // di semua tempat yang butuh daftar lengkap track teks (render canvas,
+  // daftar track timeline, export).
+  const [customTextLayers, setCustomTextLayers] = useState<TemplateTextLayer[]>(
+    [],
+  );
+  const customTextCounterRef = useRef(0);
+  // Semua track teks "flat" (bawaan template + custom bikinan user) — jadi
+  // 1 sumber tunggal, dipakai gantiin template.textLayers polos di semua
+  // tempat yang relevan (kecuali lookup spesifik kayak airplayDevice).
+  const allTextLayers: TemplateTextLayer[] = [
+    ...(template.textLayers ?? []),
+    ...customTextLayers,
+  ];
+  // Bikin 1 track teks custom baru dgn style (warna) yg dipilih user di
+  // "Add teks", langsung terseleksi & masuk mode edit teks kosong.
+  function addCustomTextLayer(color: string) {
+    customTextCounterRef.current += 1;
+    const n = customTextCounterRef.current;
+    const newId = `custom-text-${n}`;
+    const newLayer: TemplateTextLayer = {
+      id: newId,
+      label: `Teks ${n}`,
+      defaultText: "",
+      x: 50,
+      y: 50,
+      fontSize: 64,
+      color,
+      align: "center",
+      maxLength: 60,
+    };
+    setCustomTextLayers((prev) => [...prev, newLayer]);
+    setSelectedSlotId(null);
+    setSelectedLayerId(null);
+    setSelectedTextLayerId(newId);
     setShowAddTextStyles(false);
-  }, [selectedTextLayerId]);
+    setTextToolbarMode("edit");
+  }
+
 
   // Hint bubble sekali-tampil ("teks ini bisa diubah") yang nunjuk ke
   // textLayer nama perangkat AirPlay di canvas — cuma buat kasih tau user
@@ -1680,7 +1717,7 @@ export default function Editor({
   // isi toolbar bawah (input edit teks khusus layer itu). Digabung sama
   // lyricsTextEntries biar 2 baris lirik juga bisa keseleksi & diedit.
   const selectedTextLayer = [
-    ...(template.textLayers ?? []),
+    ...allTextLayers,
     ...lyricsTextEntries,
   ].find((l) => l.id === selectedTextLayerId);
   // id entri teks lirik selalu "<lyricsId>__top"/"<lyricsId>__bottom" (lihat
@@ -1975,9 +2012,10 @@ export default function Editor({
     }
 
     // Teks custom (judul, artist, nama device) — di atas semua decor
-    // layer, biar selalu kebaca jelas.
-    if (template.textLayers?.length) {
-      const visibleTextLayers = template.textLayers
+    // layer, biar selalu kebaca jelas. allTextLayers = template.textLayers
+    // + customTextLayers (track baru bikinan user lewat "Add teks").
+    if (allTextLayers.length) {
+      const visibleTextLayers = allTextLayers
         .filter((l) => !hiddenElements.has(l.id))
         .map((l) =>
           textColors[l.id] ? { ...l, color: textColors[l.id] } : l,
@@ -2086,6 +2124,7 @@ export default function Editor({
     textValues,
     textColors,
     lyricsSettings,
+    customTextLayers,
     hiddenElements,
     DURATION,
     progressStyle,
@@ -2666,8 +2705,10 @@ export default function Editor({
         canvasWidth: getRatioCanvasSize(canvasRatio).width,
         canvasHeight: getRatioCanvasSize(canvasRatio).height,
         slots: template.slots.filter((slot) => !hiddenElements.has(slot.id)),
-        textLayers: template.textLayers
-          ?.filter((l) => !hiddenElements.has(l.id))
+        // allTextLayers = template.textLayers + customTextLayers (track
+        // baru bikinan user lewat "Add teks") — biar ikut ke-export juga.
+        textLayers: allTextLayers
+          .filter((l) => !hiddenElements.has(l.id))
           .map((l) => (textColors[l.id] ? { ...l, color: textColors[l.id] } : l)),
         decorLayers: template.decorLayers
           ?.filter((layer) => !hiddenElements.has(layer.id))
@@ -2924,6 +2965,8 @@ export default function Editor({
             setSelectedSlotId(null);
             setSelectedLayerId(null);
             setSelectedTextLayerId(layer.id);
+            setTextToolbarMode("quick");
+            setShowAddTextStyles(false);
             if (layer.id === "airplayDevice") dismissAirplayHint();
           }}
           className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded-md border transition ${
@@ -3350,17 +3393,67 @@ export default function Editor({
                  sejumlah textLayers template ini (+ 2 baris "Lirik" kalau
                  template ini template Lyrics). Klik salah satu track buat
                  munculin input edit teks khusus layer itu di toolbar bawah. */
-              template.textLayers?.length || lyricsTextEntries.length ? (
+              allTextLayers.length || lyricsTextEntries.length ? (
                 <div style={{ width: TRACK_WIDTH }} className="flex flex-col gap-0.5 pb-1">
-                  {template.textLayers?.map((layer) => renderTextTrack(layer))}
+                  {allTextLayers.map((layer) => renderTextTrack(layer))}
                   {lyricsTextEntries.map((layer) => renderTextTrack(layer))}
                 </div>
-              ) : (
+              ) : !showAddTextStyles ? (
                 <div
                   style={{ width: TRACK_WIDTH }}
-                  className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-mute/25 bg-graphite/40 py-2.5 text-xs text-mute"
+                  className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-mute/25 bg-graphite/40 py-2.5"
                 >
-                  Template ini belum punya teks yang bisa di-custom.
+                  <span className="text-xs text-mute">
+                    Template ini belum punya teks bawaan.
+                  </span>
+                  <button
+                    onClick={() => setShowAddTextStyles(true)}
+                    className="flex items-center gap-1 rounded-lg bg-editor-accent/20 px-2.5 py-1.5 text-[11px] font-semibold text-editor-accent transition active:scale-95"
+                  >
+                    <Plus size={12} />
+                    Add teks
+                  </button>
+                </div>
+              ) : (
+                // Pilihan style (Ungu/Putih) buat track teks pertama di
+                // template yang belum punya text layer bawaan sama sekali.
+                <div
+                  style={{ width: TRACK_WIDTH }}
+                  className="flex items-center gap-2 rounded-lg border border-dashed border-mute/25 bg-graphite/40 px-2.5 py-2"
+                >
+                  <span className="shrink-0 text-[10px] font-medium text-mute">
+                    Style:
+                  </span>
+                  <button
+                    onClick={() => addCustomTextLayer("#c3b0ff")}
+                    className="flex items-center gap-1.5 rounded-lg border border-mute/20 bg-graphite px-2.5 py-1.5 transition active:scale-95"
+                  >
+                    <span
+                      className="h-3 w-3 rounded-full border border-white/30"
+                      style={{ backgroundColor: "#c3b0ff" }}
+                    />
+                    <span className="text-[11px] font-semibold text-paper">
+                      Ungu
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => addCustomTextLayer("#FFFFFF")}
+                    className="flex items-center gap-1.5 rounded-lg border border-mute/20 bg-graphite px-2.5 py-1.5 transition active:scale-95"
+                  >
+                    <span
+                      className="h-3 w-3 rounded-full border border-mute/30"
+                      style={{ backgroundColor: "#FFFFFF" }}
+                    />
+                    <span className="text-[11px] font-semibold text-paper">
+                      Putih
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setShowAddTextStyles(false)}
+                    className="ml-auto shrink-0 text-[10px] font-medium text-mute underline underline-offset-2"
+                  >
+                    Batal
+                  </button>
                 </div>
               )
             ) : hasSlotTracks && activeTool === "progress" ? (
@@ -3554,7 +3647,7 @@ export default function Editor({
                     identik. Cuma di tab "Media" — di tab Audio/Gaya
                     disembunyikan biar timeline-nya tetap fokus. */}
                 {activeTool === "media" &&
-                  template.textLayers?.map((layer) => renderTextTrack(layer))}
+                  allTextLayers.map((layer) => renderTextTrack(layer))}
 
                 {/* Track khusus buat decorLayer yang "adjustable" (misal:
                     Card Player) — beda dari slot foto/video/audio karena
@@ -4091,17 +4184,7 @@ export default function Editor({
                   </span>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => {
-                        setTextColors((prev) => ({
-                          ...prev,
-                          [selectedTextLayer.id]: "#c3b0ff",
-                        }));
-                        setTextValues((prev) => ({
-                          ...prev,
-                          [selectedTextLayer.id]: "",
-                        }));
-                        setTextToolbarMode("edit");
-                      }}
+                      onClick={() => addCustomTextLayer("#c3b0ff")}
                       className="flex h-14 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-mute/20 bg-graphite transition active:scale-95"
                     >
                       <span
@@ -4113,17 +4196,7 @@ export default function Editor({
                       </span>
                     </button>
                     <button
-                      onClick={() => {
-                        setTextColors((prev) => ({
-                          ...prev,
-                          [selectedTextLayer.id]: "#FFFFFF",
-                        }));
-                        setTextValues((prev) => ({
-                          ...prev,
-                          [selectedTextLayer.id]: "",
-                        }));
-                        setTextToolbarMode("edit");
-                      }}
+                      onClick={() => addCustomTextLayer("#FFFFFF")}
                       className="flex h-14 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-mute/20 bg-graphite transition active:scale-95"
                     >
                       <span
