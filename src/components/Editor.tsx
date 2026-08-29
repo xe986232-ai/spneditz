@@ -2387,8 +2387,8 @@ export default function Editor({
               }
               className={`absolute inset-y-0.5 touch-none overflow-hidden rounded-md transition ${
                 isClipSelected
-                  ? "cursor-grabbing border border-paper ring-2 ring-paper bg-emerald-500/25"
-                  : "cursor-grab border-0 bg-emerald-500/15 active:cursor-grabbing"
+                  ? "cursor-grabbing border border-paper ring-2 ring-paper bg-violet-500/25"
+                  : "cursor-grab border-0 bg-violet-500/15 active:cursor-grabbing"
               } ${isAudioHidden ? "opacity-40 grayscale" : ""}`}
               style={{ left: clipLeft, width: clipWidth }}
               title="Musik latar — tahan & geser buat pindah posisi"
@@ -2403,7 +2403,7 @@ export default function Editor({
                 {clipPeaks.map((p, i) => (
                   <span
                     key={i}
-                    className="min-w-[1.5px] flex-1 shrink-0 rounded-full bg-emerald-300/80"
+                    className="min-w-[1.5px] flex-1 shrink-0 rounded-full bg-violet-300/80"
                     style={{
                       height: `${Math.max(8, Math.min(100, p * 100))}%`,
                     }}
@@ -2411,7 +2411,7 @@ export default function Editor({
                 ))}
               </div>
               <div className="pointer-events-none absolute left-1 top-0.5 flex items-center gap-1 rounded bg-black/55 px-1 py-[1px]">
-                <Music size={9} className="shrink-0 text-emerald-300" />
+                <Music size={9} className="shrink-0 text-violet-300" />
                 <span className="max-w-[90px] truncate text-[8px] font-medium text-paper">
                   Musik latar
                 </span>
@@ -2477,8 +2477,8 @@ export default function Editor({
           }}
           className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded-md transition ${
             isSelected
-              ? "border border-paper ring-2 ring-paper bg-amber-400/20"
-              : "border-0 bg-amber-400/15"
+              ? "border border-paper ring-2 ring-paper bg-emerald-400/20"
+              : "border-0 bg-emerald-400/15"
           } ${isTextHidden ? "opacity-40 grayscale" : ""}`}
           style={{
             left: TIMELINE_CLIP_OFFSET_PX,
@@ -2487,12 +2487,8 @@ export default function Editor({
           title={layer.label}
         >
           <ClipCornerLabel icon={Type} label={layer.label} />
-          <div className="flex h-full items-center gap-1 px-1.5">
-            <Type size={12} className="shrink-0 text-amber-200" />
-            <span className="truncate text-[10px] font-medium text-paper">
-              {layer.label}
-            </span>
-            <span className="ml-auto max-w-[45%] shrink-0 truncate text-[9px] text-amber-200/80">
+          <div className="flex h-full items-center justify-end px-1.5 pt-2.5">
+            <span className="max-w-full truncate text-[9px] text-emerald-200/80">
               {value}
             </span>
           </div>
@@ -3165,15 +3161,9 @@ export default function Editor({
                         )}
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
                         <ClipCornerLabel icon={SlidersHorizontal} label={layer.label} />
-                        <div className="relative flex h-full items-center gap-1 px-1.5">
-                          <SlidersHorizontal size={12} className="shrink-0 text-violet-200" />
-                          <span className="truncate text-[10px] font-medium text-paper">
-                            {layer.label}
-                          </span>
-                          <span className="ml-auto shrink-0 text-[9px] text-violet-200/80">
-                            {Math.round(op)}%
-                          </span>
-                        </div>
+                        <span className="pointer-events-none absolute right-1 top-1 rounded bg-black/55 px-1 py-[1px] text-[9px] text-paper">
+                          {Math.round(op)}%
+                        </span>
                       </div>
                     </div>
                   );
