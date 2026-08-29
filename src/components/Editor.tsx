@@ -2105,10 +2105,22 @@ export default function Editor({
     const { width: targetW, height: targetH } = getRatioCanvasSize(canvasRatio);
     const targetRatio = targetW / targetH;
 
+    // Sisain sedikit "napas" (padding) di sekeliling boks biar gak
+    // mepet nempel ke tepi area preview — samain kayak reference
+    // (VEED dkk) yang selalu ada jarak dikit dari tepi container ke
+    // canvas, di rasio manapun (9:16 ATAU 16:9). Tanpa ini, boks yang
+    // di-height-constrain (kayak 16:9 di layar pendek) jadi nempel
+    // pas banget di atas-bawah container, keliatan "sesak"/lebar
+    // banget padahal secara angka rasionya udah benar.
+    const PREVIEW_PADDING_RATIO = 0.06; // ~6% dari sisi pendek jadi jarak
+
     const recompute = () => {
-      const availW = el.clientWidth;
-      const availH = el.clientHeight;
-      if (availW <= 0 || availH <= 0) return;
+      const rawW = el.clientWidth;
+      const rawH = el.clientHeight;
+      if (rawW <= 0 || rawH <= 0) return;
+      const pad = Math.round(Math.min(rawW, rawH) * PREVIEW_PADDING_RATIO);
+      const availW = Math.max(1, rawW - pad * 2);
+      const availH = Math.max(1, rawH - pad * 2);
       // "Contain"-fit manual: coba lebar penuh dulu, kalau tingginya
       // kepanjangan (ngelebihin ruang), turun ke tinggi penuh sebagai
       // gantinya — persis logika object-fit:contain, tapi diterapkan ke
