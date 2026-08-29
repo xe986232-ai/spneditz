@@ -525,6 +525,23 @@ export function drawLyricsTextLayer(
   const fontStyle = isArchivo ? "normal" : "italic";
   const fontStack = `'${layer.fontFamily}', sans-serif`;
 
+  // topFontSize/bottomFontSize di data template & panel edit di-desain
+  // relatif ke canvas potret referensi (1080x1920 — lihat canvasHeight
+  // template "lyrics-glitch"). Dulu dipakai APA ADANYA (px absolut) buat
+  // fillText, jadi begitu user pindah ke rasio 16:9 (canvas jadi
+  // 1920x1080, TINGGI-nya menciut jauh dari 1920 -> 1080) teks yang
+  // px-nya tetap sama malah keliatan ~2x lebih gede DIBANDING tinggi
+  // canvas yang baru — persis bug "nge-zoom" yang dilaporin, padahal
+  // boks canvas sendiri udah bener jadi landscape. Fix: skalakan font
+  // size (dan jarak offset animasi in/loop/out yang juga dalam px) ikut
+  // rasio tinggi canvas SEKARANG terhadap tinggi referensi itu, biar
+  // ukuran teks RELATIF terhadap tinggi canvas selalu konsisten di
+  // rasio manapun (sama seperti posisi x/y yang emang udah persen).
+  const REFERENCE_CANVAS_HEIGHT = 1920;
+  const lyricsScale = canvasH / REFERENCE_CANVAS_HEIGHT;
+  const topFontSize = layer.topFontSize * lyricsScale;
+  const bottomFontSize = layer.bottomFontSize * lyricsScale;
+
   // --- ukur lebar tiap baris dulu (layout statis, transform gak
   //     mempengaruhi lebar/posisi unit lain — sama kayak DOM asli) ---
   const measureLine = (lineUnits: { text: string }[], fontSize: number) => {
@@ -536,14 +553,14 @@ export function drawLyricsTextLayer(
   };
   const topUnits = units.filter((u) => u.line === "top");
   const bottomUnits = units.filter((u) => u.line === "bottom");
-  const topWidths = measureLine(topUnits, layer.topFontSize);
-  const bottomWidths = measureLine(bottomUnits, layer.bottomFontSize);
+  const topWidths = measureLine(topUnits, topFontSize);
+  const bottomWidths = measureLine(bottomUnits, bottomFontSize);
   const topLineWidth = topWidths.reduce((a, b) => a + b, 0);
   const bottomLineWidth = bottomWidths.reduce((a, b) => a + b, 0);
 
-  const topLineHeight = layer.topFontSize * 0.92;
-  const bottomLineHeight = layer.bottomFontSize * 0.92;
-  const lineGap = layer.bottomFontSize * 0.16;
+  const topLineHeight = topFontSize * 0.92;
+  const bottomLineHeight = bottomFontSize * 0.92;
+  const lineGap = bottomFontSize * 0.16;
   const blockHeight = topLineHeight + lineGap + bottomLineHeight;
 
   const centerX = (layer.x / 100) * canvasW;
@@ -578,7 +595,7 @@ export function drawLyricsTextLayer(
       const unitCenterX = cursorX + w / 2;
       cursorX += w;
 
-      const s = isPlaying
+      const rawTransform = isPlaying
         ? computeLyricsUnitTransform(
             u.globalIndex,
             units.length,
@@ -594,6 +611,15 @@ export function drawLyricsTextLayer(
             layer.outDurationSec,
           )
         : { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1, blur: 0 }; // pause -> statis, full opacity
+      // Offset x/y preset (slideUp/slideDown/dst) juga dalam px absolut
+      // relatif canvas referensi — skalakan sama seperti font size biar
+      // jarak geser in/out-nya proporsional, gak jadi kegedean/kekecilan
+      // pas rasio ganti.
+      const s = {
+        ...rawTransform,
+        x: rawTransform.x * lyricsScale,
+        y: rawTransform.y * lyricsScale,
+      };
       if (s.opacity <= 0.01) return;
 
       // Bulatkan level blur ke integer terdekat buat cache key sprite —
@@ -625,7 +651,7 @@ export function drawLyricsTextLayer(
   drawLine(
     unitsWithIndex.filter((u) => u.line === "top"),
     topWidths,
-    layer.topFontSize,
+    topFontSize,
     topLineCenterY,
     topLineWidth,
     layer.colorTop,
@@ -633,7 +659,7 @@ export function drawLyricsTextLayer(
   drawLine(
     unitsWithIndex.filter((u) => u.line === "bottom"),
     bottomWidths,
-    layer.bottomFontSize,
+    bottomFontSize,
     bottomLineCenterY,
     bottomLineWidth,
     layer.colorBottom,
