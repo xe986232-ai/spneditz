@@ -49,6 +49,7 @@ import type { Template, TemplateSlot, TemplateTextLayer, SlotType, LiquidGlassSe
   drawImageCoverZoomed,
   drawSlotGlow,
   drawTextLayers,
+  drawLyricsTextLayer,
   drawDurationLayer,
   drawProgressFill,
   drawWaveformProgress,
@@ -571,6 +572,24 @@ export default function Editor({
   // netral selama belum ada foto/belum selesai dianalisis.
   const [dominantColor, setDominantColor] = useState("110, 110, 120");
   const [renderTick, setRenderTick] = useState(0);
+  // Canvas 2D fillText() TIDAK auto-refresh kayak teks DOM begitu webfont
+  // (lihat <link> Google Fonts di index.html) kelar di-load — kalau
+  // render loop udah sempat jalan duluan sebelum font siap, hasilnya
+  // "nyangkut" pakai font fallback sistem selamanya. Sekali render tick
+  // ekstra begitu document.fonts.ready resolve, biar layer "Lyrics" pasti
+  // ke-render ulang pakai font aslinya (Mulish/Poppins/dst), bukan cuma
+  // pas kebetulan ada re-render lain (misal playhead gerak).
+  useEffect(() => {
+    let cancelled = false;
+    document.fonts?.ready
+      ?.then(() => {
+        if (!cancelled) setRenderTick((t) => t + 1);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const imageCacheRef = useRef(new ImageCache());
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
@@ -1268,10 +1287,7 @@ export default function Editor({
   }, [showPresetPanel]);
 
 
-  const templateDurationSec = Math.max(
-    0.1,
-    template.baseAssetSrc ? parseDurationSec(template.duration) : 60,
-  );
+  const templateDurationSec = Math.max(0.1, parseDurationSec(template.duration));
   // Durasi beneran yang dipakai preview: ikut audio asli kalau sudah
   // diupload, kalau belum tetap pakai durasi template.
   const DURATION = audioInfo?.duration ?? templateDurationSec;
@@ -1351,11 +1367,46 @@ export default function Editor({
     layer.liquidGlass
       ? { ...layer.liquidGlass.settings, ...glassSettings[layer.id] }
       : DEFAULT_LIQUID_GLASS_SETTINGS;
+  // Layer "Lyrics" (kalau template ini punya) diwakilkan sebagai 2 entri
+  // teks biasa (baris atas & bawah), biar bisa dipakai LANGSUNG lewat
+  // mekanisme edit teks yang udah ada (renderTextTrack, textValues,
+  // textColors, panel "Teks" di toolbar bawah) tanpa bikin UI baru dari
+  // nol. id-nya sengaja "<lyricsId>__top"/"<lyricsId>__bottom" — dibaca
+  // balik sama render loop (lihat drawLyricsTextLayer di useEffect di
+  // atas) buat ngambil override teks & warna user.
+  const lyricsTextEntries: TemplateTextLayer[] = (
+    template.lyricsTextLayers ?? []
+  ).flatMap((l) => [
+    {
+      id: `${l.id}__top`,
+      label: `${l.label} (baris atas)`,
+      defaultText: l.defaultTopText,
+      x: 50,
+      y: 50,
+      fontSize: l.topFontSize,
+      color: l.colorTop,
+      align: "center" as const,
+      maxLength: 40,
+    },
+    {
+      id: `${l.id}__bottom`,
+      label: `${l.label} (baris bawah)`,
+      defaultText: l.defaultBottomText,
+      x: 50,
+      y: 50,
+      fontSize: l.bottomFontSize,
+      color: l.colorBottom,
+      align: "center" as const,
+      maxLength: 40,
+    },
+  ]);
   // Track teks (dalam isTextMode) yang lagi terseleksi — dipakai buat nentuin
-  // isi toolbar bawah (input edit teks khusus layer itu).
-  const selectedTextLayer = template.textLayers?.find(
-    (l) => l.id === selectedTextLayerId,
-  );
+  // isi toolbar bawah (input edit teks khusus layer itu). Digabung sama
+  // lyricsTextEntries biar 2 baris lirik juga bisa keseleksi & diedit.
+  const selectedTextLayer = [
+    ...(template.textLayers ?? []),
+    ...lyricsTextEntries,
+  ].find((l) => l.id === selectedTextLayerId);
   // Track pseudo "Background" (bukan decorLayer template) — aktif kalau
   // customBackground ada & lagi diseleksi user di timeline.
   const isBackgroundLayerSelected =
@@ -1455,7 +1506,11 @@ export default function Editor({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !backgroundSrc) return;
+    // Template tanpa baseAssetSrc/customBackground TAPI punya solidBackground
+    // (misal "Lyrics", background hitam polos) tetap harus lanjut render —
+    // sebelumnya effect ini berhenti total di sini kalau backgroundSrc kosong,
+    // jadi template kayak itu nggak pernah kelihatan apa-apa di canvas.
+    if (!canvas || (!backgroundSrc && !template.solidBackground)) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -1466,22 +1521,30 @@ export default function Editor({
     ctx.clearRect(0, 0, canvasW, canvasH);
 
     const cache = imageCacheRef.current;
-    const bgImg = cache.get(backgroundSrc, () =>
-      setRenderTick((t) => t + 1),
-    );
-    if (bgImg) {
-      ctx.save();
-      let blurOverscan = 0;
-      if (customBackground && !isBackgroundHidden) {
-        ctx.globalAlpha = Math.max(0, Math.min(100, backgroundOpacity)) / 100;
-        if (backgroundBlur > 0) {
-          ctx.filter = `blur(${backgroundBlur}px)`;
-          blurOverscan = backgroundBlur * BACKGROUND_BLUR_OVERSCAN_FACTOR;
-        } else {
-          ctx.filter = "none";
+    if (backgroundSrc) {
+      const bgImg = cache.get(backgroundSrc, () =>
+        setRenderTick((t) => t + 1),
+      );
+      if (bgImg) {
+        ctx.save();
+        let blurOverscan = 0;
+        if (customBackground && !isBackgroundHidden) {
+          ctx.globalAlpha = Math.max(0, Math.min(100, backgroundOpacity)) / 100;
+          if (backgroundBlur > 0) {
+            ctx.filter = `blur(${backgroundBlur}px)`;
+            blurOverscan = backgroundBlur * BACKGROUND_BLUR_OVERSCAN_FACTOR;
+          } else {
+            ctx.filter = "none";
+          }
         }
+        drawImageCoverZoomed(ctx, bgImg, 0, 0, canvasW, canvasH, blurOverscan);
+        ctx.restore();
       }
-      drawImageCoverZoomed(ctx, bgImg, 0, 0, canvasW, canvasH, blurOverscan);
+    } else if (template.solidBackground) {
+      // Template "Lyrics" dkk — background warna solid, bukan foto.
+      ctx.save();
+      ctx.fillStyle = template.solidBackground;
+      ctx.fillRect(0, 0, canvasW, canvasH);
       ctx.restore();
     }
 
@@ -1616,6 +1679,33 @@ export default function Editor({
         );
       if (visibleTextLayers.length) {
         drawTextLayers(ctx, canvasW, canvasH, visibleTextLayers, textValues);
+      }
+    }
+    // Layer "Lyrics" (glitch teks animasi in/loop/out) — dipanggil per
+    // klip, drawLyricsTextLayer sendiri yang skip kalau currentSec di
+    // luar rentang startSec..endSec klip itu. Pakai textValues yang sama
+    // dengan textLayers biasa (key = id klip) buat override top/bottom,
+    // jadi kalau nanti ditambah panel edit teks lirik, tinggal isi
+    // textValues["<id>__top"]/["<id>__bottom"] tanpa ubah render loop ini.
+    if (template.lyricsTextLayers?.length) {
+      for (const layer of template.lyricsTextLayers) {
+        if (hiddenElements.has(layer.id)) continue;
+        const effectiveLayer = {
+          ...layer,
+          colorTop: textColors[`${layer.id}__top`] ?? layer.colorTop,
+          colorBottom: textColors[`${layer.id}__bottom`] ?? layer.colorBottom,
+        };
+        const topHidden = hiddenElements.has(`${layer.id}__top`);
+        const bottomHidden = hiddenElements.has(`${layer.id}__bottom`);
+        drawLyricsTextLayer(
+          ctx,
+          canvasW,
+          canvasH,
+          effectiveLayer,
+          currentSec,
+          topHidden ? " " : textValues[`${layer.id}__top`],
+          bottomHidden ? " " : textValues[`${layer.id}__bottom`],
+        );
       }
     }
     // Label durasi berjalan/total — selalu otomatis dari playhead & DURATION
@@ -2901,14 +2991,16 @@ export default function Editor({
             </div>
 
 
-            {template.baseAssetSrc && isTextMode ? (
+            {isTextMode ? (
               /* Mode "Teks" aktif — hide semua track lain (Background, slot
                  foto/video/audio, decor layer), cuma tampilin track teks
-                 sejumlah textLayers template ini. Klik salah satu track buat
+                 sejumlah textLayers template ini (+ 2 baris "Lirik" kalau
+                 template ini template Lyrics). Klik salah satu track buat
                  munculin input edit teks khusus layer itu di toolbar bawah. */
-              template.textLayers?.length ? (
+              template.textLayers?.length || lyricsTextEntries.length ? (
                 <div style={{ width: TRACK_WIDTH }} className="flex flex-col gap-0.5 pb-1">
-                  {template.textLayers.map((layer) => renderTextTrack(layer))}
+                  {template.textLayers?.map((layer) => renderTextTrack(layer))}
+                  {lyricsTextEntries.map((layer) => renderTextTrack(layer))}
                 </div>
               ) : (
                 <div

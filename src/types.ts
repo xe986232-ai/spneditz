@@ -203,6 +203,64 @@ export interface TemplateSpectrumLayer {
   color?: string;
 }
 
+/** Style animasi 1 fase (in/loop/out) untuk TemplateLyricsTextLayer — nama
+ *  key-nya harus cocok sama yang ada di LyricsAnimationPresets (lib/
+ *  lyricsAnim.ts). Loop TIDAK punya durationSec sendiri: durasinya selalu
+ *  dihitung otomatis dari sisa panjang klip (endSec-startSec) dikurangi
+ *  totalIn & totalOut (lihat getLyricsTimeline). */
+export type LyricsAnimMode = "char" | "word" | "whole";
+export type LyricsStaggerOrder = "normal" | "reverse" | "random";
+export type LyricsLoopBehavior = "standard" | "continuous";
+
+/** Layer teks "Lyrics" — beda dari TemplateTextLayer biasa: bukan cuma
+ *  digambar statis, tapi dianimasiin in/loop/out per huruf/kata/baris,
+ *  dengan signature effect skew miring + RGB split/glitch + halo blur
+ *  (lihat drawLyricsTextLayer di lib/render.ts & lib/lyricsAnim.ts).
+ *  Teks STATIS doang (bukan sinkron LRC/karaoke per baris ke audio) —
+ *  cuma dianimasiin in/loop/out sepanjang durasi klipnya di timeline. */
+export interface TemplateLyricsTextLayer {
+  id: string;
+  /** Nama yang muncul di track timeline & panel edit, misal "Lirik" */
+  label: string;
+  /** Baris atas (besar) & baris bawah (kecil) — 2 baris tetap, sesuai
+   *  signature layout referensi (judul besar + subjudul kecil). */
+  defaultTopText: string;
+  defaultBottomText: string;
+  /** Posisi titik tengah blok teks (2 baris), PERSEN relatif canvas. */
+  x: number;
+  y: number;
+  /** Ukuran font tiap baris, px skala canvas asli (1080x1920). */
+  topFontSize: number;
+  bottomFontSize: number;
+  colorTop: string;
+  colorBottom: string;
+  /** Nama font (harus salah satu font yang sudah di-load di index.html /
+   *  Google Fonts link — lihat LYRICS_FONTS di lib/lyricsAnim.ts). */
+  fontFamily: string;
+  /** Kemiringan skew seluruh blok teks, derajat. Default -8 (ciri khas). */
+  skewDeg?: number;
+
+  animMode: LyricsAnimMode;
+  staggerOrder: LyricsStaggerOrder;
+  /** Jeda antar unit huruf/kata, detik. */
+  staggerDelaySec: number;
+  loopBehavior: LyricsLoopBehavior;
+
+  /** Nama preset di LyricsAnimationPresets.IN/LOOP/OUT — user pilih manual
+   *  satu-satu, TIDAK ada preset gabungan siap pakai. */
+  inStyle: string;
+  inDurationSec: number;
+  loopStyle: string;
+  outStyle: string;
+  outDurationSec: number;
+
+  /** Posisi klip ini di timeline (detik) — "panjang track teks" yang
+   *  nentuin durasi LOOP otomatis (endSec - startSec - inTotal - outTotal).
+   *  Bisa digeser/diperpanjang user lewat panel edit (durasi klip). */
+  startSec: number;
+  endSec: number;
+}
+
 export interface Template {
   id: string;
   name: string;
@@ -250,4 +308,15 @@ export interface Template {
    *  energi audio asli (lihat drawSpectrumIndicator di lib/render.ts).
    *  Opsional — template lama tanpa ini tetap jalan seperti biasa. */
   spectrumLayer?: TemplateSpectrumLayer;
+
+  /** Warna solid buat background canvas (hex, misal "#000000") — dipakai
+   *  template yang SENGAJA tidak punya baseAssetSrc (foto/frame), misalnya
+   *  template "Lyrics" yang background-nya emang hitam polos, bukan foto.
+   *  Kalau baseAssetSrc diisi, field ini diabaikan (baseAssetSrc menang). */
+  solidBackground?: string;
+  /** Layer teks animasi "Lyrics" (in/loop/out + skew/RGB-split/halo) —
+   *  lihat TemplateLyricsTextLayer. Opsional — template lain tanpa ini
+   *  tetap jalan seperti biasa. Array = bisa lebih dari 1 klip lirik
+   *  ditaruh berurutan di track yang sama (misal ganti baris tiap X detik). */
+  lyricsTextLayers?: TemplateLyricsTextLayer[];
 }

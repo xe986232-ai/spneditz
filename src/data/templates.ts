@@ -1,4 +1,5 @@
 import type { Template } from "../types";
+import { defaultLyricsLayer } from "../lib/lyricsAnim";
 
 // Dua template aktif untuk sekarang: iPhone Music Player (card solid
 // hitam) & duplikatnya "iPhone Music Player Glass" (card kaca/liquid
@@ -855,5 +856,29 @@ export const TEMPLATES: Template[] = [
       minHeight: 9,
       color: "rgba(255,255,255,0.55)",
     },
+  },
+  {
+    id: "lyrics-glitch",
+    name: "Lyrics",
+    // Durasi ini cuma acuan skala awal — begitu user upload audio, durasi
+    // asli video otomatis ikut panjang audio itu (lihat src/lib/export.ts).
+    duration: "0:06",
+    gradientFrom: "#1a1024",
+    gradientTo: "#050505",
+    canvasWidth: 1080,
+    canvasHeight: 1920,
+    // SENGAJA tanpa baseAssetSrc — background-nya solid hitam (ciri khas
+    // template ini, bukan foto/video), lihat solidBackground di bawah.
+    solidBackground: "#000000",
+    slots: [],
+    // 1 klip lirik default di awal timeline. Teks, style in/loop/out,
+    // & panjang klip semuanya bisa diubah manual lewat panel edit —
+    // TIDAK ada preset siap pakai (by design).
+    lyricsTextLayers: [
+      defaultLyricsLayer({
+        id: "lyric1",
+        label: "Lirik",
+      }),
+    ],
   },
 ];

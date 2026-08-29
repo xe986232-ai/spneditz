@@ -5,7 +5,13 @@ import type {
   TemplateDurationLayer,
   TemplateProgressLayer,
   TemplateSpectrumLayer,
+  TemplateLyricsTextLayer,
 } from "../types";
+import {
+  buildLyricsUnits,
+  getLyricsTimeline,
+  computeLyricsUnitTransform,
+} from "./lyricsAnim";
 
 // --- Default blur background auto-sync (khusus template tertentu) ---
 //
@@ -362,6 +368,177 @@ export function drawTextLayers(
     ctx.fillText(text, x, y);
     ctx.restore();
   }
+}
+
+/** Gambar 1 layer teks "Lyrics" (2 baris, animasi in/loop/out per
+ *  huruf/kata/baris + signature effect skew miring & RGB split/halo blur).
+ *  Beda dari drawTextLayers (statis) — ini dipanggil TIAP FRAME pas playhead
+ *  (currentSec) ada di dalam rentang startSec..endSec klip ini, dan ikut
+ *  ke-skip otomatis (tidak digambar) di luar rentang itu.
+ *
+ *  topTextOverride/bottomTextOverride = isi custom dari user (state Editor),
+ *  fallback ke defaultTopText/defaultBottomText template kalau belum diisi. */
+export function drawLyricsTextLayer(
+  ctx: CanvasRenderingContext2D,
+  canvasW: number,
+  canvasH: number,
+  layer: TemplateLyricsTextLayer,
+  currentSec: number,
+  topTextOverride?: string,
+  bottomTextOverride?: string,
+) {
+  const topText = (topTextOverride ?? layer.defaultTopText) || " ";
+  const bottomText = (bottomTextOverride ?? layer.defaultBottomText) || " ";
+  const localT = currentSec - layer.startSec;
+  const clipDuration = Math.max(0.2, layer.endSec - layer.startSec);
+  if (localT < 0 || localT > clipDuration) return; // di luar rentang klip
+
+  const units = buildLyricsUnits(topText, bottomText, layer.animMode);
+  const timeline = getLyricsTimeline(
+    units.length,
+    layer.staggerDelaySec,
+    layer.inDurationSec,
+    layer.outDurationSec,
+    clipDuration,
+  );
+
+  const isArchivo = layer.fontFamily === "Archivo Black";
+  const fontStyle = isArchivo ? "normal" : "italic";
+  const fontStack = `'${layer.fontFamily}', sans-serif`;
+
+  // --- ukur lebar tiap baris dulu (layout statis, transform gak
+  //     mempengaruhi lebar/posisi unit lain — sama kayak DOM asli) ---
+  const measureLine = (lineUnits: { text: string }[], fontSize: number) => {
+    ctx.save();
+    ctx.font = `900 ${fontStyle} ${fontSize}px ${fontStack}`;
+    const widths = lineUnits.map((u) => ctx.measureText(u.text).width);
+    ctx.restore();
+    return widths;
+  };
+  const topUnits = units.filter((u) => u.line === "top");
+  const bottomUnits = units.filter((u) => u.line === "bottom");
+  const topWidths = measureLine(topUnits, layer.topFontSize);
+  const bottomWidths = measureLine(bottomUnits, layer.bottomFontSize);
+  const topLineWidth = topWidths.reduce((a, b) => a + b, 0);
+  const bottomLineWidth = bottomWidths.reduce((a, b) => a + b, 0);
+
+  const topLineHeight = layer.topFontSize * 0.92;
+  const bottomLineHeight = layer.bottomFontSize * 0.92;
+  const lineGap = layer.bottomFontSize * 0.16;
+  const blockHeight = topLineHeight + lineGap + bottomLineHeight;
+
+  const centerX = (layer.x / 100) * canvasW;
+  const centerY = (layer.y / 100) * canvasH;
+  const blockTop = centerY - blockHeight / 2;
+  const topLineCenterY = blockTop + topLineHeight / 2;
+  const bottomLineCenterY = blockTop + topLineHeight + lineGap + bottomLineHeight / 2;
+
+  ctx.save();
+  // skew seluruh blok (ciri khas), origin di titik tengah blok — sama
+  // seperti transform:skewX() + transform-origin:center di CSS.
+  const skewRad = ((layer.skewDeg ?? -8) * Math.PI) / 180;
+  ctx.translate(centerX, centerY);
+  ctx.transform(1, 0, Math.tan(skewRad), 1, 0, 0);
+  ctx.translate(-centerX, -centerY);
+
+  type LyricsUnitWithIndex = { text: string; line: "top" | "bottom"; globalIndex: number };
+  const unitsWithIndex: LyricsUnitWithIndex[] = units.map((u, i) => ({ ...u, globalIndex: i }));
+
+  const drawLine = (
+    lineUnits: LyricsUnitWithIndex[],
+    widths: number[],
+    fontSize: number,
+    lineCenterY: number,
+    lineWidth: number,
+    color: string,
+  ) => {
+    let cursorX = centerX - lineWidth / 2;
+    ctx.font = `900 ${fontStyle} ${fontSize}px ${fontStack}`;
+    lineUnits.forEach((u, i) => {
+      const w = widths[i];
+      const unitCenterX = cursorX + w / 2;
+      cursorX += w;
+
+      const s = computeLyricsUnitTransform(
+        u.globalIndex,
+        units.length,
+        localT,
+        timeline,
+        layer.staggerOrder,
+        layer.staggerDelaySec,
+        layer.loopBehavior,
+        layer.inStyle,
+        layer.inDurationSec,
+        layer.loopStyle,
+        layer.outStyle,
+        layer.outDurationSec,
+      );
+      if (s.opacity <= 0.01) return;
+
+      ctx.save();
+      ctx.translate(unitCenterX + s.x, lineCenterY + s.y);
+      ctx.rotate((s.rotate * Math.PI) / 180);
+      ctx.scale(s.scale, s.scale);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = `900 ${fontStyle} ${fontSize}px ${fontStack}`;
+
+      // 1) halo blur putih (paling belakang)
+      ctx.save();
+      ctx.globalAlpha = 0.35 * s.opacity;
+      ctx.filter = `blur(${16 + s.blur}px)`;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(u.text, 0, 0);
+      ctx.restore();
+
+      // 2) ghost merah (RGB split)
+      ctx.save();
+      ctx.globalAlpha = 0.7 * s.opacity;
+      ctx.filter = `blur(${2 + s.blur}px)`;
+      ctx.fillStyle = "#ff4433";
+      ctx.fillText(u.text, -2, -1.5);
+      ctx.restore();
+
+      // 3) ghost biru (RGB split)
+      ctx.save();
+      ctx.globalAlpha = 0.7 * s.opacity;
+      ctx.filter = `blur(${2 + s.blur}px)`;
+      ctx.fillStyle = "#3358ff";
+      ctx.fillText(u.text, 2, 1.5);
+      ctx.restore();
+
+      // 4) teks utama + glow tipis (paling depan)
+      ctx.save();
+      ctx.globalAlpha = s.opacity;
+      ctx.filter = s.blur > 0.05 ? `blur(${s.blur}px)` : "none";
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 22;
+      ctx.fillStyle = color;
+      ctx.fillText(u.text, 0, 0);
+      ctx.restore();
+
+      ctx.restore();
+    });
+  };
+
+  drawLine(
+    unitsWithIndex.filter((u) => u.line === "top"),
+    topWidths,
+    layer.topFontSize,
+    topLineCenterY,
+    topLineWidth,
+    layer.colorTop,
+  );
+  drawLine(
+    unitsWithIndex.filter((u) => u.line === "bottom"),
+    bottomWidths,
+    layer.bottomFontSize,
+    bottomLineCenterY,
+    bottomLineWidth,
+    layer.colorBottom,
+  );
+
+  ctx.restore();
 }
 
 /** Gambar label durasi berjalan (kiri) & total/sisa (kanan) — SELALU dari

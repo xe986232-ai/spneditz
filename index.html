@@ -4,6 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Video Editor</title>
+    <!-- Font-font buat layer teks "Lyrics" (lihat LYRICS_FONTS di
+         src/lib/lyricsAnim.ts) — WAJIB di-load di sini, bukan cuma
+         dipanggil namanya di canvas fillText(), soalnya browser gak akan
+         narik webfont otomatis cuma dari CSS font-family string di
+         canvas 2D context. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Mulish:ital,wght@1,800;1,900&family=Poppins:ital,wght@1,800;1,900&family=Archivo+Black&family=Rubik:ital,wght@1,800;1,900&family=Lexend:wght@800;900&family=Barlow:ital,wght@1,800;1,900&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <div id="root"></div>
