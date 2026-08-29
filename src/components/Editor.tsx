@@ -2385,10 +2385,10 @@ export default function Editor({
               onPointerDown={(e) =>
                 handleAudioClipDragStart(e, clip)
               }
-              className={`absolute inset-y-0.5 touch-none overflow-hidden rounded-md transition ${
+              className={`absolute inset-y-0.5 touch-none overflow-hidden rounded-md border transition ${
                 isClipSelected
-                  ? "cursor-grabbing border border-paper ring-2 ring-paper bg-violet-500/25"
-                  : "cursor-grab border-0 bg-violet-500/15 active:cursor-grabbing"
+                  ? "cursor-grabbing border-paper ring-2 ring-paper bg-violet-500/25"
+                  : "cursor-grab border-violet-500/40 bg-violet-500/15 active:cursor-grabbing"
               } ${isAudioHidden ? "opacity-40 grayscale" : ""}`}
               style={{ left: clipLeft, width: clipWidth }}
               title="Musik latar — tahan & geser buat pindah posisi"
@@ -2475,10 +2475,10 @@ export default function Editor({
             setSelectedTextLayerId(layer.id);
             if (layer.id === "airplayDevice") dismissAirplayHint();
           }}
-          className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded-md transition ${
+          className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded-md border transition ${
             isSelected
-              ? "border border-paper ring-2 ring-paper bg-emerald-400/20"
-              : "border-0 bg-emerald-400/15"
+              ? "border-paper ring-2 ring-paper bg-emerald-400/20"
+              : "border-emerald-400/40 bg-emerald-400/15"
           } ${isTextHidden ? "opacity-40 grayscale" : ""}`}
           style={{
             left: TIMELINE_CLIP_OFFSET_PX,
@@ -2486,9 +2486,14 @@ export default function Editor({
           }}
           title={layer.label}
         >
-          <ClipCornerLabel icon={Type} label={layer.label} />
-          <div className="flex h-full items-center justify-end px-1.5 pt-2.5">
-            <span className="max-w-full truncate text-[9px] text-emerald-200/80">
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-0.5 px-1.5">
+            <div className="flex items-center gap-1">
+              <Type className="h-[10px] w-[10px] shrink-0 text-emerald-200" />
+              <span className="truncate text-[9px] font-semibold leading-none text-emerald-100">
+                {layer.label}
+              </span>
+            </div>
+            <span className="max-w-full truncate text-[8px] leading-none text-emerald-200/70">
               {value}
             </span>
           </div>
