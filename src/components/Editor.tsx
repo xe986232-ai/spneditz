@@ -2381,7 +2381,7 @@ export default function Editor({
               onPointerDown={(e) =>
                 handleAudioClipDragStart(e, clip)
               }
-              className={`absolute inset-y-0.5 touch-none overflow-hidden rounded border transition ${
+              className={`absolute inset-y-0.5 touch-none overflow-hidden rounded-md border transition ${
                 isClipSelected
                   ? "cursor-grabbing border-paper ring-2 ring-paper bg-emerald-500/25"
                   : "cursor-grab border-emerald-500/40 bg-emerald-500/15 active:cursor-grabbing"
@@ -2478,7 +2478,7 @@ export default function Editor({
             setSelectedTextLayerId(layer.id);
             if (layer.id === "airplayDevice") dismissAirplayHint();
           }}
-          className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded border transition ${
+          className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded-md border transition ${
             isSelected
               ? "border-paper ring-2 ring-paper bg-amber-400/20"
               : "border-amber-400/40 bg-amber-400/15"
@@ -2962,10 +2962,10 @@ export default function Editor({
                         setSelectedSlotId(null);
                         setSelectedLayerId(BACKGROUND_LAYER_ID);
                       }}
-                      className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded border transition ${
+                      className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded-md transition ${
                         isBackgroundLayerSelected
-                          ? "border-paper ring-2 ring-paper bg-sky-400/20"
-                          : "border-sky-400/40 bg-sky-400/15"
+                          ? "border border-paper ring-2 ring-paper"
+                          : "border-0"
                       } ${hiddenElements.has(BACKGROUND_LAYER_ID) ? "opacity-40 grayscale" : ""}`}
                       style={{
                         left: TIMELINE_CLIP_OFFSET_PX,
@@ -2975,27 +2975,24 @@ export default function Editor({
                     >
                       {/* Thumbnail asli foto background (bukan cuma blok
                           warna polos), diulang ("tile") sepanjang durasi
-                          biar keliatan isinya kayak referensi CapCut. */}
+                          biar keliatan isinya kayak referensi CapCut.
+                          Tampilan DISAMAIN sama Mock-up: polos tanpa
+                          outline/tint warna & tanpa label di atasnya —
+                          cuma readout opacity/blur kecil di pojok kanan
+                          (biar tetap kelihatan settingnya lagi berapa). */}
                       {customBackground?.url && (
                         <div
-                          className="pointer-events-none absolute inset-0 bg-repeat-x opacity-70"
+                          className="pointer-events-none absolute inset-0 bg-repeat-x"
                           style={{
                             backgroundImage: `url(${customBackground.url})`,
                             backgroundSize: "auto 100%",
                           }}
                         />
                       )}
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-                      <div className="relative flex h-full items-center gap-1 px-1.5">
-                        <Layers size={12} className="shrink-0 text-sky-200" />
-                        <span className="truncate text-[10px] font-medium text-paper">
-                          Background
-                        </span>
-                        <span className="ml-auto shrink-0 text-[9px] text-sky-200/80">
-                          {Math.round(backgroundOpacity)}%
-                          {backgroundBlur > 0 ? ` · Blur ${Math.round(backgroundBlur)}` : ""}
-                        </span>
-                      </div>
+                      <span className="pointer-events-none absolute right-1 top-1 rounded bg-black/55 px-1 py-[1px] text-[9px] text-paper">
+                        {Math.round(backgroundOpacity)}%
+                        {backgroundBlur > 0 ? ` · Blur ${Math.round(backgroundBlur)}` : ""}
+                      </span>
                     </div>
                     <TrackMenuButton title="Menu Background" />
                   </div>
@@ -3055,22 +3052,24 @@ export default function Editor({
                           setSelectedLayerId(null);
                           setSelectedSlotId(slot.id);
                         }}
-                        className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded border transition ${
+                        className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded-md transition ${
                           isSelected
-                            ? "border-paper ring-2 ring-paper"
+                            ? "border border-paper ring-2 ring-paper"
                             : filled
-                              ? "border-sky-400/40 bg-sky-400/20"
-                              : "border-dashed border-mute/40 bg-transparent"
-                        } ${isSelected && filled ? "bg-sky-400/20" : ""} ${
-                          isSlotHidden ? "opacity-40 grayscale" : ""
-                        }`}
+                              ? "border-0"
+                              : "border border-dashed border-mute/40 bg-transparent"
+                        } ${isSlotHidden ? "opacity-40 grayscale" : ""}`}
                         style={{ left: clipLeft, width: clipWidth }}
                         title={slot.label}
                       >
                         {/* Thumbnail asli isi klip (foto/frame video),
                             diulang ("tile") sepanjang durasi slot — biar
                             kelihatan isinya beneran kayak track media di
-                            CapCut, bukan cuma blok warna polos. */}
+                            CapCut, bukan cuma blok warna polos. Tampilan
+                            DISAMAIN sama Mock-up: polos tanpa
+                            outline/tint warna & tanpa label ikon-teks di
+                            atasnya begitu klip udah keisi — cuma
+                            thumbnail-nya doang yang keliatan. */}
                         {filled && slotMediaEntry && slot.type === "image" && (
                           <div
                             className="pointer-events-none absolute inset-0 bg-repeat-x"
@@ -3090,22 +3089,14 @@ export default function Editor({
                             preload="metadata"
                           />
                         )}
-                        {filled && (
-                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/5 to-transparent" />
+                        {!filled && (
+                          <div className="relative flex h-full items-center gap-1 px-1.5">
+                            <Icon size={12} className="shrink-0 text-mute" />
+                            <span className="truncate text-[10px] font-medium text-mute">
+                              {slot.label}
+                            </span>
+                          </div>
                         )}
-                        <div className="relative flex h-full items-center gap-1 px-1.5">
-                          <Icon
-                            size={12}
-                            className={`shrink-0 ${filled ? "text-sky-200" : "text-mute"}`}
-                          />
-                          <span
-                            className={`truncate text-[10px] font-medium ${
-                              filled ? "text-paper" : "text-mute"
-                            }`}
-                          >
-                            {slot.label}
-                          </span>
-                        </div>
                       </div>
                       <TrackMenuButton title={`Menu "${slot.label}"`} />
                     </div>
@@ -3150,7 +3141,7 @@ export default function Editor({
                           setSelectedSlotId(null);
                           setSelectedLayerId(layer.id);
                         }}
-                        className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded border transition ${
+                        className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded-md border transition ${
                           isSelected
                             ? "border-paper ring-2 ring-paper bg-violet-400/20"
                             : "border-violet-400/40 bg-violet-400/15"
