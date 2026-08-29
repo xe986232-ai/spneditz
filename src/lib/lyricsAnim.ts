@@ -344,8 +344,8 @@ export function defaultLyricsLayer(
     Pick<TemplateLyricsTextLayer, "id" | "label">,
 ): TemplateLyricsTextLayer {
   return {
-    defaultTopText: "BUAH",
-    defaultBottomText: "MANGGIS",
+    defaultTopText: "",
+    defaultBottomText: "",
     x: 50,
     y: 50,
     topFontSize: 120,

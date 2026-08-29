@@ -1,5 +1,4 @@
 import type { Template } from "../types";
-import { defaultLyricsLayer } from "../lib/lyricsAnim";
 
 // Dua template aktif untuk sekarang: iPhone Music Player (card solid
 // hitam) & duplikatnya "iPhone Music Player Glass" (card kaca/liquid
@@ -896,14 +895,9 @@ export const TEMPLATES: Template[] = [
         endSec: 6,
       },
     ],
-    // 1 klip lirik default di awal timeline. Teks, style in/loop/out,
-    // & panjang klip semuanya bisa diubah manual lewat panel edit —
-    // TIDAK ada preset siap pakai (by design).
-    lyricsTextLayers: [
-      defaultLyricsLayer({
-        id: "lyric1",
-        label: "Lirik",
-      }),
-    ],
+    // Sengaja KOSONG — tanpa klip lirik default sama sekali di timeline.
+    // User nambah klip liriknya sendiri satu-satu lewat tombol "Add teks"
+    // di toolbar (lihat customLyricsLayers di Editor.tsx).
+    lyricsTextLayers: [],
   },
 ];
