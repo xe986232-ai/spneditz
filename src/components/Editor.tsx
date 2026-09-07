@@ -1384,6 +1384,12 @@ export default function Editor({
 
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
+  // Selalu nyimpen nilai isPlaying TERBARU (di-update tiap render, bukan
+  // cuma lewat effect) — dipakai sebagai guard di dalam tick() supaya
+  // frame rAF yang keburu ke-schedule sebelum effect [isPlaying] sempat
+  // cleanup nggak nimpa currentSec yang baru di-set manual (drag/skip).
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
   const startRef = useRef(0);
 
   // ---- Analisis audio asli: durasi & waveform (bukan durasi template
@@ -2875,6 +2881,12 @@ export default function Editor({
     startRef.current = performance.now() - currentSec * 1000;
 
     const tick = (now: number) => {
+      // Guard tambahan: kalau isPlaying udah di-set false (misal user mulai
+      // drag playhead) TAPI frame ini keburu ke-schedule sebelum effect
+      // sempat cleanup (cancelAnimationFrame), JANGAN timpa currentSec yang
+      // baru aja di-set manual sama drag — ini akar bug "geser playhead
+      // malah loncat balik lanjutin posisi main sebelumnya".
+      if (!isPlayingRef.current) return;
       const elapsed = (now - startRef.current) / 1000;
       if (elapsed >= DURATION) {
         // Sampe di akhir timeline — balikin playhead ke awal (0) &
@@ -3284,6 +3296,8 @@ export default function Editor({
   function handlePlayheadPointerDown(e: React.PointerEvent) {
     e.preventDefault();
     setIsPlaying(false);
+    isPlayingRef.current = false;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     const startX = e.clientX;
     const startSec = currentSec;
     const pxPerSec = effectivePxPerSec;
@@ -3312,11 +3326,15 @@ export default function Editor({
   // timeline biar tetap ke-center di garis putih yang diam.
   function handleSkipToStart() {
     setIsPlaying(false);
+    isPlayingRef.current = false;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     setCurrentSec(0);
     centerTimelineOnSec(0);
   }
   function handleSkipToEnd() {
     setIsPlaying(false);
+    isPlayingRef.current = false;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     setCurrentSec(DURATION);
     centerTimelineOnSec(DURATION);
   }
