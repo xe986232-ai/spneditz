@@ -416,6 +416,43 @@ function formatClock(sec: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+// TAHAP 2 (perf drag): bungkus fungsi pointermove biar body-nya paling
+// banter dijalanin 1x per animation frame (~60fps), bukan tiap event
+// pointermove mentah dari browser (bisa 100+ kali/detik di beberapa
+// device/browser). Event yang numpuk di antara 2 frame nggak dibuang,
+// cuma argumen TERBARU-nya yang dipakai pas rAF akhirnya jalan — jadi
+// gerakan tetap smooth & akurat, tapi setState (dan re-render Editor
+// yang masih 1 komponen gede) nggak lagi kepanggil lebih sering dari
+// browser sanggup nge-paint. Ini yang bikin drag playhead/klip audio/
+// klip & teks lirik kerasa lebih responsif tanpa perlu ubah logic
+// perhitungan posisinya sama sekali (murni soal KAPAN setState-nya
+// dieksekusi, bukan APA yang dihitung).
+function rafThrottle<A extends unknown[]>(
+  fn: (...args: A) => void,
+): ((...args: A) => void) & { cancel: () => void } {
+  let rafId: number | null = null;
+  let lastArgs: A | null = null;
+  const throttled = (...args: A) => {
+    lastArgs = args;
+    if (rafId == null) {
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const args2 = lastArgs;
+        lastArgs = null;
+        if (args2) fn(...args2);
+      });
+    }
+  };
+  throttled.cancel = () => {
+    if (rafId != null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    lastArgs = null;
+  };
+  return throttled;
+}
+
 // Pill label di kiri tiap baris track — nempel (sticky) ke tepi kiri
 // area timeline yang scrollable, jadi tetap keliatan/gampang diketuk
 // meskipun user geser timeline ke kanan. Markup & class-nya DIAMBIL
@@ -2314,7 +2351,7 @@ export default function Editor({
     // buat nge-snap cuma posisi klip yang LAGI DIPEGANG (bukan rata-rata
     // grup), biar jelas & kepredik anchor-nya di mana.
     const SNAP_THRESHOLD_PCT = 1.5;
-    const handleMove = (ev: PointerEvent) => {
+    const handleMove = rafThrottle((ev: PointerEvent) => {
       let dxPct = ((ev.clientX - startX) / rect.width) * 100;
       let dyPct = ((ev.clientY - startY) / rect.height) * 100;
       // Klem dx/dy berdasarkan anggota grup yang paling deket ke tepi
@@ -2345,8 +2382,9 @@ export default function Editor({
         });
         return next;
       });
-    };
+    });
     const handleUp = () => {
+      handleMove.cancel();
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
       setCanvasSnapGuides({ x: false, y: false });
@@ -2395,7 +2433,7 @@ export default function Editor({
         });
       }
     });
-    const handleMove = (ev: PointerEvent) => {
+    const handleMove = rafThrottle((ev: PointerEvent) => {
       const pt = toCanvasPx(ev.clientX, ev.clientY);
       const dist = Math.max(1, Math.hypot(pt.x - centerXPx, pt.y - centerYPx));
       const scale = clampNum(dist / startDist, 0.3, 4);
@@ -2410,8 +2448,9 @@ export default function Editor({
         });
         return next;
       });
-    };
+    });
     const handleUp = () => {
+      handleMove.cancel();
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
@@ -2467,7 +2506,7 @@ export default function Editor({
     const TAP_THRESHOLD_PX = 4;
     let didMove = false;
 
-    const handleMove = (ev: PointerEvent) => {
+    const handleMove = rafThrottle((ev: PointerEvent) => {
       const dPx = ev.clientX - startX;
       if (Math.abs(dPx) > TAP_THRESHOLD_PX) didMove = true;
       if (!didMove) return;
@@ -2494,8 +2533,9 @@ export default function Editor({
         });
         return next;
       });
-    };
+    });
     const handleUp = () => {
+      handleMove.cancel();
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
@@ -2559,7 +2599,7 @@ export default function Editor({
     const { startSec, endSec } = eff;
     const comfortableMin = computeLyricsComfortableMin(baseId, eff);
 
-    const handleMove = (ev: PointerEvent) => {
+    const handleMove = rafThrottle((ev: PointerEvent) => {
       const dSec = (ev.clientX - startX) / effectivePxPerSec;
       const newEnd = clampNum(
         endSec + dSec,
@@ -2570,8 +2610,9 @@ export default function Editor({
         ...prev,
         [baseId]: { ...prev[baseId], endSec: newEnd },
       }));
-    };
+    });
     const handleUp = () => {
+      handleMove.cancel();
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
@@ -3462,8 +3503,9 @@ export default function Editor({
 
     moveTo(e.clientX);
 
-    const handleMove = (ev: PointerEvent) => moveTo(ev.clientX);
+    const handleMove = rafThrottle((ev: PointerEvent) => moveTo(ev.clientX));
     const handleUp = () => {
+      handleMove.cancel();
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
@@ -3529,14 +3571,15 @@ export default function Editor({
     const duration = clip.trimEnd - clip.trimStart;
     const maxOffset = Math.max(0, DURATION - duration);
 
-    const handleMove = (ev: PointerEvent) => {
+    const handleMove = rafThrottle((ev: PointerEvent) => {
       const dSec = (ev.clientX - startX) / effectivePxPerSec;
       const newOffset = clampNum(originalOffset + dSec, 0, maxOffset);
       setAudioClips((prev) =>
         prev.map((c) => (c.id === clip.id ? { ...c, offset: newOffset } : c)),
       );
-    };
+    });
     const handleUp = () => {
+      handleMove.cancel();
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
@@ -3561,7 +3604,7 @@ export default function Editor({
     const sourceDuration = audioInfo?.duration ?? clip.trimEnd;
     const { trimStart, trimEnd, offset } = clip;
 
-    const handleMove = (ev: PointerEvent) => {
+    const handleMove = rafThrottle((ev: PointerEvent) => {
       const dSec = (ev.clientX - startX) / effectivePxPerSec;
       if (edge === "left") {
         const lowerBound = Math.max(-trimStart, -offset);
@@ -3590,8 +3633,9 @@ export default function Editor({
           prev.map((c) => (c.id === clip.id ? { ...c, trimEnd: newTrimEnd } : c)),
         );
       }
-    };
+    });
     const handleUp = () => {
+      handleMove.cancel();
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
