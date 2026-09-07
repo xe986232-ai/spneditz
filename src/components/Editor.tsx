@@ -41,6 +41,8 @@ import {
   Pencil,
   GripVertical,
   Copy,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import type { Template, TemplateSlot, TemplateTextLayer, TemplateLyricsTextLayer, SlotType, LiquidGlassSettings } from "../types";
@@ -330,6 +332,16 @@ function downsamplePeaks(source: number[], targetCount: number): number[] {
 // tetap perlu discroll). Kalau durasinya pendek, kepadatan efektif dihitung
 // dinamis (lihat effectivePxPerSec) supaya timeline selalu mepet ke kanan.
 const MIN_PX_PER_SEC = 8;
+// Batas & langkah zoom timeline (lihat state timelineZoom). MAX cukup
+// gede (12x) biar klip yang udah pendek banget tetep bisa "diperbesar"
+// ke banyak piksel buat trim presisi. STEP kelipatan (bukan nambah rata)
+// biar transisi tiap klik tombol +/- kerasa halus & konsisten di semua
+// level zoom (banyak "tingkatan stretch" antara 1x sampe MAX, bukan
+// cuma loncat 2-3 step kasar).
+const MIN_TIMELINE_ZOOM = 1;
+const MAX_TIMELINE_ZOOM = 12;
+const TIMELINE_ZOOM_STEP = 1.35;
+
 // Jumlah batang waveform yang di-generate per file audio.
 const WAVEFORM_BAR_COUNT = 120;
 // Waveform datar sementara, ditampilin pas file audio baru diupload dan
@@ -1075,6 +1087,94 @@ export default function Editor({
     timelineDragRef.current = null;
   }
 
+  function clampTimelineZoom(z: number) {
+    return Math.min(MAX_TIMELINE_ZOOM, Math.max(MIN_TIMELINE_ZOOM, z));
+  }
+
+  // Tombol +/- di pojok timeline — kelipatan TIMELINE_ZOOM_STEP tiap klik,
+  // zoom pusatnya di posisi playhead sekarang (biar bagian yang lagi
+  // difokusin user gak "kabur" ke luar layar abis di-zoom).
+  function zoomTimelineBy(factor: number) {
+    const container = timelineScrollRef.current;
+    const oldPxPerSec = fitPxPerSec * timelineZoom;
+    const newZoom = clampTimelineZoom(timelineZoom * factor);
+    const newPxPerSec = fitPxPerSec * newZoom;
+    if (container) {
+      const anchorContentX = currentSec * oldPxPerSec + TIMELINE_CLIP_OFFSET_PX;
+      const anchorScreenX = anchorContentX - container.scrollLeft;
+      const newAnchorContentX = currentSec * newPxPerSec + TIMELINE_CLIP_OFFSET_PX;
+      const targetScrollLeft = newAnchorContentX - anchorScreenX;
+      // scrollLeft di-apply abis React render ulang (lebar TRACK_WIDTH
+      // baru kebentuk), jadi ditunda 1 frame biar gak ke-clamp browser ke
+      // scrollWidth LAMA yang masih sempit.
+      requestAnimationFrame(() => {
+        container.scrollLeft = targetScrollLeft;
+      });
+    }
+    setTimelineZoom(newZoom);
+  }
+
+  function resetTimelineZoom() {
+    setTimelineZoom(1);
+  }
+
+  // ---- Pinch-to-stretch (2 jari) buat zoom timeline di HP — pola umum
+  // video editor mobile: cubit renggang = zoom in (detail), cubit rapat =
+  // zoom out. Dilacak lewat Pointer Events (bukan Touch Events polos)
+  // biar konsisten sama drag handler lain di file ini yang semuanya
+  // pakai Pointer Events. Anchor-nya dihitung ULANG tiap gerakan (bukan
+  // cuma sekali di awal gesture) berdasarkan titik tengah 2 jari SAAT
+  // ITU, jadi titik yang lagi "dicubit" selalu tetap diam di layar
+  // persis kayak pinch-zoom peta/galeri foto native. */
+  const pinchPointersRef = useRef<Map<number, number>>(new Map());
+  const pinchStateRef = useRef<{ startDist: number; startZoom: number } | null>(
+    null,
+  );
+
+  function handleTimelinePinchPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    pinchPointersRef.current.set(e.pointerId, e.clientX);
+    if (pinchPointersRef.current.size === 2) {
+      const xs = [...pinchPointersRef.current.values()];
+      pinchStateRef.current = {
+        startDist: Math.max(1, Math.abs(xs[0] - xs[1])),
+        startZoom: timelineZoom,
+      };
+    }
+  }
+
+  function handleTimelinePinchPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!pinchPointersRef.current.has(e.pointerId)) return;
+    pinchPointersRef.current.set(e.pointerId, e.clientX);
+    const pinch = pinchStateRef.current;
+    const container = timelineScrollRef.current;
+    if (!pinch || pinchPointersRef.current.size !== 2 || !container) return;
+    const xs = [...pinchPointersRef.current.values()];
+    const dist = Math.max(1, Math.abs(xs[0] - xs[1]));
+    const midScreenX =
+      (xs[0] + xs[1]) / 2 - container.getBoundingClientRect().left;
+    const oldPxPerSec = fitPxPerSec * timelineZoom;
+    const newZoom = clampTimelineZoom(
+      pinch.startZoom * (dist / pinch.startDist),
+    );
+    const newPxPerSec = fitPxPerSec * newZoom;
+    const anchorSec =
+      (container.scrollLeft + midScreenX - TIMELINE_CLIP_OFFSET_PX) /
+      oldPxPerSec;
+    const newScrollLeft =
+      anchorSec * newPxPerSec + TIMELINE_CLIP_OFFSET_PX - midScreenX;
+    requestAnimationFrame(() => {
+      container.scrollLeft = newScrollLeft;
+    });
+    setTimelineZoom(newZoom);
+  }
+
+  function handleTimelinePinchPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    pinchPointersRef.current.delete(e.pointerId);
+    if (pinchPointersRef.current.size < 2) {
+      pinchStateRef.current = null;
+    }
+  }
+
   // ---- Visibilitas elemen di timeline ----
   // Set berisi id elemen (slot foto/video, "Background", decor layer
   // adjustable, atau text layer) yang lagi di-hide user lewat ikon mata
@@ -1177,6 +1277,16 @@ export default function Editor({
   // ---- Lebar area timeline yang kelihatan, dipakai biar track selalu
   // mepet ke kanan layar baik durasinya panjang maupun pendek ----
   const [viewportWidth, setViewportWidth] = useState(340);
+  // ---- Zoom timeline (di-"stretch" pinch 2 jari ATAU tombol +/-) ----
+  // 1 = "fit" (bawaan lama: track selalu mepet ke tepi kanan viewport,
+  // px/detik dihitung otomatis dari lebar layar/DURATION — lihat
+  // fitPxPerSec). Makin gede angkanya, makin renggang jarak antar detik
+  // di layar (timeline "memanjang"), jadi enak buat trim presisi pas
+  // klip udah pendek banget. Dipisah dari fitPxPerSec (yang ngikutin
+  // ukuran layar/durasi) biar user tetap bisa zoom manual TANPA
+  // ke-reset tiap kali DURATION berubah (ganti audio, dst).
+  const [timelineZoom, setTimelineZoom] = useState(1);
+
   // Label "Background kustom" di pojok kiri atas preview — cuma nongol
   // 3 detik tiap kali background kustom baru dipasang, abis itu fade out
   // sendiri (biar nggak nutupin preview terus-terusan). Klik masih bisa
@@ -1696,10 +1806,17 @@ export default function Editor({
   // Kepadatan piksel/detik dinamis: kalau durasinya pendek, rapetin
   // supaya track pas mepet ke tepi kanan viewport. Kalau durasinya
   // panjang, turun ke minimum & jadi scrollable horizontal.
-  const effectivePxPerSec = Math.max(
+  // Kepadatan piksel/detik dinamis: kalau durasinya pendek, rapetin
+  // supaya track pas mepet ke tepi kanan viewport. Kalau durasinya
+  // panjang, turun ke minimum & jadi scrollable horizontal. Ini "fit"-nya
+  // — timelineZoom (1x = fit, lihat state-nya) tinggal dikaliin di atas
+  // ini, jadi hasil zoom manual user tetap konsisten walau DURATION
+  // berubah (ganti audio dst).
+  const fitPxPerSec = Math.max(
     MIN_PX_PER_SEC,
     (viewportWidth - 24) / DURATION,
   );
+  const effectivePxPerSec = fitPxPerSec * timelineZoom;
   const TRACK_WIDTH = Math.max(
     viewportWidth,
     DURATION * effectivePxPerSec + 24,
@@ -4112,6 +4229,37 @@ export default function Editor({
         >
           <div className="h-1 w-10 rounded-full bg-mute/30" />
         </div>
+        {/* Kontrol zoom timeline — cubit 2 jari di area track di bawah
+            juga bisa (lihat handleTimelinePinchPointer*), ini cuma versi
+            tombol buat yang lebih presisi/gampang di-tap. Ditampilin
+            selalu (bukan cuma pas ada klip terpilih) soalnya zoom
+            berlaku ke SELURUH timeline, bukan cuma 1 klip. */}
+        <div className="flex shrink-0 items-center justify-end gap-1 px-4 pb-1.5">
+          <button
+            onClick={() => zoomTimelineBy(1 / TIMELINE_ZOOM_STEP)}
+            disabled={timelineZoom <= MIN_TIMELINE_ZOOM}
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-white/5 text-editor-muted disabled:opacity-30"
+            title="Zoom out timeline"
+          >
+            <ZoomOut size={13} />
+          </button>
+          <button
+            onClick={resetTimelineZoom}
+            disabled={timelineZoom === 1}
+            className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-editor-muted disabled:opacity-30"
+            title="Reset zoom ke fit layar"
+          >
+            {Math.round(timelineZoom * 100)}%
+          </button>
+          <button
+            onClick={() => zoomTimelineBy(TIMELINE_ZOOM_STEP)}
+            disabled={timelineZoom >= MAX_TIMELINE_ZOOM}
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-white/5 text-editor-muted disabled:opacity-30"
+            title="Zoom in timeline (buat trim lebih presisi)"
+          >
+            <ZoomIn size={13} />
+          </button>
+        </div>
         {/* scrollbar-gutter:stable — reservasi ruang scrollbar vertikal
             PERMANEN (baik lagi kepake atau nggak), biar clientWidth
             `timelineScrollRef` di bawah nggak tiba-tiba nyusut/ngelebar
@@ -4123,7 +4271,15 @@ export default function Editor({
             timeline keliatan "nyusut" tiba-tiba — persis bug yang
             dilaporin. */}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2 [scrollbar-gutter:stable]">
-        <div ref={timelineScrollRef} className="overflow-x-auto">
+        <div
+          ref={timelineScrollRef}
+          className="overflow-x-auto touch-pan-x"
+          onPointerDown={handleTimelinePinchPointerDown}
+          onPointerMove={handleTimelinePinchPointerMove}
+          onPointerUp={handleTimelinePinchPointerUp}
+          onPointerCancel={handleTimelinePinchPointerUp}
+          onPointerLeave={handleTimelinePinchPointerUp}
+        >
           <div className="relative" style={{ width: TRACK_WIDTH }}>
             {/* Ruler gaya baru — label lebih tipis + dot ticks kecil
                 sebagai sub-mark di antara label. */}
