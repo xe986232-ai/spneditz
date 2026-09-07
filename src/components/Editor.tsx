@@ -3983,9 +3983,23 @@ export default function Editor({
     // gak perlu pencet "Transfer" manual, dan otomatis REPLACE (bukan
     // numpuk) background lama siapa pun sumbernya.
     if (slotId === coverSlotId) {
+      // FIX: dulu opacity & blur SELALU di-reset ke default di sini, jadi
+      // kalau user recrop/reposisi ulang foto background (openCropWithFile
+      // SELALU bikin object URL baru lewat URL.createObjectURL, meskipun
+      // file sumbernya SAMA — lihat komentar di openCropWithFile), fungsi
+      // ini kepanggil lagi dan kustomisasi opacity/blur user ke-reset diam2
+      // tanpa disadari. Pas export, hasilnya balik ke default, gak sesuai
+      // custom (persis keluhan user). Sekarang reset HANYA dilakukan kalau
+      // ini benar2 background PERTAMA KALI diisi (belum ada customBackground
+      // sama sekali) — update berikutnya ke slot ini (recrop/reposisi,
+      // ataupun ganti foto lain) akan MEMPERTAHANKAN opacity/blur yang
+      // sudah di-set user, bukan diam2 balik ke default.
+      const isFirstBackgroundPhoto = !customBackground;
       setCustomBackground(entry);
-      setBackgroundOpacity(100);
-      setBackgroundBlur(defaultBackgroundBlurFor(template.id));
+      if (isFirstBackgroundPhoto) {
+        setBackgroundOpacity(100);
+        setBackgroundBlur(defaultBackgroundBlurFor(template.id));
+      }
     }
   }
 
