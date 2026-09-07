@@ -154,6 +154,24 @@ export const LyricsAnimationPresets: {
  *  berapa lama klip lirik ini tampil. */
 export const LOOP_CYCLE_SEC = 2.0;
 
+/** Batas bawah faktor skala IN/OUT/stagger pas klip dipendekin (lihat
+ *  getLyricsTimeline). 0.5 = animasi paling cepat cuma 2x dari kecepatan
+ *  normalnya, TIDAK PERNAH lebih cepat dari itu — walau klip di-drag,
+ *  di-cut, atau diubah lewat jalur mana pun sampai jauh lebih pendek dari
+ *  (inTotal + outTotal) bawaan. Ini SUMBER KEBENARAN TUNGGAL buat batas
+ *  ini (dipakai juga di Editor.tsx lewat handleLyricsClipStretchStart &
+ *  handleCutLyricsClip) — sebelum ada floor ini, getLyricsTimeline bakal
+ *  terus mempercepat animasi TANPA BATAS begitu klip makin pendek (biar
+ *  OUT nggak kepotong), jadi klip yang di-mentok-in ke
+ *  MIN_LYRICS_CLIP_DURATION bisa bikin teks yang stagger-nya lumayan
+ *  (banyak huruf/kata) jadi animasinya super ngebut/kedip doang.
+ *  Trade-off: kalau klip SANGAT pendek (di bawah floor ini) DAN caller-nya
+ *  gak ikut mengklem panjang klip duluan (lihat comfortableMin di
+ *  Editor.tsx), animasi OUT bisa kepotong dikit di ujung — tapi itu jauh
+ *  lebih baik daripada animasi yang jadi nggak kelihatan sama sekali
+ *  karena keburu instan. */
+export const LYRICS_MIN_SPEED_SCALE = 0.5;
+
 /* ==========================================================================
    UNIT SPLITTER — pecah teks jadi huruf/kata/utuh, sama persis dengan
    buildLettersForText di prototype (spasi -> non-breaking space, kata
@@ -239,7 +257,15 @@ export function getLyricsTimeline(
   // pendek, cuma jadi lebih cepat/rapat (loopTotal otomatis jadi 0).
   const totalNeeded = inTotal + outTotal;
   if (totalNeeded > clipDurationSec && totalNeeded > 0) {
-    const scale = Math.max(0, clipDurationSec) / totalNeeded;
+    // Floor di LYRICS_MIN_SPEED_SCALE — jangan sampai animasi dipercepat
+    // lebih dari itu, walau klipnya kepotong/dipendekin jauh lebih parah
+    // dari (inTotal + outTotal). Klip yang masih lebih pendek dari hasil
+    // floor ini akan bikin OUT sedikit kepotong di ujung (lihat komentar
+    // di LYRICS_MIN_SPEED_SCALE) — tapi itu skenario ekstrem yang
+    // seharusnya sudah dicegah duluan di level UI (lihat comfortableMin
+    // di Editor.tsx), bukan pola normal.
+    const rawScale = Math.max(0, clipDurationSec) / totalNeeded;
+    const scale = Math.max(LYRICS_MIN_SPEED_SCALE, rawScale);
     effStaggerDelaySec = staggerDelaySec * scale;
     effInDurationSec = inDurationSec * scale;
     effOutDurationSec = outDurationSec * scale;
