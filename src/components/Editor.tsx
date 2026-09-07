@@ -1283,27 +1283,17 @@ export default function Editor({
   // zoom pusatnya di posisi playhead sekarang (biar bagian yang lagi
   // difokusin user gak "kabur" ke luar layar abis di-zoom).
   function zoomTimelineBy(factor: number) {
-    const container = timelineScrollRef.current;
-    const oldPxPerSec = fitPxPerSec * timelineZoom;
     const newZoom = clampTimelineZoom(timelineZoom * factor);
-    const newPxPerSec = fitPxPerSec * newZoom;
-    if (container) {
-      const anchorContentX = currentSec * oldPxPerSec + TIMELINE_CLIP_OFFSET_PX;
-      const anchorScreenX = anchorContentX - container.scrollLeft;
-      const newAnchorContentX = currentSec * newPxPerSec + TIMELINE_CLIP_OFFSET_PX;
-      const targetScrollLeft = newAnchorContentX - anchorScreenX;
-      // scrollLeft di-apply abis React render ulang (lebar TRACK_WIDTH
-      // baru kebentuk), jadi ditunda 1 frame biar gak ke-clamp browser ke
-      // scrollWidth LAMA yang masih sempit.
-      requestAnimationFrame(() => {
-        container.scrollLeft = targetScrollLeft;
-      });
-    }
     setTimelineZoom(newZoom);
+    // Garis putih diam di tengah — abis zoom, cukup re-center timeline
+    // ke currentSec yang sekarang (ditunda 1 frame biar TRACK_WIDTH baru
+    // udah kebentuk dulu, biar scrollLeft-nya gak ke-clamp ke lebar lama).
+    requestAnimationFrame(() => centerTimelineOnSec(currentSec));
   }
 
   function resetTimelineZoom() {
     setTimelineZoom(1);
+    requestAnimationFrame(() => centerTimelineOnSec(currentSec));
   }
 
   // ---- Pinch-to-stretch (2 jari) buat zoom timeline di HP — pola umum
@@ -1334,26 +1324,17 @@ export default function Editor({
     if (!pinchPointersRef.current.has(e.pointerId)) return;
     pinchPointersRef.current.set(e.pointerId, e.clientX);
     const pinch = pinchStateRef.current;
-    const container = timelineScrollRef.current;
-    if (!pinch || pinchPointersRef.current.size !== 2 || !container) return;
+    if (!pinch || pinchPointersRef.current.size !== 2) return;
     const xs = [...pinchPointersRef.current.values()];
     const dist = Math.max(1, Math.abs(xs[0] - xs[1]));
-    const midScreenX =
-      (xs[0] + xs[1]) / 2 - container.getBoundingClientRect().left;
-    const oldPxPerSec = fitPxPerSec * timelineZoom;
     const newZoom = clampTimelineZoom(
       pinch.startZoom * (dist / pinch.startDist),
     );
-    const newPxPerSec = fitPxPerSec * newZoom;
-    const anchorSec =
-      (container.scrollLeft + midScreenX - TIMELINE_CLIP_OFFSET_PX) /
-      oldPxPerSec;
-    const newScrollLeft =
-      anchorSec * newPxPerSec + TIMELINE_CLIP_OFFSET_PX - midScreenX;
-    requestAnimationFrame(() => {
-      container.scrollLeft = newScrollLeft;
-    });
     setTimelineZoom(newZoom);
+    // Garis putih diam di tengah — pinch-zoom juga re-center ke
+    // currentSec (bukan lagi ke titik tengah 2 jari), konsisten sama
+    // tombol +/- zoom.
+    requestAnimationFrame(() => centerTimelineOnSec(currentSec));
   }
 
   function handleTimelinePinchPointerUp(e: React.PointerEvent<HTMLDivElement>) {
@@ -2066,6 +2047,47 @@ export default function Editor({
   // 104px lebar pill label kiri + jarak sticky (left-1 = 4px) + sedikit
   // gap sebelum klip mulai.
   const TIMELINE_CLIP_OFFSET_PX = 116;
+
+  // ---- Garis putih (playhead) DIAM di tengah, timeline yang jalan ----
+  // Playhead sekarang di-render sebagai overlay yang posisinya SELALU di
+  // tengah viewport timeline (lihat JSX-nya, pakai trik position:sticky).
+  // Biar tetep merepresentasikan currentSec yang benar, kita yang GESER
+  // scrollLeft container secara terprogram tiap currentSec berubah,
+  // supaya detik yang aktif itu jatuh persis di titik tengah layar —
+  // efeknya track/klip/ruler yang keliatan bergerak/scroll, bukan
+  // garis putihnya. Dipakai di play-loop, drag playhead, skip start/end,
+  // & tombol/pinch zoom (biar zoom juga tetap ke-center ke playhead).
+  //
+  // Baca metrik lewat ref (bukan langsung dari closure) supaya fungsi ini
+  // tetap akurat walau dipanggil dari dalam rAF loop lama (misal pas
+  // play-loop effect belum sempat restart setelah zoom/viewport berubah).
+  const timelineMetricsRef = useRef({
+    pxPerSec: effectivePxPerSec,
+    trackWidth: TRACK_WIDTH,
+    viewportWidth,
+  });
+  timelineMetricsRef.current = {
+    pxPerSec: effectivePxPerSec,
+    trackWidth: TRACK_WIDTH,
+    viewportWidth,
+  };
+
+  function centerTimelineOnSec(sec: number) {
+    const container = timelineScrollRef.current;
+    if (!container) return;
+    const { pxPerSec, trackWidth, viewportWidth: vw } = timelineMetricsRef.current;
+    const contentX = sec * pxPerSec + TIMELINE_CLIP_OFFSET_PX;
+    const maxScroll = Math.max(0, trackWidth - vw);
+    container.scrollLeft = Math.min(maxScroll, Math.max(0, contentX - vw / 2));
+  }
+
+  // Begitu viewport-nya kebaca pertama kali (atau ganti ukuran gara-gara
+  // keluar-masuk fullscreen dst), langsung center-in posisi playhead yang
+  // aktif sekarang biar konsisten dari awal.
+  useEffect(() => {
+    centerTimelineOnSec(currentSec);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewportWidth]);
 
   // decorLayers dipisah "back" (di belakang slot foto/video) & "front"
   // (di depan/atas slot), dipakai di render loop biar urutan gambarnya
@@ -2860,10 +2882,12 @@ export default function Editor({
         // balik ke depan tiap mau preview ulang dari awal.
         startRef.current = now;
         setCurrentSec(0);
+        centerTimelineOnSec(0);
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
       setCurrentSec(elapsed);
+      centerTimelineOnSec(elapsed);
       rafRef.current = requestAnimationFrame(tick);
     };
 
@@ -3251,18 +3275,24 @@ export default function Editor({
     return () => ro.disconnect();
   }, [canvasRatio]);
 
-  // Drag playhead: geser langsung ke posisi jari/kursor, pause dulu selama digeser
+  // Drag playhead: garis putihnya sekarang DIAM di tengah layar (lihat
+  // JSX-nya), jadi gesernya bukan lagi "ikutin posisi absolut jari",
+  // tapi berdasarkan SELISIH gerakan jari (delta) — geser ke kanan =
+  // maju, ke kiri = mundur. Tiap update juga langsung nge-scroll
+  // timeline (centerTimelineOnSec) biar klip yang lagi aktif kelihatan
+  // "berjalan" di bawah garis yang diam itu.
   function handlePlayheadPointerDown(e: React.PointerEvent) {
     e.preventDefault();
     setIsPlaying(false);
-    const container = timelineScrollRef.current;
-    if (!container) return;
+    const startX = e.clientX;
+    const startSec = currentSec;
+    const pxPerSec = effectivePxPerSec;
 
     const moveTo = (clientX: number) => {
-      const rect = container.getBoundingClientRect();
-      const x = clientX - rect.left + container.scrollLeft - TIMELINE_CLIP_OFFSET_PX;
-      const sec = Math.min(DURATION, Math.max(0, x / effectivePxPerSec));
+      const dSec = (clientX - startX) / pxPerSec;
+      const sec = Math.min(DURATION, Math.max(0, startSec + dSec));
       setCurrentSec(sec);
+      centerTimelineOnSec(sec);
     };
 
     moveTo(e.clientX);
@@ -3278,14 +3308,17 @@ export default function Editor({
 
   // Tombol Skip-back/Skip-forward di Transport bar — loncat langsung ke
   // awal/akhir timeline, sekalian pause dulu (sama pola kayak drag
-  // playhead manual di handlePlayheadPointerDown).
+  // playhead manual di handlePlayheadPointerDown), lalu ikut nge-scroll
+  // timeline biar tetap ke-center di garis putih yang diam.
   function handleSkipToStart() {
     setIsPlaying(false);
     setCurrentSec(0);
+    centerTimelineOnSec(0);
   }
   function handleSkipToEnd() {
     setIsPlaying(false);
     setCurrentSec(DURATION);
+    centerTimelineOnSec(DURATION);
   }
 
   function openPicker(slot: TemplateSlot) {
@@ -4852,15 +4885,30 @@ export default function Editor({
               })}
             </div>
 
-            {/* Playhead — hit area digedein (w-6) biar enak digeser di HP,
-                garis & segitiga visualnya tetap tipis di tengah. */}
-            <div
-              onPointerDown={handlePlayheadPointerDown}
-              className="absolute bottom-0 top-4 z-10 w-6 -translate-x-1/2 touch-none cursor-ew-resize"
-              style={{ left: currentSec * effectivePxPerSec + TIMELINE_CLIP_OFFSET_PX }}
-            >
-              <div className="pointer-events-none absolute inset-y-0 left-1/2 w-[1.5px] -translate-x-1/2 bg-paper" />
-              <div className="pointer-events-none absolute -top-1 left-1/2 h-0 w-0 -translate-x-1/2 border-x-[5px] border-x-transparent border-t-[7px] border-t-paper" />
+            {/* Playhead — SEKARANG DIAM di tengah viewport timeline,
+                nggak ikut ke-geser pas timeline di-scroll horizontal
+                (yang jalan/scroll adalah ruler & klip-klipnya, lewat
+                centerTimelineOnSec di atas). Triknya: bungkus dulu
+                dengan frame absolute yang bentang penuh (top-4..bottom-0,
+                left-0..right-0, sama persis kayak dulu) biar tinggi
+                garisnya nggak berubah, lalu di dalemnya taruh anchor
+                position:sticky (left:0) — posisi "natural"-nya anchor
+                ini selalu di ujung kiri konten (x=0), jadi begitu
+                di-scroll dia langsung nempel & ngikutin tepi kiri
+                VIEWPORT yang kelihatan (bukan tepi kiri konten). Dari
+                situ, marker visualnya baru digeser ke tengah viewport
+                pakai `left: viewportWidth / 2`. */}
+            <div className="pointer-events-none absolute bottom-0 left-0 right-0 top-4 z-10">
+              <div className="pointer-events-none sticky left-0 h-full w-0">
+                <div
+                  onPointerDown={handlePlayheadPointerDown}
+                  className="pointer-events-auto absolute inset-y-0 w-6 -translate-x-1/2 touch-none cursor-ew-resize"
+                  style={{ left: viewportWidth / 2 }}
+                >
+                  <div className="pointer-events-none absolute inset-y-0 left-1/2 w-[1.5px] -translate-x-1/2 bg-paper" />
+                  <div className="pointer-events-none absolute -top-1 left-1/2 h-0 w-0 -translate-x-1/2 border-x-[5px] border-x-transparent border-t-[7px] border-t-paper" />
+                </div>
+              </div>
             </div>
 
 
