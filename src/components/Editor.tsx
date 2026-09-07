@@ -1883,6 +1883,7 @@ export default function Editor({
         setGlassSettings(record.glassSettings ?? {});
         setBackgroundOpacity(record.backgroundOpacity);
         setBackgroundBlur(record.backgroundBlur);
+        setCanvasRatio(record.canvasRatio ?? "9:16");
         setProgressStyle(record.progressStyle);
         setGlowIntensity(record.glowIntensity ?? 0);
         setTextValues((prev) => ({ ...prev, ...record.textValues }));
@@ -1947,6 +1948,7 @@ export default function Editor({
         glassSettings,
         backgroundOpacity,
         backgroundBlur,
+        canvasRatio,
         progressStyle,
         glowIntensity,
         textValues,
@@ -1998,6 +2000,7 @@ export default function Editor({
     glassSettings,
     backgroundOpacity,
     backgroundBlur,
+    canvasRatio,
     progressStyle,
     glowIntensity,
     textValues,
