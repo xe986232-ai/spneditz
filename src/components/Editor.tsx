@@ -2167,6 +2167,60 @@ export default function Editor({
       [baseId]: { ...prev[baseId], [key]: value },
     }));
   }
+  // "Terapkan ke Semua Track" — nyalin SEMUA custom style+animasi klip
+  // lirik yang lagi keseleksi (font, ukuran, skew, mode animasi in/
+  // loop/out beserta durasi & style-nya, warna baris atas+bawah) ke
+  // SEMUA klip lirik lain di project ini. SENGAJA TIDAK ikut nyalin
+  // posisi (x/y), startSec/endSec, row, atau isi teks — itu tetap
+  // punya masing-masing klip, cuma "gaya"-nya yang disamain.
+  function applySelectedLyricsStyleToAllTracks() {
+    if (!selectedLyricsBaseId) return;
+    const eff = getEffectiveLyricsLayer(selectedLyricsBaseId);
+    if (!eff) return;
+    const otherIds = allLyricsLayers
+      .map((l) => l.id)
+      .filter((id) => id !== selectedLyricsBaseId);
+    if (otherIds.length === 0) return;
+    if (
+      !window.confirm(
+        `Terapkan gaya & animasi klip ini ke ${otherIds.length} track lirik lain? Gaya lama masing-masing track akan ketimpa.`,
+      )
+    ) {
+      return;
+    }
+    const topColor = textColors[`${selectedLyricsBaseId}__top`] ?? eff.colorTop;
+    const bottomColor = textColors[`${selectedLyricsBaseId}__bottom`] ?? eff.colorBottom;
+    const styleToApply: Partial<TemplateLyricsTextLayer> = {
+      topFontSize: eff.topFontSize,
+      bottomFontSize: eff.bottomFontSize,
+      fontFamily: eff.fontFamily,
+      skewDeg: eff.skewDeg,
+      animMode: eff.animMode,
+      staggerOrder: eff.staggerOrder,
+      staggerDelaySec: eff.staggerDelaySec,
+      loopBehavior: eff.loopBehavior,
+      inStyle: eff.inStyle,
+      inDurationSec: eff.inDurationSec,
+      loopStyle: eff.loopStyle,
+      outStyle: eff.outStyle,
+      outDurationSec: eff.outDurationSec,
+    };
+    setLyricsSettings((prev) => {
+      const next = { ...prev };
+      otherIds.forEach((id) => {
+        next[id] = { ...next[id], ...styleToApply };
+      });
+      return next;
+    });
+    setTextColors((prev) => {
+      const next = { ...prev };
+      otherIds.forEach((id) => {
+        next[`${id}__top`] = topColor;
+        next[`${id}__bottom`] = bottomColor;
+      });
+      return next;
+    });
+  }
   // ---- Pengelompokan klip lirik jadi "baris track" (row) — beberapa
   // klip (baseId beda) bisa numpang jadi 1 baris yang sama di timeline
   // kalau di-drag ke situ (lihat handleLyricsRowDragStart) & waktunya
@@ -5717,20 +5771,35 @@ export default function Editor({
                   (baris atas/bawah klip Lyrics), text layer biasa (judul,
                   artist, dst) gak punya setting animasi jadi gak perlu tab. */}
               {selectedLyricsBaseId && effLyrics && (
-                <div className="flex gap-1.5 px-3 pt-2.5">
-                  {(["teks", "anim"] as const).map((tab) => (
+                <div className="flex items-center justify-between gap-1.5 px-3 pt-2.5">
+                  <div className="flex gap-1.5">
+                    {(["teks", "anim"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setLyricsPanelTab(tab)}
+                        className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition active:scale-95 ${
+                          lyricsPanelTab === tab
+                            ? "bg-editor-accent text-paper"
+                            : "bg-graphite text-mute"
+                        }`}
+                      >
+                        {tab === "teks" ? "Teks" : "Animasi"}
+                      </button>
+                    ))}
+                  </div>
+                  {/* "Terapkan ke Semua Track" — nyalin gaya+animasi+warna
+                      klip ini ke SEMUA klip lirik lain sekali klik, biar
+                      nggak perlu di-set manual satu-satu per track. */}
+                  {allLyricsLayers.length > 1 && (
                     <button
-                      key={tab}
-                      onClick={() => setLyricsPanelTab(tab)}
-                      className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition active:scale-95 ${
-                        lyricsPanelTab === tab
-                          ? "bg-editor-accent text-paper"
-                          : "bg-graphite text-mute"
-                      }`}
+                      onClick={applySelectedLyricsStyleToAllTracks}
+                      className="flex shrink-0 items-center gap-1 rounded-full bg-white/5 px-2.5 py-1.5 text-[10px] font-semibold text-editor-muted active:scale-95"
+                      title="Samain font, ukuran, animasi, & warna klip ini ke semua track lirik lain"
                     >
-                      {tab === "teks" ? "Teks" : "Animasi"}
+                      <Copy size={11} />
+                      Terapkan ke Semua
                     </button>
-                  ))}
+                  )}
                 </div>
               )}
               {selectedLyricsBaseId && effLyrics && lyricsPanelTab === "anim" ? (
