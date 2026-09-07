@@ -52,7 +52,7 @@ import {
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import type { Template, TemplateSlot, TemplateTextLayer, TemplateLyricsTextLayer, LyricsGroup, SlotType, LiquidGlassSettings } from "../types";
-import { LYRICS_FONTS, LyricsAnimationPresets, defaultLyricsLayer, buildLyricsUnits, getLyricsTimeline, LYRICS_MIN_SPEED_SCALE, LOOP_CYCLE_SEC } from "../lib/lyricsAnim";
+import { LYRICS_FONTS, LyricsAnimationPresets, defaultLyricsLayer, buildLyricsUnits, getLyricsTimeline, LYRICS_MIN_SPEED_SCALE, LOOP_CYCLE_SEC, NEW_LYRICS_PRESET_KEYS } from "../lib/lyricsAnim";
 import {
   parseDurationSec,
   initialSlotMedia,
@@ -643,12 +643,14 @@ function LyricsChipRow({
   options,
   value,
   labels,
+  newOptions,
   onChange,
 }: {
   label: string;
   options: readonly string[];
   value: string;
   labels?: Record<string, string>;
+  newOptions?: readonly string[];
   onChange: (v: string) => void;
 }) {
   return (
@@ -659,7 +661,7 @@ function LyricsChipRow({
           <button
             key={opt}
             onClick={() => onChange(opt)}
-            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize transition active:scale-95 ${
+            className={`relative flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize transition active:scale-95 ${
               value === opt
                 ? "bg-editor-accent text-paper"
                 : "bg-graphite text-mute"
@@ -667,6 +669,11 @@ function LyricsChipRow({
           >
             {opt === "none" && <Ban size={11} strokeWidth={2.5} />}
             {labels?.[opt] ?? opt}
+            {newOptions?.includes(opt) && (
+              <span className="absolute -right-1.5 -top-1.5 rounded-full bg-rose-500 px-1 py-[1px] text-[7px] font-bold leading-none tracking-wide text-white shadow-sm">
+                NEW
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -781,6 +788,7 @@ function LyricsAnimPanel({
         label="Gaya masuk"
         options={Object.keys(LyricsAnimationPresets.IN)}
         value={layer.inStyle}
+        newOptions={NEW_LYRICS_PRESET_KEYS.IN}
         onChange={(v) => onChange("inStyle", v)}
       />
       <LyricsRangeRow
@@ -800,6 +808,7 @@ function LyricsAnimPanel({
         label="Gaya loop"
         options={Object.keys(LyricsAnimationPresets.LOOP)}
         value={layer.loopStyle}
+        newOptions={NEW_LYRICS_PRESET_KEYS.LOOP}
         onChange={(v) => onChange("loopStyle", v)}
       />
 
@@ -811,6 +820,7 @@ function LyricsAnimPanel({
         label="Gaya keluar"
         options={Object.keys(LyricsAnimationPresets.OUT)}
         value={layer.outStyle}
+        newOptions={NEW_LYRICS_PRESET_KEYS.OUT}
         onChange={(v) => onChange("outStyle", v)}
       />
       <LyricsRangeRow

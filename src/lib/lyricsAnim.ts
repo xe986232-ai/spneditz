@@ -77,6 +77,15 @@ export const LyricsEasings = {
   bounceIn: (t: number) => 1 - LyricsEasings.bounceOut(1 - t),
 };
 
+/** Nama preset yang baru ditambahin (dipakai UI buat nampilin label "NEW"
+ *  di chip-nya — lihat LyricsChipRow di Editor.tsx). Preset lama TIDAK ada
+ *  di sini, jadi gak kebadge. */
+export const NEW_LYRICS_PRESET_KEYS = {
+  IN: ["flipIn", "dropIn", "zoomSpinIn", "diagonalIn", "expandIn"],
+  LOOP: ["orbit", "wobble", "flicker", "drift", "heartbeat"],
+  OUT: ["flipOut", "dropOut", "zoomSpinOut", "diagonalOut", "shrinkOut"],
+} as const;
+
 /** Hasil satu preset animasi untuk satu unit huruf/kata di satu momen —
  *  semuanya opsional/additive terhadap transformState default (identity). */
 export interface LyricsPresetResult {
@@ -112,6 +121,11 @@ export const LyricsAnimationPresets: {
     rotate: (p) => ({ opacity: p, rotate: (1 - p) * -90 }),
     blur: (p) => ({ opacity: p, blur: (1 - p) * 20 }),
     bounce: (p) => ({ opacity: p, y: (1 - p) * -80 }),
+    flipIn: (p) => ({ opacity: p, rotate: (1 - p) * 180, scale: 0.5 + p * 0.5 }),
+    dropIn: (p) => ({ opacity: p, y: (1 - p) * -140 }),
+    zoomSpinIn: (p) => ({ opacity: p, scale: 0.3 + p * 0.7, rotate: (1 - p) * -180 }),
+    diagonalIn: (p) => ({ opacity: p, x: (1 - p) * 60, y: (1 - p) * 60 }),
+    expandIn: (p) => ({ opacity: p, scale: 1.8 - p * 0.8 }),
   },
   LOOP: {
     none: () => ({}),
@@ -134,6 +148,11 @@ export const LyricsAnimationPresets: {
       };
     },
     glowPulse: (p) => ({ blur: (Math.sin(p * Math.PI * 2) + 1) * 4 }),
+    orbit: (p) => ({ x: Math.cos(p * Math.PI * 2) * 8, y: Math.sin(p * Math.PI * 2) * 8 }),
+    wobble: (p) => ({ rotate: Math.sin(p * Math.PI * 4) * 5, x: Math.sin(p * Math.PI * 4) * 3 }),
+    flicker: (p) => ({ opacity: 0.5 + Math.abs(Math.sin(p * Math.PI * 6)) * 0.5 }),
+    drift: (p) => ({ x: Math.sin(p * Math.PI * 2) * 14, y: Math.cos(p * Math.PI * 2) * 6 }),
+    heartbeat: (p) => ({ scale: 1 + Math.pow(Math.sin(p * Math.PI * 2), 4) * 0.15 }),
   },
   OUT: {
     none: () => ({}),
@@ -147,6 +166,11 @@ export const LyricsAnimationPresets: {
     rotate: (p) => ({ opacity: 1 - p, rotate: p * 90 }),
     blur: (p) => ({ opacity: 1 - p, blur: p * 20 }),
     bounce: (p) => ({ opacity: 1 - p, y: p * 80 }),
+    flipOut: (p) => ({ opacity: 1 - p, rotate: p * 180, scale: 1 - p * 0.5 }),
+    dropOut: (p) => ({ opacity: 1 - p, y: p * 140 }),
+    zoomSpinOut: (p) => ({ opacity: 1 - p, scale: 1 - p * 0.7, rotate: p * 180 }),
+    diagonalOut: (p) => ({ opacity: 1 - p, x: p * 60, y: p * 60 }),
+    shrinkOut: (p) => ({ opacity: 1 - p, scale: 1 - p * 0.8 }),
   },
 };
 
