@@ -44,7 +44,7 @@ import {
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import type { Template, TemplateSlot, TemplateTextLayer, TemplateLyricsTextLayer, SlotType, LiquidGlassSettings } from "../types";
-import { LYRICS_FONTS, LyricsAnimationPresets, defaultLyricsLayer } from "../lib/lyricsAnim";
+import { LYRICS_FONTS, LyricsAnimationPresets, defaultLyricsLayer, buildLyricsUnits, getLyricsTimeline } from "../lib/lyricsAnim";
 import {
   parseDurationSec,
   initialSlotMedia,
@@ -343,6 +343,18 @@ const MIN_CLIP_DURATION = 0.3;
 // dari ini (biar animasi in/out-nya masih kelihatan wajar, nggak "kepotong
 // abis" jadi 0 detik).
 const MIN_LYRICS_CLIP_DURATION = 0.4;
+// Batas bawah "kecepatan" animasi in/out klip lirik pas track-nya
+// dipendekin (drag handle tepi kanan) — 0.5 artinya animasi paling cepat
+// cuma 2x dari kecepatan normalnya, TIDAK BOLEH lebih cepat dari itu.
+// Tanpa batas ini, getLyricsTimeline (lib/lyricsAnim.ts) bakal terus
+// mempercepat in/out TANPA BATAS begitu klip makin pendek (biar animasi
+// OUT nggak kepotong — lihat komentar di sana), jadi kalau user
+// mendekin track sampai mentok (MIN_LYRICS_CLIP_DURATION), teks yang
+// stagger-nya lumayan (banyak huruf/kata) bisa jadi SUPER ngebut/kedip
+// sekilas doang. Fix-nya di sini: handle stretch dibatasi supaya nggak
+// bisa dipendekin lebih dari titik di mana animasi bakal lebih cepat
+// dari batas ini (lihat handleLyricsClipStretchStart).
+const LYRICS_MIN_SPEED_SCALE = 0.5;
 // Berapa detik playhead digeser tiap klik tombol mundur/maju di sebelah
 // tombol play — 1 detik cukup presisi buat nyari posisi tanpa harus
 // drag manual di timeline.
@@ -2033,11 +2045,35 @@ export default function Editor({
     const startX = e.clientX;
     const { startSec, endSec } = eff;
 
+    // Hitung dulu "kebutuhan asli" animasi in+out+stagger klip ini (BELUM
+    // di-skala turun sama sekali — clipDurationSec dikasih angka gede
+    // banget di bawah biar getLyricsTimeline nggak mengaktifkan skala-nya,
+    // jadi inTotal+outTotal yang balik itu murni nilai apa adanya dari
+    // setting layer.inDurationSec/outDurationSec/staggerDelaySec + jumlah
+    // huruf/kata teks SEKARANG). Dipakai buat nentuin seberapa pendek
+    // klip ini BOLEH di-stretch tanpa bikin animasinya lebih cepat dari
+    // LYRICS_MIN_SPEED_SCALE (lihat komentar konstanta itu).
+    const topText = textValues[`${baseId}__top`] ?? eff.defaultTopText;
+    const bottomText = textValues[`${baseId}__bottom`] ?? eff.defaultBottomText;
+    const units = buildLyricsUnits(topText, bottomText, eff.animMode);
+    const rawTimeline = getLyricsTimeline(
+      units.length,
+      eff.staggerDelaySec,
+      eff.inDurationSec,
+      eff.outDurationSec,
+      Number.MAX_SAFE_INTEGER,
+    );
+    const naturalNeeded = rawTimeline.inTotal + rawTimeline.outTotal;
+    const comfortableMin = Math.max(
+      MIN_LYRICS_CLIP_DURATION,
+      naturalNeeded * LYRICS_MIN_SPEED_SCALE,
+    );
+
     const handleMove = (ev: PointerEvent) => {
       const dSec = (ev.clientX - startX) / effectivePxPerSec;
       const newEnd = clampNum(
         endSec + dSec,
-        startSec + MIN_LYRICS_CLIP_DURATION,
+        startSec + comfortableMin,
         DURATION,
       );
       setLyricsSettings((prev) => ({
