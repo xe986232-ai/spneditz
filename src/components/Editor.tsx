@@ -1094,6 +1094,15 @@ export default function Editor({
   const [exportResultUrl, setExportResultUrl] = useState<string | null>(null);
   const [exportEngineUsed, setExportEngineUsed] = useState<ExportEngine | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  // "video" = hasil render penuh (webcodecs), "image" = cuma nyaplok frame
+  // yang lagi tampil di preview canvas saat tombol ditekan (instan, tanpa
+  // render ulang). Dipakai buat nentuin gimana modal hasil ditampilkan
+  // (video player vs <img>) & ekstensi file unduhan.
+  const [exportKind, setExportKind] = useState<"video" | "image">("video");
+  // Menu kecil (popover) yang muncul pas tombol Export di header ditekan,
+  // isinya 2 pilihan: "Export Video" (jalur lama, full render) atau
+  // "Export Gambar" (ambil frame preview yang lagi tampil, instan).
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -3149,9 +3158,36 @@ export default function Editor({
     }
   }
 
+  // Export gambar = TIDAK render ulang apa-apa, cuma nyaplok isi
+  // canvasRef SAAT INI apa adanya (frame yang lagi kelihatan di preview,
+  // lengkap dengan posisi playhead/animasi lirik/dst pas tombol ditekan).
+  // Makanya instan & tidak butuh exportTemplateVideoAuto / progress modal.
+  async function handleExportImage() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    setExportError(null);
+    setExportResultUrl(null);
+    setExportEngineUsed(null);
+    setExportKind("image");
+    try {
+      const blob: Blob | null = await new Promise((resolve) =>
+        canvas.toBlob((b) => resolve(b), "image/png"),
+      );
+      if (!blob) throw new Error("Gagal mengambil frame dari preview.");
+      setExportResultUrl(URL.createObjectURL(blob));
+      logExportEvent(template.id);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[export-image] gagal:", err);
+      const detail = err instanceof Error ? err.message : String(err);
+      setExportError(detail || "Export gambar gagal, coba lagi.");
+    }
+  }
+
   async function handleExport() {
     if (!template.baseAssetSrc) return;
     setIsExporting(true);
+    setExportKind("video");
     setExportError(null);
     setExportResultUrl(null);
     setExportEngineUsed(null);
@@ -3561,22 +3597,67 @@ export default function Editor({
 
         <div />
 
-        <div className="flex shrink-0 items-center justify-end">
+        <div className="relative flex shrink-0 items-center justify-end">
           {template.baseAssetSrc ? (
-            <button
-              onClick={handleExport}
-              disabled={isExporting}
-              className="flex items-center gap-2 rounded-xl bg-editor-accent px-3 py-[6px] text-[13px] font-semibold text-paper transition active:scale-90 disabled:opacity-60"
-              title={isExporting ? "Merender…" : "Ekspor video"}
-              aria-label="Ekspor video"
-            >
-              {isExporting ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Download size={14} strokeWidth={2.4} />
+            <>
+              <button
+                onClick={() => setShowExportMenu((v) => !v)}
+                disabled={isExporting}
+                className="flex items-center gap-2 rounded-xl bg-editor-accent px-3 py-[6px] text-[13px] font-semibold text-paper transition active:scale-90 disabled:opacity-60"
+                title={isExporting ? "Merender…" : "Ekspor"}
+                aria-label="Ekspor"
+              >
+                {isExporting ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Download size={14} strokeWidth={2.4} />
+                )}
+                Export
+              </button>
+
+              {showExportMenu && (
+                <>
+                  {/* Backdrop transparan buat nutup menu kalau tap di luar */}
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowExportMenu(false)}
+                  />
+                  <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-48 overflow-hidden rounded-2xl border border-white/10 bg-editor-panel shadow-[0_12px_32px_rgba(0,0,0,0.5)]">
+                    <button
+                      onClick={() => {
+                        setShowExportMenu(false);
+                        handleExport();
+                      }}
+                      className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left text-[13px] font-medium text-paper transition hover:bg-white/10 active:bg-white/15"
+                    >
+                      <Video size={15} className="text-editor-accent" />
+                      <span className="flex flex-col">
+                        Export Video
+                        <span className="text-[10.5px] font-normal text-editor-muted">
+                          Render penuh + audio
+                        </span>
+                      </span>
+                    </button>
+                    <div className="h-px bg-white/10" />
+                    <button
+                      onClick={() => {
+                        setShowExportMenu(false);
+                        handleExportImage();
+                      }}
+                      className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left text-[13px] font-medium text-paper transition hover:bg-white/10 active:bg-white/15"
+                    >
+                      <ImageIcon size={15} className="text-editor-accent" />
+                      <span className="flex flex-col">
+                        Export Gambar
+                        <span className="text-[10.5px] font-normal text-editor-muted">
+                          Cuma frame di preview
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                </>
               )}
-              Export
-            </button>
+            </>
           ) : (
             <span className="h-9 w-9" />
           )}
@@ -5376,8 +5457,10 @@ export default function Editor({
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15">
                     <Check size={16} className="text-emerald-400" />
                   </div>
-                  <p className="text-sm font-semibold text-paper">Video siap!</p>
-                  {exportEngineUsed && (
+                  <p className="text-sm font-semibold text-paper">
+                    {exportKind === "image" ? "Gambar siap!" : "Video siap!"}
+                  </p>
+                  {exportKind === "video" && exportEngineUsed && (
                     <span
                       className="rounded-full bg-editor-accent/15 px-2 py-0.5 text-[10px] font-semibold text-editor-accent"
                       title="Dirender pakai WebCodecs API (VideoEncoder/AudioEncoder) — hardware-accelerated"
@@ -5386,15 +5469,23 @@ export default function Editor({
                     </span>
                   )}
                 </div>
-                <video
-                  src={exportResultUrl}
-                  controls
-                  className={`mt-3 ${canvasRatio === "16:9" ? "aspect-[16/9]" : "aspect-[9/16]"} w-full rounded-2xl border border-white/10 bg-black`}
-                />
+                {exportKind === "image" ? (
+                  <img
+                    src={exportResultUrl}
+                    alt="Hasil export"
+                    className={`mt-3 ${canvasRatio === "16:9" ? "aspect-[16/9]" : "aspect-[9/16]"} w-full rounded-2xl border border-white/10 bg-black object-cover`}
+                  />
+                ) : (
+                  <video
+                    src={exportResultUrl}
+                    controls
+                    className={`mt-3 ${canvasRatio === "16:9" ? "aspect-[16/9]" : "aspect-[9/16]"} w-full rounded-2xl border border-white/10 bg-black`}
+                  />
+                )}
                 <div className="mt-3 flex gap-2">
                   <a
                     href={exportResultUrl}
-                    download={`${template.id}.mp4`}
+                    download={`${template.id}.${exportKind === "image" ? "png" : "mp4"}`}
                     className="flex-1 rounded-full bg-editor-accent px-3 py-2.5 text-xs font-semibold text-paper shadow-[0_4px_16px_rgba(124,108,255,0.4)] transition hover:brightness-110 active:scale-[0.98]"
                   >
                     Unduh
