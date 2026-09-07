@@ -273,4 +273,33 @@ export async function countDrafts(): Promise<number> {
   return all.length;
 }
 
+/** Tulis DraftRecord "siap pakai" (StoredMedia Blob sudah dalam bentuk
+ *  final, BUKAN SlotMediaEntry/blob-url) langsung ke IndexedDB sebagai
+ *  draft baru — dipakai oleh lib/templateExport.ts pas user IMPORT file
+ *  .spnedit hasil export draft/template. Beda dari saveDraft() (dipanggil
+ *  auto-save dari Editor.tsx, terima SlotMediaState + convert ke Blob di
+ *  dalam), di sini Blob-nya sudah jadi duluan (hasil decode base64 dari
+ *  file import), jadi tinggal ditulis apa adanya. Selalu bikin id BARU
+ *  (bukan timpa draft lama) + updatedAt = sekarang, biar draft hasil
+ *  import muncul paling atas di daftar & tetap tunduk sama batas
+ *  MAX_DRAFTS (draft lain yang paling nganggur otomatis ke-evict). */
+export async function importDraftRecord(
+  data: Omit<DraftRecord, "id" | "createdAt" | "updatedAt">,
+): Promise<DraftRecord> {
+  void ensurePersistentStorage();
+
+  const now = Date.now();
+  const record: DraftRecord = {
+    ...data,
+    id: `draft-${now}-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await withStore("readwrite", (store) => store.put(record));
+  await evictOldestBeyondLimit(record.id);
+
+  return record;
+}
+
 export { storedMediaToEntry };

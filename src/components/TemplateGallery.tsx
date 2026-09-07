@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   Image as ImageIcon,
   Search,
@@ -11,6 +11,8 @@ import {
   Trash2,
   Loader2,
   FilePlus2,
+  Download,
+  Upload,
 } from "lucide-react";
 import { TEMPLATES } from "../data/templates";
 import type { Template } from "../types";
@@ -24,6 +26,11 @@ import {
   MAX_DRAFTS,
   type DraftSummary,
 } from "../lib/drafts";
+import {
+  exportDraftToFile,
+  readTemplateExportFile,
+  importTemplateExportFile,
+} from "../lib/templateExport";
 
 // Id template yang dapet perlakuan khusus: thumbnail kolase 2 foto yang
 // dibelah miring, biar sekilas kelihatan template ini punya 2 gaya
@@ -202,12 +209,16 @@ function DraftCard({
   draft,
   onResume,
   onDelete,
+  onExport,
   busy,
+  exporting,
 }: {
   draft: DraftSummary;
   onResume: (draft: DraftSummary) => void;
   onDelete: (draft: DraftSummary) => void;
+  onExport: (draft: DraftSummary) => void;
   busy: boolean;
+  exporting: boolean;
 }) {
   return (
     <div className="group relative flex w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-editor-panel text-left shadow-[0_8px_28px_rgba(0,0,0,0.35)]">
@@ -256,9 +267,26 @@ function DraftCard({
       <button
         onClick={(e) => {
           e.stopPropagation();
+          onExport(draft);
+        }}
+        disabled={busy || exporting}
+        title="Export template (simpan sebagai file)"
+        aria-label="Export template"
+        className="absolute right-2.5 top-11 z-30 flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/60 text-paper/80 backdrop-blur-sm transition hover:text-editor-accent active:scale-90 disabled:opacity-60"
+      >
+        {exporting ? (
+          <Loader2 size={12} className="animate-spin" />
+        ) : (
+          <Download size={12} />
+        )}
+      </button>
+
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
           onDelete(draft);
         }}
-        disabled={busy}
+        disabled={busy || exporting}
         title="Hapus draft"
         aria-label="Hapus draft"
         className="absolute right-2.5 top-2.5 z-30 flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/60 text-paper/80 backdrop-blur-sm transition hover:text-rec active:scale-90 disabled:opacity-60"
@@ -429,6 +457,9 @@ export default function TemplateGallery({
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [draftBusyId, setDraftBusyId] = useState<string | null>(null);
+  const [draftExportBusyId, setDraftExportBusyId] = useState<string | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   function refreshDrafts() {
     setDraftsLoading(true);
@@ -476,6 +507,65 @@ export default function TemplateGallery({
     }
   }
 
+  // Export 1 draft (semua isinya: opacity, warna teks, animasi lirik, gaya
+  // progress, foto/video/audio yang dipakai, dst) jadi 1 file ".spnedit"
+  // yang bisa disimpan/dibagikan lalu di-import lagi (lihat
+  // lib/templateExport.ts).
+  async function handleExportDraft(draft: DraftSummary) {
+    if (draftExportBusyId) return;
+    setDraftExportBusyId(draft.id);
+    try {
+      await exportDraftToFile(draft.id);
+    } catch (e) {
+      window.alert(
+        e instanceof Error
+          ? `Gagal export template: ${e.message}`
+          : "Gagal export template.",
+      );
+    } finally {
+      setDraftExportBusyId(null);
+    }
+  }
+
+  function handleImportButtonClick() {
+    if (importBusy) return;
+    importInputRef.current?.click();
+  }
+
+  async function handleImportFileSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Reset value-nya duluan biar kalau user pilih file YANG SAMA lagi
+    // lain waktu, event onChange tetap kepicu (browser nggak nge-fire
+    // change kalau value input-nya nggak berubah).
+    e.target.value = "";
+    if (!file) return;
+
+    setImportBusy(true);
+    try {
+      const data = await readTemplateExportFile(file);
+      const template = TEMPLATES.find((t) => t.id === data.templateId);
+      if (!template) {
+        window.alert(
+          `Template sumber file ini ("${data.templateName}") sudah tidak tersedia di aplikasi, jadi tidak bisa di-import.`,
+        );
+        return;
+      }
+      await importTemplateExportFile(data);
+      window.alert(`Template "${data.templateName}" berhasil di-import sebagai draft baru.`);
+      if (activeTab === "draft") {
+        refreshDrafts();
+      } else {
+        setActiveTab("draft");
+      }
+    } catch (err) {
+      window.alert(
+        err instanceof Error ? err.message : "Gagal import file template.",
+      );
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
   return (
     <div className="relative flex h-[100dvh] w-screen flex-col overflow-hidden bg-editor-bg font-sans">
       {/* glow ambient ungu di belakang header — senada persis sama glow
@@ -503,14 +593,41 @@ export default function TemplateGallery({
                 : "Tinggal isi foto & audio, sisanya udah beres"}
             </p>
           </div>
-          <button
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-paper/70 transition hover:text-paper active:scale-90"
-            title="Cari template"
-          >
-            <Search size={17} />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {activeTab === "draft" && (
+              <button
+                onClick={handleImportButtonClick}
+                disabled={importBusy}
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-paper/70 transition hover:text-paper active:scale-90 disabled:opacity-60"
+                title="Import file template (.spnedit)"
+                aria-label="Import template"
+              >
+                {importBusy ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Upload size={16} />
+                )}
+              </button>
+            )}
+            <button
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-paper/70 transition hover:text-paper active:scale-90"
+              title="Cari template"
+            >
+              <Search size={17} />
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Input file tersembunyi buat import ".spnedit" — dipicu tombol
+          Upload di header (dan link di empty-state draft di bawah). */}
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".spnedit,application/json"
+        className="hidden"
+        onChange={handleImportFileSelected}
+      />
 
       {activeTab === "template" ? (
         /* Grid template — dua berbanjar (2 kolom). Cuma template yang
@@ -546,12 +663,26 @@ export default function TemplateGallery({
                 ke-auto-save di sini, sampai maksimal {MAX_DRAFTS} project
                 sekaligus.
               </p>
-              <button
-                onClick={() => setActiveTab("template")}
-                className="mt-1 rounded-full bg-editor-accent px-4 py-2 text-xs font-semibold text-paper shadow-[0_4px_16px_rgba(124,108,255,0.4)] transition hover:brightness-110 active:scale-[0.98]"
-              >
-                Pilih Template
-              </button>
+              <div className="mt-1 flex items-center gap-2">
+                <button
+                  onClick={() => setActiveTab("template")}
+                  className="rounded-full bg-editor-accent px-4 py-2 text-xs font-semibold text-paper shadow-[0_4px_16px_rgba(124,108,255,0.4)] transition hover:brightness-110 active:scale-[0.98]"
+                >
+                  Pilih Template
+                </button>
+                <button
+                  onClick={handleImportButtonClick}
+                  disabled={importBusy}
+                  className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-paper/80 transition hover:text-paper active:scale-[0.98] disabled:opacity-60"
+                >
+                  {importBusy ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <Upload size={13} />
+                  )}
+                  Import File
+                </button>
+              </div>
             </div>
           ) : (
             <div className="grid auto-rows-min grid-cols-2 gap-3">
@@ -561,7 +692,9 @@ export default function TemplateGallery({
                   draft={draft}
                   onResume={handleResumeDraft}
                   onDelete={handleDeleteDraft}
+                  onExport={handleExportDraft}
                   busy={draftBusyId === draft.id}
+                  exporting={draftExportBusyId === draft.id}
                 />
               ))}
             </div>
