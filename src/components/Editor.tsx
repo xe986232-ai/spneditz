@@ -2914,6 +2914,66 @@ export default function Editor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying, DURATION]);
 
+  // ---- Live preview panel "Animasi" klip lirik ----
+  // Begitu tab "Animasi" (LyricsAnimPanel) lagi dibuka buat 1 klip lirik,
+  // playhead OTOMATIS diputer berulang-ulang dari awal (startSec) sampai
+  // akhir (endSec) klip ITU SENDIRI SAJA — terlepas dari tombol Play/
+  // Pause utama — biar tiap kali user ganti setting (mode animasi,
+  // stagger, gaya in/loop/out, durasi, dst) hasilnya LANGSUNG kelihatan
+  // bergerak di canvas tanpa harus pencet Play atau geser playhead manual
+  // sendiri. Setiap kali salah satu setting klip ini berubah, loop di-
+  // restart dari awal (startSec) biar preview-nya "ngulang dari 0" sesuai
+  // custom terbaru, bukan nyambung dari posisi lama yang udah nggak
+  // relevan. Sengaja TIDAK manggil centerTimelineOnSec di sini (beda dari
+  // loop Play utama di atas) — biar timeline nggak ikut auto-scroll
+  // sendiri selagi user lagi fokus geser-geser slider di panel.
+  const lyricsPreviewRafRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (lyricsPanelTab !== "anim" || !selectedLyricsBaseId) return;
+    const layer = getEffectiveLyricsLayer(selectedLyricsBaseId);
+    if (!layer) return;
+
+    // Matikan playback utama (kalau kebetulan lagi jalan) biar rAF utama
+    // di atas nggak rebutan nulis currentSec bareng preview ini.
+    setIsPlaying(false);
+
+    const clipStart = layer.startSec;
+    const clipDuration = Math.max(0.1, layer.endSec - layer.startSec);
+    let start = performance.now();
+    setCurrentSec(clipStart);
+
+    const tick = (now: number) => {
+      const elapsed = (now - start) / 1000;
+      if (elapsed >= clipDuration) {
+        // Sampai ujung klip — balik ke awal & ngulang lagi terus-menerus,
+        // biar user bisa liat siklus in -> loop -> out selama apa pun
+        // tanpa perlu ngapa-ngapain.
+        start = now;
+        setCurrentSec(clipStart);
+        lyricsPreviewRafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      setCurrentSec(clipStart + elapsed);
+      lyricsPreviewRafRef.current = requestAnimationFrame(tick);
+    };
+    lyricsPreviewRafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (lyricsPreviewRafRef.current) {
+        cancelAnimationFrame(lyricsPreviewRafRef.current);
+        lyricsPreviewRafRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    lyricsPanelTab,
+    selectedLyricsBaseId,
+    // Restart loop dari awal tiap kali setting klip ini berubah (gaya/
+    // durasi in-loop-out, mode animasi, stagger, dst) — biar preview
+    // langsung "gerak ulang" sesuai custom paling baru.
+    selectedLyricsBaseId ? lyricsSettings[selectedLyricsBaseId] : undefined,
+  ]);
+
   // Klip audio yang aktif di detik playhead sekarang ini (kalau ada) —
   // dipakai buat nentuin posisi file asli mana yang harus disuarakan.
   // Karena hasil potong bisa bikin gap (klip nggak nutupin seluruh
