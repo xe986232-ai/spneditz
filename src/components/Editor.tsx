@@ -2447,9 +2447,23 @@ export default function Editor({
     setTextToolbarMode("quick");
     setShowAddTextStyles(false);
     const startX = e.clientX;
-    const clipDuration = eff.endSec - eff.startSec;
-    const originalStart = eff.startSec;
-    const maxStart = Math.max(0, DURATION - clipDuration);
+    // Kalau klip ini anggota grup (hasil "Jadikan Grup"), geser posisi
+    // berlaku ke SEMUA anggota grup sekaligus — pola sama kayak resize
+    // di handleLyricsCanvasResizeStart, tiap anggota digeser dari
+    // startSec ASLI-nya sendiri (bukan disamain) biar jarak antar klip
+    // yang beda posisi dari awal tetap kejaga.
+    const group = groupOfBaseId(baseId);
+    const memberIds = group ? group.memberIds : [baseId];
+    const originalStarts = new Map<string, { start: number; duration: number }>();
+    memberIds.forEach((id) => {
+      const memberEff = id === baseId ? eff : getEffectiveLyricsLayer(id);
+      if (memberEff) {
+        originalStarts.set(id, {
+          start: memberEff.startSec,
+          duration: memberEff.endSec - memberEff.startSec,
+        });
+      }
+    });
     // Anggap ini "cuma tap" (bukan drag) kalau jari/pointer gak geser
     // lebih dari threshold ini — biar gerakan tremor kecil pas nge-tap
     // gak keliru bikin klip ikut geser dikit.
@@ -2460,13 +2474,29 @@ export default function Editor({
       const dPx = ev.clientX - startX;
       if (Math.abs(dPx) > TAP_THRESHOLD_PX) didMove = true;
       if (!didMove) return;
-      const dSec = dPx / effectivePxPerSec;
-      const newStart = clampNum(originalStart + dSec, 0, maxStart);
-      const newEnd = newStart + clipDuration;
-      setLyricsSettings((prev) => ({
-        ...prev,
-        [baseId]: { ...prev[baseId], startSec: newStart, endSec: newEnd },
-      }));
+      let dSec = dPx / effectivePxPerSec;
+      // Klem dSec berdasarkan anggota grup yang paling deket ke batas
+      // [0, DURATION], biar semua anggota geser BARENG secara rigid
+      // (jarak antar klip di grup gak berubah) tanpa ada yang "nabrak"
+      // batas duluan dan bikin grupnya jadi renggang/numpuk.
+      originalStarts.forEach(({ start, duration }) => {
+        const memberMaxStart = Math.max(0, DURATION - duration);
+        const minDSec = 0 - start;
+        const maxDSec = memberMaxStart - start;
+        dSec = clampNum(dSec, minDSec, maxDSec);
+      });
+      setLyricsSettings((prev) => {
+        const next = { ...prev };
+        originalStarts.forEach(({ start, duration }, id) => {
+          const newStart = start + dSec;
+          next[id] = {
+            ...next[id],
+            startSec: newStart,
+            endSec: newStart + duration,
+          };
+        });
+        return next;
+      });
     };
     const handleUp = () => {
       window.removeEventListener("pointermove", handleMove);
