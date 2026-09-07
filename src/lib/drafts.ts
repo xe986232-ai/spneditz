@@ -106,6 +106,9 @@ export type DraftRecord = {
   /** Override setting animasi/font per klip lirik (key = lyricsId). Draft
    *  lama tidak punya field ini — fallback ke {} di pemanggil. */
   lyricsSettings?: Record<string, Partial<import("../types").TemplateLyricsTextLayer>>;
+  /** Grup klip lirik hasil fitur "Jadikan Grup" (resize font bareng).
+   *  Draft lama tidak punya field ini — fallback ke [] di pemanggil. */
+  lyricsGroups?: import("../types").LyricsGroup[];
   slotMedia: Record<string, StoredMedia>;
   customBackground: StoredMedia | null;
   /** Klip-klip potongan track audio (offset/trim) — biar posisi motong
@@ -172,6 +175,7 @@ export async function saveDraft(
     customLyricsLayers?: import("../types").TemplateLyricsTextLayer[];
     removedLyricsIds?: Set<string> | string[];
     lyricsSettings?: Record<string, Partial<import("../types").TemplateLyricsTextLayer>>;
+    lyricsGroups?: import("../types").LyricsGroup[];
     slotMedia: SlotMediaState;
     customBackground: SlotMediaEntry | null;
     audioClips: { id: string; trimStart: number; trimEnd: number; offset: number }[];
@@ -209,6 +213,7 @@ export async function saveDraft(
     customLyricsLayers: (params.customLyricsLayers ?? []).map((l) => ({ ...l })),
     removedLyricsIds: Array.from(params.removedLyricsIds ?? []),
     lyricsSettings: { ...(params.lyricsSettings ?? {}) },
+    lyricsGroups: (params.lyricsGroups ?? []).map((g) => ({ ...g, memberIds: [...g.memberIds] })),
     slotMedia: slotMediaOut,
     customBackground: customBackgroundOut,
     audioClips: params.audioClips.map((c) => ({ ...c })),

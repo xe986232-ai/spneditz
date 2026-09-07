@@ -269,6 +269,18 @@ export interface TemplateLyricsTextLayer {
   row?: number;
 }
 
+/** Grup klip lirik ("track Text") yang di-link user lewat fitur seleksi
+ *  banyak track -> "Jadikan Grup" (lihat trackSelectMode di Editor.tsx).
+ *  Anggota grup (memberIds = id KLIP lirik/baseId, sama kayak key di
+ *  lyricsSettings) resize font bareng-bareng (proporsional per anggota)
+ *  lewat 1 handle drag di canvas. "Batalkan Grup" cuma mutus link-nya
+ *  (hapus entri ini) — ukuran font hasil resize terakhir TETAP kepakai
+ *  di lyricsSettings masing-masing, tidak ke-reset ke semula. */
+export interface LyricsGroup {
+  id: string;
+  memberIds: string[];
+}
+
 export interface Template {
   id: string;
   name: string;

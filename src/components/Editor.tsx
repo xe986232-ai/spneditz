@@ -44,9 +44,13 @@ import {
   ZoomIn,
   ZoomOut,
   Combine,
+  MoreVertical,
+  Link2,
+  Unlink2,
+  ListChecks,
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
-import type { Template, TemplateSlot, TemplateTextLayer, TemplateLyricsTextLayer, SlotType, LiquidGlassSettings } from "../types";
+import type { Template, TemplateSlot, TemplateTextLayer, TemplateLyricsTextLayer, LyricsGroup, SlotType, LiquidGlassSettings } from "../types";
 import { LYRICS_FONTS, LyricsAnimationPresets, defaultLyricsLayer, buildLyricsUnits, getLyricsTimeline, LYRICS_MIN_SPEED_SCALE } from "../lib/lyricsAnim";
 import {
   parseDurationSec,
@@ -410,6 +414,7 @@ type ProjectSnapshot = {
   customLyricsLayers: TemplateLyricsTextLayer[];
   removedLyricsIds: Set<string>;
   lyricsSettings: Record<string, Partial<TemplateLyricsTextLayer>>;
+  lyricsGroups: LyricsGroup[];
 };
 
 // Format detik jadi mm:ss buat label waktu di atas baris playback.
@@ -436,6 +441,17 @@ function TrackLabel({
   hiddenTitle,
   shownTitle,
   onReorderPointerDown,
+  // --- Fitur seleksi banyak track buat "Jadikan Grup" (khusus dipakai
+  // baris track lirik, lihat renderLyricsRow) — tahan lama ikon mata
+  // buat masuk mode seleksi, abis itu nge-tap SELURUH pill label toggle
+  // masuk/keluar seleksi. Kalau tidak diisi (track lain: background/
+  // slot/audio), perilaku lama (klik ikon mata = toggle hidden) tetap
+  // apa adanya. ---
+  selectMode,
+  selected,
+  onSelectToggle,
+  onEyeLongPress,
+  grouped,
 }: {
   hidden: boolean;
   onToggleHidden: (e: React.MouseEvent) => void;
@@ -447,22 +463,96 @@ function TrackLabel({
   // urutan (dipakai khusus track teks custom hasil "Add teks" — reorder
   // sekaligus ngatur mana yang di depan/belakang pas overlap di canvas).
   onReorderPointerDown?: (e: React.PointerEvent) => void;
+  selectMode?: boolean;
+  selected?: boolean;
+  onSelectToggle?: () => void;
+  onEyeLongPress?: () => void;
+  grouped?: boolean;
 }) {
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const didLongPressRef = useRef(false);
+
+  function clearLongPressTimer() {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }
+
   return (
-    <div className="sticky left-1 z-20 flex h-8 w-[104px] shrink-0 items-center gap-1.5 rounded-lg bg-ed-card px-2 text-[11px] text-ed-text">
-      {onReorderPointerDown && (
-        <button
-          onPointerDown={onReorderPointerDown}
-          title="Tahan & geser buat ubah urutan"
-          aria-label="Ubah urutan track"
-          className="flex h-[14px] w-[10px] shrink-0 cursor-ns-resize touch-none items-center justify-center active:scale-90"
+    <div
+      onClick={selectMode ? onSelectToggle : undefined}
+      className={`sticky left-1 z-20 flex h-8 w-[104px] shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11px] text-ed-text transition ${
+        selectMode
+          ? `cursor-pointer active:scale-[0.98] ${
+              selected ? "bg-editor-accent/25 ring-1 ring-editor-accent" : "bg-ed-card"
+            }`
+          : "bg-ed-card"
+      }`}
+    >
+      {selectMode ? (
+        // Ganti grip/reorder handle jadi checkbox bulat pas mode
+        // seleksi aktif — nggak masuk akal drag-reorder bareng seleksi.
+        <span
+          className={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-full border ${
+            selected
+              ? "border-editor-accent bg-editor-accent text-white"
+              : "border-ed-dim/60"
+          }`}
         >
-          <GripVertical className="h-[14px] w-[14px] shrink-0 text-ed-dim" />
-        </button>
+          {selected && <Check className="h-[10px] w-[10px]" strokeWidth={3} />}
+        </span>
+      ) : (
+        onReorderPointerDown && (
+          <button
+            onPointerDown={onReorderPointerDown}
+            title="Tahan & geser buat ubah urutan"
+            aria-label="Ubah urutan track"
+            className="flex h-[14px] w-[10px] shrink-0 cursor-ns-resize touch-none items-center justify-center active:scale-90"
+          >
+            <GripVertical className="h-[14px] w-[14px] shrink-0 text-ed-dim" />
+          </button>
+        )
       )}
       <button
-        onClick={onToggleHidden}
-        title={hidden ? (hiddenTitle ?? "Tampilkan elemen") : (shownTitle ?? "Sembunyikan elemen")}
+        onClick={(e) => {
+          if (selectMode) {
+            // Biar klik di ikon mata pas mode seleksi ikut nge-toggle
+            // seleksi baris (bukan diam), tapi jangan trigger 2x lewat
+            // bubbling ke div pembungkus.
+            e.stopPropagation();
+            onSelectToggle?.();
+            return;
+          }
+          if (didLongPressRef.current) {
+            // Abis long-press berhasil masuk mode seleksi, "click" yang
+            // otomatis nyusul (dari pointerup yang sama) jangan ikut
+            // toggle hidden — cukup 1 aksi per tahan.
+            didLongPressRef.current = false;
+            return;
+          }
+          onToggleHidden(e);
+        }}
+        onPointerDown={(e) => {
+          if (!onEyeLongPress) return;
+          e.stopPropagation();
+          didLongPressRef.current = false;
+          clearLongPressTimer();
+          longPressTimerRef.current = setTimeout(() => {
+            didLongPressRef.current = true;
+            onEyeLongPress();
+          }, 500);
+        }}
+        onPointerUp={clearLongPressTimer}
+        onPointerLeave={clearLongPressTimer}
+        onPointerCancel={clearLongPressTimer}
+        title={
+          selectMode
+            ? "Ketuk buat pilih/batal track ini"
+            : hidden
+              ? (hiddenTitle ?? "Tampilkan elemen")
+              : (shownTitle ?? "Sembunyikan elemen (tahan buat pilih beberapa track)")
+        }
         aria-label={hidden ? "Tampilkan elemen" : "Sembunyikan elemen"}
         className="flex h-[14px] w-[14px] shrink-0 items-center justify-center transition active:scale-90"
       >
@@ -474,6 +564,14 @@ function TrackLabel({
       </button>
       <Icon className="h-[14px] w-[14px] shrink-0" />
       <span className="truncate">{label}</span>
+      {grouped && !selectMode && (
+        <span
+          className="ml-auto flex h-[10px] w-[10px] shrink-0 items-center justify-center"
+          title="Bagian dari grup — resize font bareng anggota lain"
+        >
+          <Link2 className="h-[10px] w-[10px] text-editor-accent" />
+        </span>
+      )}
     </div>
   );
 }
@@ -850,6 +948,95 @@ export default function Editor({
   const [removedLyricsIds, setRemovedLyricsIds] = useState<Set<string>>(
     () => new Set(),
   );
+  // Grup klip lirik ("track Text") hasil fitur tahan-lama ikon mata ->
+  // seleksi banyak track -> menu titik tiga -> "Jadikan Grup". Anggota
+  // grup (baseId) di-resize bareng-bareng (proporsional) lewat 1 handle
+  // drag di canvas — lihat handleLyricsCanvasResizeStart. "Batalkan
+  // Grup" cuma mutus link ini, TIDAK reset lyricsSettings, jadi hasil
+  // resize terakhir tetap kepakai.
+  const [lyricsGroups, setLyricsGroups] = useState<LyricsGroup[]>([]);
+  // Mode "seleksi track" buat bikin/bubarin grup — diaktifin lewat tahan
+  // lama ikon mata di TrackLabel salah satu baris lirik (lihat
+  // renderLyricsRow). Selama true, nge-tap baris track LAIN nge-toggle
+  // masuk/keluar `selectedTrackBaseIds` (bukan toggle hidden kayak
+  // biasa).
+  const [trackSelectMode, setTrackSelectMode] = useState(false);
+  const [selectedTrackBaseIds, setSelectedTrackBaseIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [trackGroupMenuOpen, setTrackGroupMenuOpen] = useState(false);
+  // Keluar dari mode seleksi track otomatis begitu user pindah dari tab
+  // "Teks" — biar nggak nyangkut nyala pas balik lagi ke tab lain.
+  useEffect(() => {
+    if (!isTextMode) {
+      setTrackSelectMode(false);
+      setSelectedTrackBaseIds(new Set());
+      setTrackGroupMenuOpen(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTextMode]);
+
+  function groupOfBaseId(baseId: string): LyricsGroup | undefined {
+    return lyricsGroups.find((g) => g.memberIds.includes(baseId));
+  }
+
+  function cancelTrackSelectMode() {
+    setTrackSelectMode(false);
+    setSelectedTrackBaseIds(new Set());
+    setTrackGroupMenuOpen(false);
+  }
+
+  // Toggle seleksi 1 BARIS track lirik (bisa isi >1 baseId kalau baris
+  // itu udah "numpang" beberapa klip, lihat handleLyricsRowDragStart).
+  // Kalau salah satu baseId-nya udah kepunya grup, IKUT expand ke semua
+  // anggota grup itu sekalian — biar gampang milih 1 grup utuh buat
+  // "Batalkan Grup" tanpa harus nge-tap satu-satu tiap barisnya.
+  function toggleRowTrackSelect(rowBaseIds: string[]) {
+    setSelectedTrackBaseIds((prev) => {
+      const expanded = new Set(rowBaseIds);
+      rowBaseIds.forEach((id) => {
+        const g = groupOfBaseId(id);
+        g?.memberIds.forEach((m) => expanded.add(m));
+      });
+      const alreadySelected = rowBaseIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (alreadySelected) {
+        expanded.forEach((id) => next.delete(id));
+      } else {
+        expanded.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }
+
+  const matchingSelectedGroup = lyricsGroups.find(
+    (g) =>
+      g.memberIds.length === selectedTrackBaseIds.size &&
+      g.memberIds.every((id) => selectedTrackBaseIds.has(id)),
+  );
+  const canMakeGroupFromSelection = selectedTrackBaseIds.size >= 2;
+
+  function handleMakeGroupFromSelection() {
+    const ids = Array.from(selectedTrackBaseIds);
+    if (ids.length < 2) return;
+    const groupId = `lyrics-group-${Date.now()}`;
+    setLyricsGroups((prev) => [
+      // Lepas dulu anggota lama yang kepilih dari grup sebelumnya
+      // (kalau ada) — biar 1 klip cuma pernah kepunya 1 grup aktif.
+      ...prev
+        .map((g) => ({ ...g, memberIds: g.memberIds.filter((id) => !ids.includes(id)) }))
+        .filter((g) => g.memberIds.length > 1),
+      { id: groupId, memberIds: ids },
+    ]);
+    cancelTrackSelectMode();
+  }
+
+  function handleUngroupSelection() {
+    if (!matchingSelectedGroup) return;
+    setLyricsGroups((prev) => prev.filter((g) => g.id !== matchingSelectedGroup.id));
+    cancelTrackSelectMode();
+  }
+
   // allTextLayers = cuma text layer BIASA (judul/artist/dst) bawaan
   // template — track custom sekarang semuanya lewat jalur lirik
   // (customLyricsLayers), bukan di sini lagi.
@@ -1397,6 +1584,7 @@ export default function Editor({
       customLyricsLayers,
       removedLyricsIds,
       lyricsSettings,
+      lyricsGroups,
     };
   }
 
@@ -1417,6 +1605,7 @@ export default function Editor({
     setCustomLyricsLayers(snap.customLyricsLayers);
     setRemovedLyricsIds(snap.removedLyricsIds);
     setLyricsSettings(snap.lyricsSettings);
+    setLyricsGroups(snap.lyricsGroups);
     lastSnapshotRef.current = snap;
   }
 
@@ -1528,6 +1717,7 @@ export default function Editor({
     customLyricsLayers,
     removedLyricsIds,
     lyricsSettings,
+    lyricsGroups,
   ]);
 
   // Hydrate semua state Editor dari draft lama (kalau resumeDraftId ada) —
@@ -1598,6 +1788,7 @@ export default function Editor({
         );
         setRemovedLyricsIds(new Set(record.removedLyricsIds ?? []));
         setLyricsSettings(record.lyricsSettings ?? {});
+        setLyricsGroups(record.lyricsGroups ?? []);
         setAudioClips(record.audioClips.map((c) => ({ ...c })));
         setHiddenElements(new Set(record.hiddenElements));
         setCurrentSec(record.currentSec ?? 0);
@@ -1639,6 +1830,7 @@ export default function Editor({
         customLyricsLayers,
         removedLyricsIds,
         lyricsSettings,
+        lyricsGroups,
         slotMedia,
         customBackground,
         audioClips,
@@ -1689,6 +1881,7 @@ export default function Editor({
     customLyricsLayers,
     removedLyricsIds,
     lyricsSettings,
+    lyricsGroups,
     audioClips,
     hiddenElements,
   ]);
@@ -2097,20 +2290,37 @@ export default function Editor({
     });
     const startPt = toCanvasPx(e.clientX, e.clientY);
     const startDist = Math.max(1, Math.hypot(startPt.x - centerXPx, startPt.y - centerYPx));
-    const originalTopFontSize = eff.topFontSize;
-    const originalBottomFontSize = eff.bottomFontSize;
+    // Kalau klip ini anggota grup (hasil "Jadikan Grup"), resize berlaku
+    // ke SEMUA anggota grup sekaligus — masing-masing diskalain dari
+    // ukuran font ASLI-nya sendiri (bukan disamain), jadi proporsi antar
+    // teks yang beda ukuran dari awal tetap kejaga.
+    const group = groupOfBaseId(baseId);
+    const memberIds = group ? group.memberIds : [baseId];
+    const originalSizes = new Map<string, { top: number; bottom: number }>();
+    memberIds.forEach((id) => {
+      const memberEff = id === baseId ? eff : getEffectiveLyricsLayer(id);
+      if (memberEff) {
+        originalSizes.set(id, {
+          top: memberEff.topFontSize,
+          bottom: memberEff.bottomFontSize,
+        });
+      }
+    });
     const handleMove = (ev: PointerEvent) => {
       const pt = toCanvasPx(ev.clientX, ev.clientY);
       const dist = Math.max(1, Math.hypot(pt.x - centerXPx, pt.y - centerYPx));
       const scale = clampNum(dist / startDist, 0.3, 4);
-      setLyricsSettings((prev) => ({
-        ...prev,
-        [baseId]: {
-          ...prev[baseId],
-          topFontSize: clampNum(originalTopFontSize * scale, 10, 400),
-          bottomFontSize: clampNum(originalBottomFontSize * scale, 10, 400),
-        },
-      }));
+      setLyricsSettings((prev) => {
+        const next = { ...prev };
+        originalSizes.forEach((orig, id) => {
+          next[id] = {
+            ...next[id],
+            topFontSize: clampNum(orig.top * scale, 10, 400),
+            bottomFontSize: clampNum(orig.bottom * scale, 10, 400),
+          };
+        });
+        return next;
+      });
     };
     const handleUp = () => {
       window.removeEventListener("pointermove", handleMove);
@@ -3946,6 +4156,12 @@ export default function Editor({
     if (entries.length === 0) return null;
     const allHidden = entries.every((l) => hiddenElements.has(l.id));
     const label = entries.length > 1 ? `${entries.length} klip` : entries[0].label;
+    const rowBaseIds = entries
+      .map((l) => lyricsBaseIdOf(l.id))
+      .filter((id): id is string => !!id);
+    const rowSelected =
+      rowBaseIds.length > 0 && rowBaseIds.every((id) => selectedTrackBaseIds.has(id));
+    const rowGrouped = rowBaseIds.some((id) => !!groupOfBaseId(id));
     return (
       <div key={`lyrics-row-${row}`} className="relative flex h-8 items-center justify-between">
         <TrackLabel
@@ -3966,6 +4182,18 @@ export default function Editor({
           hiddenTitle="Tampilkan baris ini"
           shownTitle="Sembunyikan baris ini"
           onReorderPointerDown={(e) => handleLyricsRowDragStart(e, row)}
+          selectMode={trackSelectMode}
+          selected={rowSelected}
+          grouped={rowGrouped}
+          onSelectToggle={() => toggleRowTrackSelect(rowBaseIds)}
+          onEyeLongPress={
+            rowBaseIds.length > 0
+              ? () => {
+                  setTrackSelectMode(true);
+                  toggleRowTrackSelect(rowBaseIds);
+                }
+              : undefined
+          }
         />
         {entries.map((layer) => {
           const baseId = lyricsBaseIdOf(layer.id);
@@ -4414,51 +4642,113 @@ export default function Editor({
             selalu (bukan cuma pas ada klip terpilih) soalnya zoom
             berlaku ke SELURUH timeline, bukan cuma 1 klip. */}
         <div className="flex shrink-0 items-center justify-between gap-1 px-4 pb-1.5">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <span
-              className={`truncate text-[10px] font-medium text-editor-muted transition-opacity duration-300 ${
-                lyricsRowDragHint ? "opacity-100" : "opacity-0"
-              }`}
-            >
-              {lyricsRowDragHint}
-            </span>
-            {isTextMode && allLyricsLayers.length > 1 && (
+          {trackSelectMode ? (
+            // --- Bar seleksi track (fitur "Jadikan Grup") — gantiin
+            // total bar zoom/Rapikan selama mode seleksi aktif, biar
+            // fokus user nggak kepecah. Titik tiga di kanan buka menu
+            // Jadikan Grup / Batalkan Grup sesuai isi seleksi sekarang. ---
+            <>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <button
+                  onClick={cancelTrackSelectMode}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/5 text-editor-muted active:scale-90"
+                  title="Batalkan seleksi"
+                  aria-label="Batalkan seleksi"
+                >
+                  <X size={13} />
+                </button>
+                <span className="flex shrink-0 items-center gap-1 truncate text-[10px] font-medium text-editor-muted">
+                  <ListChecks size={12} className="shrink-0 text-editor-accent" />
+                  {selectedTrackBaseIds.size} track dipilih
+                </span>
+              </div>
+              <div className="relative flex shrink-0 items-center">
+                <button
+                  onClick={() => setTrackGroupMenuOpen((v) => !v)}
+                  className="flex h-6 w-6 items-center justify-center rounded-full bg-white/5 text-editor-muted active:scale-90"
+                  title="Menu aksi grup"
+                  aria-label="Menu aksi grup"
+                >
+                  <MoreVertical size={14} />
+                </button>
+                {trackGroupMenuOpen && (
+                  <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-lg border border-white/10 bg-editor-panel py-1 shadow-lg">
+                    {canMakeGroupFromSelection && (
+                      <button
+                        onClick={handleMakeGroupFromSelection}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] font-medium text-ed-text active:bg-white/10"
+                      >
+                        <Link2 size={12} className="text-editor-accent" />
+                        Jadikan Grup
+                      </button>
+                    )}
+                    {matchingSelectedGroup && (
+                      <button
+                        onClick={handleUngroupSelection}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] font-medium text-ed-text active:bg-white/10"
+                      >
+                        <Unlink2 size={12} className="text-editor-muted" />
+                        Batalkan Grup
+                      </button>
+                    )}
+                    {!canMakeGroupFromSelection && !matchingSelectedGroup && (
+                      <div className="px-3 py-2 text-left text-[10px] text-editor-muted">
+                        Pilih minimal 2 track dulu
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span
+                  className={`truncate text-[10px] font-medium text-editor-muted transition-opacity duration-300 ${
+                    lyricsRowDragHint ? "opacity-100" : "opacity-0"
+                  }`}
+                >
+                  {lyricsRowDragHint}
+                </span>
+                {isTextMode && allLyricsLayers.length > 1 && (
+                  <button
+                    onClick={autoCompactLyricsRows}
+                    className="flex shrink-0 items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-editor-muted active:scale-95"
+                    title="Rapatkan otomatis semua klip lirik yang gak tabrakan waktu jadi baris sesedikit mungkin"
+                  >
+                    <Combine size={11} />
+                    Rapikan
+                  </button>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
               <button
-                onClick={autoCompactLyricsRows}
-                className="flex shrink-0 items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-editor-muted active:scale-95"
-                title="Rapatkan otomatis semua klip lirik yang gak tabrakan waktu jadi baris sesedikit mungkin"
+                onClick={() => zoomTimelineBy(1 / TIMELINE_ZOOM_STEP)}
+                disabled={timelineZoom <= MIN_TIMELINE_ZOOM}
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-white/5 text-editor-muted disabled:opacity-30"
+                title="Zoom out timeline"
               >
-                <Combine size={11} />
-                Rapikan
+                <ZoomOut size={13} />
               </button>
-            )}
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-          <button
-            onClick={() => zoomTimelineBy(1 / TIMELINE_ZOOM_STEP)}
-            disabled={timelineZoom <= MIN_TIMELINE_ZOOM}
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-white/5 text-editor-muted disabled:opacity-30"
-            title="Zoom out timeline"
-          >
-            <ZoomOut size={13} />
-          </button>
-          <button
-            onClick={resetTimelineZoom}
-            disabled={timelineZoom === 1}
-            className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-editor-muted disabled:opacity-30"
-            title="Reset zoom ke fit layar"
-          >
-            {Math.round(timelineZoom * 100)}%
-          </button>
-          <button
-            onClick={() => zoomTimelineBy(TIMELINE_ZOOM_STEP)}
-            disabled={timelineZoom >= MAX_TIMELINE_ZOOM}
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-white/5 text-editor-muted disabled:opacity-30"
-            title="Zoom in timeline (buat trim lebih presisi)"
-          >
-            <ZoomIn size={13} />
-          </button>
-          </div>
+              <button
+                onClick={resetTimelineZoom}
+                disabled={timelineZoom === 1}
+                className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-editor-muted disabled:opacity-30"
+                title="Reset zoom ke fit layar"
+              >
+                {Math.round(timelineZoom * 100)}%
+              </button>
+              <button
+                onClick={() => zoomTimelineBy(TIMELINE_ZOOM_STEP)}
+                disabled={timelineZoom >= MAX_TIMELINE_ZOOM}
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-white/5 text-editor-muted disabled:opacity-30"
+                title="Zoom in timeline (buat trim lebih presisi)"
+              >
+                <ZoomIn size={13} />
+              </button>
+              </div>
+            </>
+          )}
         </div>
         {/* scrollbar-gutter:stable — reservasi ruang scrollbar vertikal
             PERMANEN (baik lagi kepake atau nggak), biar clientWidth
