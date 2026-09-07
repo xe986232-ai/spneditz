@@ -101,6 +101,7 @@ export const LyricsAnimationPresets: {
   OUT: Record<string, PresetFn>;
 } = {
   IN: {
+    none: () => ({}),
     fade: (p) => ({ opacity: p }),
     slideUp: (p) => ({ opacity: p, y: (1 - p) * 60 }),
     slideDown: (p) => ({ opacity: p, y: (1 - p) * -60 }),
@@ -113,6 +114,7 @@ export const LyricsAnimationPresets: {
     bounce: (p) => ({ opacity: p, y: (1 - p) * -80 }),
   },
   LOOP: {
+    none: () => ({}),
     floating: (p) => ({ y: Math.sin(p * Math.PI * 2) * 12 }),
     pulse: (p) => ({ scale: 1 + Math.sin(p * Math.PI * 2) * 0.1 }),
     breathing: (p) => ({ opacity: 0.6 + (Math.sin(p * Math.PI * 2) + 1) * 0.2 }),
@@ -134,6 +136,7 @@ export const LyricsAnimationPresets: {
     glowPulse: (p) => ({ blur: (Math.sin(p * Math.PI * 2) + 1) * 4 }),
   },
   OUT: {
+    none: () => ({}),
     fade: (p) => ({ opacity: 1 - p }),
     slideDown: (p) => ({ opacity: 1 - p, y: p * 60 }),
     slideUp: (p) => ({ opacity: 1 - p, y: p * -60 }),

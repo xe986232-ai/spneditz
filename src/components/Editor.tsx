@@ -48,6 +48,7 @@ import {
   Link2,
   Unlink2,
   ListChecks,
+  Ban,
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import type { Template, TemplateSlot, TemplateTextLayer, TemplateLyricsTextLayer, LyricsGroup, SlotType, LiquidGlassSettings } from "../types";
@@ -658,12 +659,13 @@ function LyricsChipRow({
           <button
             key={opt}
             onClick={() => onChange(opt)}
-            className={`rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize transition active:scale-95 ${
+            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize transition active:scale-95 ${
               value === opt
                 ? "bg-editor-accent text-paper"
                 : "bg-graphite text-mute"
             }`}
           >
+            {opt === "none" && <Ban size={11} strokeWidth={2.5} />}
             {labels?.[opt] ?? opt}
           </button>
         ))}
