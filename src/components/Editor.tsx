@@ -2338,17 +2338,42 @@ export default function Editor({
     if (rect.width <= 0 || rect.height <= 0) return;
     const startX = e.clientX;
     const startY = e.clientY;
-    const originalX = eff.x;
-    const originalY = eff.y;
+    // Kalau klip ini anggota grup (hasil "Jadikan Grup"), geser posisi
+    // x/y DI CANVAS berlaku ke SEMUA anggota grup sekaligus — pola sama
+    // kayak resize di handleLyricsCanvasResizeStart, tiap anggota
+    // digeser dari posisi ASLI-nya sendiri (bukan disamain ke satu
+    // titik) biar jarak antar teks di grup tetap kejaga.
+    const group = groupOfBaseId(baseId);
+    const memberIds = group ? group.memberIds : [baseId];
+    const originalPositions = new Map<string, { x: number; y: number }>();
+    memberIds.forEach((id) => {
+      const memberEff = id === baseId ? eff : getEffectiveLyricsLayer(id);
+      if (memberEff) {
+        originalPositions.set(id, { x: memberEff.x, y: memberEff.y });
+      }
+    });
     const handleMove = (ev: PointerEvent) => {
-      const dxPct = ((ev.clientX - startX) / rect.width) * 100;
-      const dyPct = ((ev.clientY - startY) / rect.height) * 100;
-      const newX = clampNum(originalX + dxPct, 0, 100);
-      const newY = clampNum(originalY + dyPct, 0, 100);
-      setLyricsSettings((prev) => ({
-        ...prev,
-        [baseId]: { ...prev[baseId], x: newX, y: newY },
-      }));
+      let dxPct = ((ev.clientX - startX) / rect.width) * 100;
+      let dyPct = ((ev.clientY - startY) / rect.height) * 100;
+      // Klem dx/dy berdasarkan anggota grup yang paling deket ke tepi
+      // canvas [0, 100], biar semua anggota geser BARENG secara rigid
+      // (jarak antar teks di grup gak berubah) tanpa ada yang "nabrak"
+      // tepi duluan.
+      originalPositions.forEach(({ x, y }) => {
+        dxPct = clampNum(dxPct, 0 - x, 100 - x);
+        dyPct = clampNum(dyPct, 0 - y, 100 - y);
+      });
+      setLyricsSettings((prev) => {
+        const next = { ...prev };
+        originalPositions.forEach(({ x, y }, id) => {
+          next[id] = {
+            ...next[id],
+            x: x + dxPct,
+            y: y + dyPct,
+          };
+        });
+        return next;
+      });
     };
     const handleUp = () => {
       window.removeEventListener("pointermove", handleMove);
