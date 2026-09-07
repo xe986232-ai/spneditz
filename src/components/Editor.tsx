@@ -51,7 +51,7 @@ import {
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import type { Template, TemplateSlot, TemplateTextLayer, TemplateLyricsTextLayer, LyricsGroup, SlotType, LiquidGlassSettings } from "../types";
-import { LYRICS_FONTS, LyricsAnimationPresets, defaultLyricsLayer, buildLyricsUnits, getLyricsTimeline, LYRICS_MIN_SPEED_SCALE } from "../lib/lyricsAnim";
+import { LYRICS_FONTS, LyricsAnimationPresets, defaultLyricsLayer, buildLyricsUnits, getLyricsTimeline, LYRICS_MIN_SPEED_SCALE, LOOP_CYCLE_SEC } from "../lib/lyricsAnim";
 import {
   parseDurationSec,
   initialSlotMedia,
@@ -820,6 +820,114 @@ function LyricsAnimPanel({
         onChange={(v) => onChange("outDurationSec", v)}
       />
     </div>
+  );
+}
+
+// ============================================================================
+// Preset "Teks Bergaya" — 2 gaya teks siap-pakai LENGKAP dengan animasi
+// (in/loop/out) buat panel di kiri canvas pas mode Teks aktif. Beda dari
+// addCustomTextLayer biasa (tombol "Ungu"/"Putih" polos): preset ini udah
+// dibekelin kombinasi inStyle/loopStyle/outStyle + font + warna, jadi
+// user tinggal tap & teksnya langsung "hidup" (loop) tanpa perlu ngoprek
+// panel Animasi manual dulu.
+// ============================================================================
+type TextStylePreset = {
+  id: string;
+  name: string;
+  previewText: string;
+  defaultTopText: string;
+  defaultBottomText: string;
+  fontFamily: string;
+  colorTop: string;
+  colorBottom: string;
+  animMode: TemplateLyricsTextLayer["animMode"];
+  staggerOrder: TemplateLyricsTextLayer["staggerOrder"];
+  staggerDelaySec: number;
+  inStyle: string;
+  inDurationSec: number;
+  loopStyle: string;
+  outStyle: string;
+  outDurationSec: number;
+};
+
+const TEXT_STYLE_PRESETS: TextStylePreset[] = [
+  {
+    id: "preset-bounce-pop",
+    name: "Bounce Pop",
+    previewText: "TEKS",
+    defaultTopText: "Judul Kamu",
+    defaultBottomText: "Sub judul",
+    fontFamily: "Archivo Black",
+    colorTop: "#c3b0ff",
+    colorBottom: "#ffffff",
+    animMode: "char",
+    staggerOrder: "normal",
+    staggerDelaySec: 0.05,
+    inStyle: "pop",
+    inDurationSec: 0.6,
+    loopStyle: "bounce",
+    outStyle: "pop",
+    outDurationSec: 0.6,
+  },
+  {
+    id: "preset-float-glow",
+    name: "Float Glow",
+    previewText: "Teks",
+    defaultTopText: "Judul Kamu",
+    defaultBottomText: "Sub judul",
+    fontFamily: "Poppins",
+    colorTop: "#ffffff",
+    colorBottom: "#c3b0ff",
+    animMode: "word",
+    staggerOrder: "normal",
+    staggerDelaySec: 0.08,
+    inStyle: "slideUp",
+    inDurationSec: 0.8,
+    loopStyle: "floating",
+    outStyle: "fade",
+    outDurationSec: 0.6,
+  },
+];
+
+/** Live-preview 1 kartu preset — muter TERUS-MENERUS (loop) pakai persis
+ *  fungsi LOOP yang sama dengan engine canvas (LyricsAnimationPresets.LOOP),
+ *  cuma diterapkan ke transform CSS 1 <span> teks contoh, bukan ke canvas.
+ *  requestAnimationFrame murni berbasis waktu (bukan state React) biar
+ *  gak micu re-render tiap frame — cukup nulis langsung ke style DOM. */
+function TextPresetLoopPreview({ preset }: { preset: TextStylePreset }) {
+  const spanRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const loopFn = LyricsAnimationPresets.LOOP[preset.loopStyle];
+    if (!loopFn) return;
+    let raf = 0;
+    const startedAt = performance.now();
+    const tick = (now: number) => {
+      const elapsedSec = (now - startedAt) / 1000;
+      const progress = (elapsedSec % LOOP_CYCLE_SEC) / LOOP_CYCLE_SEC;
+      const t = loopFn(progress, 0);
+      const el = spanRef.current;
+      if (el) {
+        const x = t.x ?? 0;
+        const y = t.y ?? 0;
+        const scale = t.scale ?? 1;
+        const rotate = t.rotate ?? 0;
+        el.style.transform = `translate(${x}px, ${y}px) scale(${scale}) rotate(${rotate}deg)`;
+        el.style.opacity = String(t.opacity ?? 1);
+        el.style.filter = t.blur ? `blur(${t.blur / 4}px)` : "none";
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [preset.loopStyle]);
+  return (
+    <span
+      ref={spanRef}
+      className="inline-block whitespace-nowrap"
+      style={{ fontFamily: preset.fontFamily, color: preset.colorTop }}
+    >
+      {preset.previewText}
+    </span>
   );
 }
 
@@ -2767,6 +2875,47 @@ export default function Editor({
     setLyricsPanelTab("teks");
   }
 
+  // Terapkan 1 "Preset Teks" (lihat TEXT_STYLE_PRESETS di atas file) —
+  // sama kayak addCustomTextLayer, tapi field animasinya (in/loop/out,
+  // font, warna) langsung diisi dari preset, bukan default polos. Klip
+  // baru ini langsung ke-add ke timeline (durasi penuh) & otomatis
+  // ke-pilih biar user tinggal ganti teksnya doang.
+  function applyTextPreset(preset: TextStylePreset) {
+    customLyricsCounterRef.current += 1;
+    let n = customLyricsCounterRef.current;
+    while (customLyricsLayers.some((l) => l.id === `custom-lyrics-${n}`)) {
+      customLyricsCounterRef.current += 1;
+      n = customLyricsCounterRef.current;
+    }
+    const newId = `custom-lyrics-${n}`;
+    const newLayer = defaultLyricsLayer({
+      id: newId,
+      label: preset.name,
+      defaultTopText: preset.defaultTopText,
+      defaultBottomText: preset.defaultBottomText,
+      colorTop: preset.colorTop,
+      colorBottom: preset.colorBottom,
+      fontFamily: preset.fontFamily,
+      animMode: preset.animMode,
+      staggerOrder: preset.staggerOrder,
+      staggerDelaySec: preset.staggerDelaySec,
+      inStyle: preset.inStyle,
+      inDurationSec: preset.inDurationSec,
+      loopStyle: preset.loopStyle,
+      outStyle: preset.outStyle,
+      outDurationSec: preset.outDurationSec,
+      startSec: 0,
+      endSec: DURATION,
+    });
+    setCustomLyricsLayers((prev) => [...prev, newLayer]);
+    setSelectedSlotId(null);
+    setSelectedLayerId(null);
+    setSelectedTextLayerId(`${newId}__top`);
+    setShowAddTextStyles(false);
+    setTextToolbarMode("edit");
+    setLyricsPanelTab("teks");
+  }
+
   // Tombol gunting di quick menu track teks — motong 1 klip lirik (baris
   // atas+bawahnya sekaligus, karena 1 klip = 1 pasang baris) jadi DUA klip
   // terpisah di titik playhead sekarang, PERSIS pola handleCutAudio di
@@ -4576,6 +4725,33 @@ export default function Editor({
           isFullscreen ? "" : "px-4 sm:px-8"
         }`}
       >
+        {/* Panel "Preset Teks" — muncul mengambang di KIRI canvas begitu
+            mode Teks aktif (tab "text" di bottom nav). Isinya 2 gaya teks
+            siap-pakai yang tiap kartunya nge-loop hidup (lihat
+            TextPresetLoopPreview) biar user langsung kebayang gimana
+            animasinya sebelum di-tap. Tap kartu -> applyTextPreset. */}
+        {isTextMode && !isFullscreen && !isExporting && (
+          <div className="absolute left-2 top-1/2 z-30 flex w-[92px] -translate-y-1/2 flex-col gap-2 sm:left-4 sm:w-[104px]">
+            <span className="px-0.5 text-[9px] font-semibold uppercase tracking-wide text-mute">
+              Preset teks
+            </span>
+            {TEXT_STYLE_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                onClick={() => applyTextPreset(preset)}
+                title={`Tambah teks gaya ${preset.name}`}
+                className="flex flex-col items-center gap-1 rounded-xl border border-white/10 bg-editor-panel/90 py-3 shadow-[0_8px_20px_rgba(0,0,0,0.35)] backdrop-blur transition active:scale-95"
+              >
+                <span className="flex h-9 w-full items-center justify-center overflow-hidden px-1 text-base font-bold">
+                  <TextPresetLoopPreview preset={preset} />
+                </span>
+                <span className="text-[10px] font-medium text-paper/80">
+                  {preset.name}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
         <div
           // TIDAK pakai `aspect-[...]`/`h-full` lagi (lihat catatan di
           // previewBoxSize) — lebar & tinggi eksplisit dari hasil ukur
