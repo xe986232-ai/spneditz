@@ -40,6 +40,7 @@ import {
   RectangleHorizontal,
   Pencil,
   GripVertical,
+  Copy,
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import type { Template, TemplateSlot, TemplateTextLayer, TemplateLyricsTextLayer, SlotType, LiquidGlassSettings } from "../types";
@@ -2227,6 +2228,70 @@ export default function Editor({
   function handleDeleteLyricsClip(baseId: string) {
     setRemovedLyricsIds((prev) => new Set(prev).add(baseId));
     setSelectedTextLayerId(null);
+    setTextToolbarMode("quick");
+  }
+
+  // Tombol Duplicate di quick menu track teks — bikin salinan PERSIS 1
+  // klip lirik yang lagi diseleksi. "Persis" di sini artinya SEMUA
+  // konfigurasi ikut kebawa, bukan cuma teksnya:
+  // - Setting animasi (in/out/loop, font, posisi, dst) — diambil lewat
+  //   getEffectiveLyricsLayer, yang udah menggabungkan default template +
+  //   override lyricsSettings jadi SATU objek utuh, jadi tinggal disalin
+  //   apa adanya jadi base layer baru (bukan nyalin base+override terpisah).
+  // - Isi teks yang UDAH DIKETIK user (textValues, key "<id>__top"/
+  //   "<id>__bottom") — kalau nggak disalin, klip barunya bakal balik ke
+  //   teks placeholder default, bukan teks asli yang mau diduplikat.
+  // - Warna custom per-baris (textColors) kalau user pernah override lewat
+  //   color picker di panel "Teks".
+  // - Status sembunyi baris atas/bawah (hiddenElements) — misal klip lirik
+  //   custom yang cuma pakai 1 baris (baris lain disembunyikan).
+  // Klip barunya ditaruh PERSIS di posisi/durasi (startSec/endSec) yang
+  // sama kayak aslinya dulu (numpuk) — biar gampang dibandingin, tinggal
+  // digeser sendiri sama user lewat drag klip kalau mau posisi lain.
+  function handleDuplicateLyricsClip(baseId: string) {
+    const eff = getEffectiveLyricsLayer(baseId);
+    if (!eff) return;
+    const newId = makeClipId();
+    const newLayer: TemplateLyricsTextLayer = {
+      ...eff,
+      id: newId,
+      label: `${eff.label} (copy)`,
+    };
+    setCustomLyricsLayers((prev) => [...prev, newLayer]);
+
+    setTextValues((prev) => {
+      const next = { ...prev };
+      for (const part of ["top", "bottom"] as const) {
+        const key = `${baseId}__${part}`;
+        if (prev[key] !== undefined) next[`${newId}__${part}`] = prev[key];
+      }
+      return next;
+    });
+
+    setTextColors((prev) => {
+      const next = { ...prev };
+      for (const part of ["top", "bottom"] as const) {
+        const key = `${baseId}__${part}`;
+        if (prev[key] !== undefined) next[`${newId}__${part}`] = prev[key];
+      }
+      return next;
+    });
+
+    setHiddenElements((prev) => {
+      const next = new Set(prev);
+      for (const part of ["top", "bottom"] as const) {
+        if (prev.has(`${baseId}__${part}`)) next.add(`${newId}__${part}`);
+      }
+      return next;
+    });
+
+    // Lanjut pilih klip HASIL DUPLIKAT (bukan klip asal) di baris
+    // atas/bawah yang sama kayak yang lagi diedit sebelum tombol Duplicate
+    // ditekan — biar user langsung lihat/lanjut edit salinannya.
+    const suffix = selectedTextLayerId?.endsWith("__bottom")
+      ? "bottom"
+      : "top";
+    setSelectedTextLayerId(`${newId}__${suffix}`);
     setTextToolbarMode("quick");
   }
 
@@ -4876,6 +4941,13 @@ export default function Editor({
                     label="Cut"
                     disabled={!canCutSelectedLyrics}
                     onClick={() => handleCutLyricsClip(selectedLyricsBaseId)}
+                  />
+                )}
+                {selectedLyricsBaseId && (
+                  <NavAction
+                    icon={Copy}
+                    label="Duplicate"
+                    onClick={() => handleDuplicateLyricsClip(selectedLyricsBaseId)}
                   />
                 )}
                 {selectedLyricsBaseId && (
