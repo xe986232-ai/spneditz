@@ -3450,14 +3450,37 @@ export default function Editor({
         slots: template.slots.filter((slot) => !hiddenElements.has(slot.id)),
         // allTextLayers cuma text layer BIASA (judul/artist/dst) bawaan
         // template — teks custom lewat "Add teks" sekarang jalur lirik
-        // (allLyricsLayers), TAPI export video ini emang belum pernah
-        // nangani lyricsTextLayers sama sekali (limitasi lama, bukan
-        // regresi dari perubahan ini) — jadi animasi lirik (termasuk teks
-        // custom baru) TIDAK ikut ke video hasil export, cuma tampil di
-        // preview.
+        // (allLyricsLayers), diresolve terpisah di lyricsTextLayers bawah
+        // biar animasi in/loop/out-nya ikut ke video hasil export (lihat
+        // drawLyricsTextLayer di render loop webcodecs-export.ts).
         textLayers: allTextLayers
           .filter((l) => !hiddenElements.has(l.id))
           .map((l) => (textColors[l.id] ? { ...l, color: textColors[l.id] } : l)),
+        // Layer "Lyrics" (bawaan template + hasil "Add teks") — resolved
+        // penuh (setting animasi override, warna, teks final user) di sini
+        // biar webcodecs-export.ts tinggal loop & panggil drawLyricsTextLayer
+        // per-frame TANPA perlu tau textValues/lyricsSettings/hiddenElements
+        // sama sekali (sama pola kayak textLayers di atas). Sebelumnya field
+        // ini SELALU kosong pas export (limitasi lama — lihat investigasi
+        // sebelumnya), jadi animasi lirik cuma pernah nongol di preview.
+        lyricsTextLayers: allLyricsLayers
+          .filter((l) => !hiddenElements.has(l.id))
+          .map((l) => {
+            const eff = getEffectiveLyricsLayer(l.id) ?? l;
+            const topHidden = hiddenElements.has(`${l.id}__top`);
+            const bottomHidden = hiddenElements.has(`${l.id}__bottom`);
+            return {
+              ...eff,
+              defaultTopText: topHidden
+                ? " "
+                : (textValues[`${l.id}__top`] ?? eff.defaultTopText),
+              defaultBottomText: bottomHidden
+                ? " "
+                : (textValues[`${l.id}__bottom`] ?? eff.defaultBottomText),
+              colorTop: textColors[`${l.id}__top`] ?? eff.colorTop,
+              colorBottom: textColors[`${l.id}__bottom`] ?? eff.colorBottom,
+            };
+          }),
         decorLayers: template.decorLayers
           ?.filter((layer) => !hiddenElements.has(layer.id))
           .map((layer) =>

@@ -38,6 +38,7 @@ import {
   applyGlowBloom,
   getPressBounceScale,
   drawImageCoverWithPressBounce,
+  drawLyricsTextLayer,
 } from "./render";
 import type { SlotMediaState, LayerOpacityState, SlotMediaEntry, TextValueState } from "./render";
 import { loadImageEl, renderCompositeCanvas, ExportCancelledError } from "./export";
@@ -717,6 +718,21 @@ export async function exportTemplateVideoWebCodecs(
         totalDurationForMux,
         peaks,
       );
+    }
+    // Layer "Lyrics" (animasi in/loop/out per huruf/kata) — BEDA dari
+    // staticFrontBitmap di atas (dirender sekali di awal & dipakai ulang):
+    // ini HARUS digambar tiap frame karena posisi/opacity tiap huruf
+    // berubah tiap detik (lihat drawLyricsTextLayer & getLyricsTimeline di
+    // lib/lyricsAnim.ts). currentSec di sini sudah di domain waktu yang
+    // SAMA dengan currentSec di preview (Editor.tsx) — layer.startSec/
+    // endSec TIDAK perlu dikali timeScale lagi (beda dari imageSlots di
+    // atas), karena keduanya memang sudah diisi/di-drag user langsung di
+    // domain waktu real timeline (bukan domain durasi referensi
+    // template), persis seperti drawLyricsTextLayer dipakai di preview.
+    // isPlaying selalu true di sini — export video pada dasarnya selalu
+    // "berjalan" lewat waktu, gak ada mode pause kayak di editor.
+    for (const layer of template.lyricsTextLayers ?? []) {
+      drawLyricsTextLayer(ctx, canvasW, canvasH, layer, currentSec);
     }
 
     // Efek Glow (bloom) global — PALING TERAKHIR, setelah semua layer
