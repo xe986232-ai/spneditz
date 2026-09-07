@@ -688,7 +688,11 @@ export function drawLyricsTextLayer(
       ctx.globalAlpha = s.opacity;
       ctx.translate(unitCenterX + s.x, lineCenterY + s.y);
       ctx.rotate((s.rotate * Math.PI) / 180);
-      ctx.scale(s.scale, s.scale);
+      // scaleX/scaleY (kalau preset-nya nyetel eksplisit — lihat preset
+      // "3D"/flip di lyricsAnim.ts) dipakai TERPISAH per sumbu buat efek
+      // card-flip; preset lama yang cuma nyetel `scale` tetap uniform
+      // (fallback ke situ), jadi hasilnya identik kayak sebelum ini ada.
+      ctx.scale(s.scaleX ?? s.scale, s.scaleY ?? s.scale);
       ctx.drawImage(sprite.canvas, -sprite.cx, -sprite.cy);
       ctx.restore();
     });

@@ -81,9 +81,18 @@ export const LyricsEasings = {
  *  di chip-nya — lihat LyricsChipRow di Editor.tsx). Preset lama TIDAK ada
  *  di sini, jadi gak kebadge. */
 export const NEW_LYRICS_PRESET_KEYS = {
-  IN: ["flipIn", "dropIn", "zoomSpinIn", "diagonalIn", "expandIn"],
-  LOOP: ["orbit", "wobble", "flicker", "drift", "heartbeat"],
-  OUT: ["flipOut", "dropOut", "zoomSpinOut", "diagonalOut", "shrinkOut"],
+  IN: [
+    "flipIn", "dropIn", "zoomSpinIn", "diagonalIn", "expandIn",
+    "flipX3DIn", "flipY3DIn", "perspectiveIn", "cubeSpinIn", "depthEmergeIn",
+  ],
+  LOOP: [
+    "orbit", "wobble", "flicker", "drift", "heartbeat",
+    "tumble3D", "spin3D", "pendulum3D", "floatDepth3D", "rockTilt3D",
+  ],
+  OUT: [
+    "flipOut", "dropOut", "zoomSpinOut", "diagonalOut", "shrinkOut",
+    "flipX3DOut", "flipY3DOut", "perspectiveOut", "cubeSpinOut", "depthRecedeOut",
+  ],
 } as const;
 
 /** Hasil satu preset animasi untuk satu unit huruf/kata di satu momen —
@@ -92,6 +101,13 @@ export interface LyricsPresetResult {
   x?: number;
   y?: number;
   scale?: number;
+  /** Skala horizontal/vertikal TERPISAH dari `scale` (opsional) — dipakai
+   *  buat efek "3D" (card-flip): pas nilainya turun ke 0 lalu naik lagi,
+   *  kesannya kayak teks muter di sumbu Y (scaleX) atau sumbu X (scaleY),
+   *  meniru rotasi 3D walau canvas 2D beneran cuma nge-scale lebar/tinggi
+   *  teksnya. Fallback ke `scale` kalau tidak diisi. */
+  scaleX?: number;
+  scaleY?: number;
   rotate?: number;
   opacity?: number;
   blur?: number;
@@ -126,6 +142,22 @@ export const LyricsAnimationPresets: {
     zoomSpinIn: (p) => ({ opacity: p, scale: 0.3 + p * 0.7, rotate: (1 - p) * -180 }),
     diagonalIn: (p) => ({ opacity: p, x: (1 - p) * 60, y: (1 - p) * 60 }),
     expandIn: (p) => ({ opacity: p, scale: 1.8 - p * 0.8 }),
+    flipX3DIn: (p) => {
+      const ang = (1 - p) * (Math.PI / 2);
+      const sx = Math.cos(ang);
+      return { opacity: p, scaleX: sx, blur: (1 - Math.abs(sx)) * 3 };
+    },
+    flipY3DIn: (p) => {
+      const ang = (1 - p) * (Math.PI / 2);
+      const sy = Math.cos(ang);
+      return { opacity: p, scaleY: sy, blur: (1 - Math.abs(sy)) * 3 };
+    },
+    perspectiveIn: (p) => ({ opacity: p, y: (1 - p) * 40, scale: 0.6 + p * 0.4, rotate: (1 - p) * 12 }),
+    cubeSpinIn: (p) => {
+      const ang = (1 - p) * Math.PI;
+      return { opacity: p, scaleX: Math.cos(ang), x: (1 - p) * -50 };
+    },
+    depthEmergeIn: (p) => ({ opacity: p, scale: 0.15 + p * 0.85, blur: (1 - p) * 12, y: (1 - p) * 20 }),
   },
   LOOP: {
     none: () => ({}),
@@ -153,6 +185,25 @@ export const LyricsAnimationPresets: {
     flicker: (p) => ({ opacity: 0.5 + Math.abs(Math.sin(p * Math.PI * 6)) * 0.5 }),
     drift: (p) => ({ x: Math.sin(p * Math.PI * 2) * 14, y: Math.cos(p * Math.PI * 2) * 6 }),
     heartbeat: (p) => ({ scale: 1 + Math.pow(Math.sin(p * Math.PI * 2), 4) * 0.15 }),
+    tumble3D: (p) => ({ scaleY: 1 - Math.abs(Math.sin(p * Math.PI * 2)) * 0.15 }),
+    spin3D: (p) => {
+      const sx = Math.abs(Math.cos(p * Math.PI * 2));
+      return { scaleX: 0.25 + sx * 0.75, blur: (1 - sx) * 2 };
+    },
+    pendulum3D: (p) => ({
+      rotate: Math.sin(p * Math.PI * 2) * 8,
+      y: Math.abs(Math.sin(p * Math.PI * 2)) * 4,
+      scale: 1 - Math.abs(Math.sin(p * Math.PI * 2)) * 0.03,
+    }),
+    floatDepth3D: (p) => ({
+      scale: 1 + Math.sin(p * Math.PI * 2) * 0.06,
+      blur: (Math.sin(p * Math.PI * 2) + 1) * 1.5,
+      y: Math.sin(p * Math.PI * 2) * 6,
+    }),
+    rockTilt3D: (p) => ({
+      rotate: Math.sin(p * Math.PI * 2) * 6,
+      scaleX: 1 - Math.abs(Math.sin(p * Math.PI * 2)) * 0.08,
+    }),
   },
   OUT: {
     none: () => ({}),
@@ -171,6 +222,22 @@ export const LyricsAnimationPresets: {
     zoomSpinOut: (p) => ({ opacity: 1 - p, scale: 1 - p * 0.7, rotate: p * 180 }),
     diagonalOut: (p) => ({ opacity: 1 - p, x: p * 60, y: p * 60 }),
     shrinkOut: (p) => ({ opacity: 1 - p, scale: 1 - p * 0.8 }),
+    flipX3DOut: (p) => {
+      const ang = p * (Math.PI / 2);
+      const sx = Math.cos(ang);
+      return { opacity: 1 - p, scaleX: sx, blur: (1 - Math.abs(sx)) * 3 };
+    },
+    flipY3DOut: (p) => {
+      const ang = p * (Math.PI / 2);
+      const sy = Math.cos(ang);
+      return { opacity: 1 - p, scaleY: sy, blur: (1 - Math.abs(sy)) * 3 };
+    },
+    perspectiveOut: (p) => ({ opacity: 1 - p, y: p * 40, scale: 1 - p * 0.4, rotate: p * 12 }),
+    cubeSpinOut: (p) => {
+      const ang = p * Math.PI;
+      return { opacity: 1 - p, scaleX: Math.cos(ang), x: p * 50 };
+    },
+    depthRecedeOut: (p) => ({ opacity: 1 - p, scale: 1 - p * 0.85, blur: p * 12, y: p * 20 }),
   },
 };
 
@@ -320,6 +387,12 @@ export interface LyricsUnitTransform {
   x: number;
   y: number;
   scale: number;
+  /** Opsional — cuma keisi kalau presetnya eksplisit nyetel scaleX/scaleY
+   *  (lihat LyricsPresetResult). Kalau undefined, render.ts fallback ke
+   *  `scale` biasa (uniform), jadi preset LAMA yang cuma pakai `scale`
+   *  tetep jalan sama persis kayak sebelumnya. */
+  scaleX?: number;
+  scaleY?: number;
   rotate: number;
   opacity: number;
   blur: number;
