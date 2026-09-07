@@ -975,6 +975,13 @@ export default function Editor({
     () => new Set(),
   );
   const [trackGroupMenuOpen, setTrackGroupMenuOpen] = useState(false);
+  // Garis panduan "magnet" (smart guide) yang nyala pas teks lirik lagi
+  // digeser DI CANVAS dan posisinya nempel ke garis tengah vertikal
+  // (x=50%) dan/atau horizontal (y=50%) — lihat handleLyricsCanvasDragStart.
+  const [canvasSnapGuides, setCanvasSnapGuides] = useState<{
+    x: boolean;
+    y: boolean;
+  }>({ x: false, y: false });
   // Keluar dari mode seleksi track otomatis begitu user pindah dari tab
   // "Teks" — biar nggak nyangkut nyala pas balik lagi ke tab lain.
   useEffect(() => {
@@ -2352,6 +2359,12 @@ export default function Editor({
         originalPositions.set(id, { x: memberEff.x, y: memberEff.y });
       }
     });
+    const draggedOriginal = originalPositions.get(baseId) ?? { x: eff.x, y: eff.y };
+    // Magnet ke garis tengah canvas — jarak "nempel" dalam PERSEN (bukan
+    // px), jadi kerasa konsisten di ukuran layar berapa pun. Yang dicek
+    // buat nge-snap cuma posisi klip yang LAGI DIPEGANG (bukan rata-rata
+    // grup), biar jelas & kepredik anchor-nya di mana.
+    const SNAP_THRESHOLD_PCT = 1.5;
     const handleMove = (ev: PointerEvent) => {
       let dxPct = ((ev.clientX - startX) / rect.width) * 100;
       let dyPct = ((ev.clientY - startY) / rect.height) * 100;
@@ -2363,6 +2376,15 @@ export default function Editor({
         dxPct = clampNum(dxPct, 0 - x, 100 - x);
         dyPct = clampNum(dyPct, 0 - y, 100 - y);
       });
+      const draggedX = draggedOriginal.x + dxPct;
+      const draggedY = draggedOriginal.y + dyPct;
+      const snapX = Math.abs(draggedX - 50) < SNAP_THRESHOLD_PCT;
+      const snapY = Math.abs(draggedY - 50) < SNAP_THRESHOLD_PCT;
+      if (snapX) dxPct = 50 - draggedOriginal.x;
+      if (snapY) dyPct = 50 - draggedOriginal.y;
+      setCanvasSnapGuides((prev) =>
+        prev.x === snapX && prev.y === snapY ? prev : { x: snapX, y: snapY },
+      );
       setLyricsSettings((prev) => {
         const next = { ...prev };
         originalPositions.forEach(({ x, y }, id) => {
@@ -2378,6 +2400,7 @@ export default function Editor({
     const handleUp = () => {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
+      setCanvasSnapGuides({ x: false, y: false });
     };
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("pointerup", handleUp);
@@ -4587,6 +4610,28 @@ export default function Editor({
             aria-hidden
             className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-editor-bg"
           />
+
+          {/* Garis panduan "magnet" — nyala pas teks lirik lagi digeser
+              dan posisinya nempel ke tengah canvas (vertikal dan/atau
+              horizontal). Lihat handleLyricsCanvasDragStart. */}
+          {(canvasSnapGuides.x || canvasSnapGuides.y) && !isExporting && (
+            <>
+              {canvasSnapGuides.x && (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-y-0 z-30 w-px bg-editor-accent shadow-[0_0_4px_rgba(0,0,0,0.4)]"
+                  style={{ left: "50%" }}
+                />
+              )}
+              {canvasSnapGuides.y && (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 z-30 h-px bg-editor-accent shadow-[0_0_4px_rgba(0,0,0,0.4)]"
+                  style={{ top: "50%" }}
+                />
+              )}
+            </>
+          )}
 
           {/* Tanda seleksi buat blok teks Lyrics yang lagi keseleksi —
               muncul persis di atas teksnya di canvas, bisa digeser (drag
