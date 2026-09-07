@@ -854,11 +854,11 @@ const TEXT_STYLE_PRESETS: TextStylePreset[] = [
   {
     id: "preset-bounce-pop",
     name: "Bounce Pop",
-    previewText: "TEKS",
-    defaultTopText: "Judul Kamu",
-    defaultBottomText: "Sub judul",
+    previewText: "Teks",
+    defaultTopText: "Teks",
+    defaultBottomText: "",
     fontFamily: "Archivo Black",
-    colorTop: "#c3b0ff",
+    colorTop: "#ffffff",
     colorBottom: "#ffffff",
     animMode: "char",
     staggerOrder: "normal",
@@ -873,11 +873,11 @@ const TEXT_STYLE_PRESETS: TextStylePreset[] = [
     id: "preset-float-glow",
     name: "Float Glow",
     previewText: "Teks",
-    defaultTopText: "Judul Kamu",
-    defaultBottomText: "Sub judul",
+    defaultTopText: "Teks",
+    defaultBottomText: "",
     fontFamily: "Poppins",
     colorTop: "#ffffff",
-    colorBottom: "#c3b0ff",
+    colorBottom: "#ffffff",
     animMode: "word",
     staggerOrder: "normal",
     staggerDelaySec: 0.08,
@@ -2895,6 +2895,12 @@ export default function Editor({
       defaultBottomText: preset.defaultBottomText,
       colorTop: preset.colorTop,
       colorBottom: preset.colorBottom,
+      // Cuma baris ATAS yang aktif (baris bawah dikecilin ke 1px & ikut
+      // di-hidden di bawah) — biar hasilnya SATU baris/kata teks doang,
+      // bukan dua kayak layout lirik atas+bawah biasa. Pola sama kayak
+      // tombol "Ungu"/"Putih" polos di addCustomTextLayer.
+      topFontSize: 120,
+      bottomFontSize: 1,
       fontFamily: preset.fontFamily,
       animMode: preset.animMode,
       staggerOrder: preset.staggerOrder,
@@ -2908,6 +2914,7 @@ export default function Editor({
       endSec: DURATION,
     });
     setCustomLyricsLayers((prev) => [...prev, newLayer]);
+    setHiddenElements((prev) => new Set(prev).add(`${newId}__bottom`));
     setSelectedSlotId(null);
     setSelectedLayerId(null);
     setSelectedTextLayerId(`${newId}__top`);
