@@ -47,7 +47,18 @@ import { loadDrawableSource } from "./exportShared";
 import { buildRemappedAudioBuffer, clipsAreTrivial } from "./audioClips";
 import type { AudioClipExport } from "./audioClips";
 
-const TARGET_FPS = 25;
+const DEFAULT_FPS = 25;
+// Template yang butuh export lebih mulus (mis. animasi teks per-huruf
+// "Lyrics" yang gerakannya cepat & halus) bisa di-daftar di sini biar
+// dapet frame rate lebih tinggi saat export, TANPA ngubah fps template
+// lain. Key = Template.id, value = fps yang dipakai.
+const TEMPLATE_FPS_OVERRIDE: Record<string, number> = {
+  "lyrics-glitch": 60,
+};
+
+function getTargetFps(template: Template): number {
+  return TEMPLATE_FPS_OVERRIDE[template.id] ?? DEFAULT_FPS;
+}
 
 /** Cek dukungan browser buat jalur WebCodecs. Dipanggil oleh engine.ts
  *  SEBELUM nyoba exportTemplateVideoWebCodecs — kalau false, langsung
@@ -266,6 +277,10 @@ export async function exportTemplateVideoWebCodecs(
   if (backgroundImageSrc && !customBackground && template.baseAssetType !== "image") {
     throw new Error("Export baseAssetSrc bertipe video belum didukung di versi ini.");
   }
+
+  // fps ditentukan per-template (lihat TEMPLATE_FPS_OVERRIDE di atas) —
+  // default 25fps, kecuali template yang butuh gerakan lebih mulus.
+  const fps = getTargetFps(template);
 
   onProgress({ stage: "loading-engine", percent: 5, label: "Menyiapkan mesin render (WebCodecs)…" });
 
@@ -522,7 +537,7 @@ export async function exportTemplateVideoWebCodecs(
 
   const { Muxer, ArrayBufferTarget } = await import("mp4-muxer");
 
-  const videoConfig = await findSupportedVideoConfig(canvasW, canvasH, TARGET_FPS);
+  const videoConfig = await findSupportedVideoConfig(canvasW, canvasH, fps);
 
   let audioConfig: AudioEncoderConfig | null = null;
   if (decodedAudioBuffer) {
@@ -535,7 +550,7 @@ export async function exportTemplateVideoWebCodecs(
   const target = new ArrayBufferTarget();
   const muxer = new Muxer({
     target,
-    video: { codec: "avc", width: canvasW, height: canvasH, frameRate: TARGET_FPS },
+    video: { codec: "avc", width: canvasW, height: canvasH, frameRate: fps },
     audio: audioConfig
       ? { codec: "aac", numberOfChannels: audioConfig.numberOfChannels, sampleRate: audioConfig.sampleRate }
       : undefined,
@@ -595,8 +610,8 @@ export async function exportTemplateVideoWebCodecs(
   }
 
   // --- Render loop: per-frame, segmen berurutan. ---
-  const totalFrames = Math.max(1, Math.round(totalDurationForMux * TARGET_FPS));
-  const frameDurationUs = Math.round(1_000_000 / TARGET_FPS);
+  const totalFrames = Math.max(1, Math.round(totalDurationForMux * fps));
+  const frameDurationUs = Math.round(1_000_000 / fps);
 
   const frameCanvas = document.createElement("canvas");
   frameCanvas.width = canvasW;
@@ -619,7 +634,7 @@ export async function exportTemplateVideoWebCodecs(
       throw new ExportCancelledError();
     }
     checkEncoderErrors();
-    const currentSec = frame / TARGET_FPS;
+    const currentSec = frame / fps;
 
     // Cari slot aktif (berurutan, jadi seharusnya cuma satu, tapi tetap
     // ambil yang match rentang waktunya biar konsisten walau ada gap).
@@ -653,7 +668,7 @@ export async function exportTemplateVideoWebCodecs(
         const localT = currentSec - activeSlot.startSec;
         // Seek cuma kalau waktunya beda cukup jauh dari frame sebelumnya
         // (hemat, video pendek biasanya nggak butuh seek presisi per-frame).
-        if (Math.abs(localT - lastVideoSeekSec) >= 1 / TARGET_FPS) {
+        if (Math.abs(localT - lastVideoSeekSec) >= 1 / fps) {
           await seekVideoTo(activeSlot.videoEl, localT);
           lastVideoSeekSec = localT;
         }
@@ -744,7 +759,7 @@ export async function exportTemplateVideoWebCodecs(
       timestamp: frame * frameDurationUs,
       duration: frameDurationUs,
     });
-    const isKeyFrame = frame % TARGET_FPS === 0; // keyframe tiap ~1 detik (lebih rapat = drift kualitas antar-keyframe lebih kecil)
+    const isKeyFrame = frame % fps === 0; // keyframe tiap ~1 detik (lebih rapat = drift kualitas antar-keyframe lebih kecil)
     videoEncoder.encode(videoFrame, { keyFrame: isKeyFrame });
     videoFrame.close();
 
