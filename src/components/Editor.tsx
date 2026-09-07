@@ -1336,6 +1336,24 @@ export default function Editor({
   const draftSavedFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  // Pesan singkat yang nongol pas drag "numpang row" klip lirik DITOLAK
+  // (waktunya tabrakan sama klip di baris tujuan) — tanpa ini, drag yang
+  // gagal keliatan kayak "gak ngapa-ngapain" tanpa penjelasan sama sekali.
+  const [lyricsRowDragHint, setLyricsRowDragHint] = useState<string | null>(
+    null,
+  );
+  const lyricsRowDragHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  function flashLyricsRowDragHint(message: string) {
+    if (lyricsRowDragHintTimerRef.current) {
+      clearTimeout(lyricsRowDragHintTimerRef.current);
+    }
+    setLyricsRowDragHint(message);
+    lyricsRowDragHintTimerRef.current = setTimeout(() => {
+      setLyricsRowDragHint(null);
+    }, 1800);
+  }
 
   // ---- Riwayat Undo/Redo ----------------------------------------------
   // historyRef.past  : tumpukan snapshot SEBELUM state sekarang (paling
@@ -2274,12 +2292,18 @@ export default function Editor({
           return se.startSec < te.endSec && te.startSec < se.endSec;
         });
       });
-      if (hasOverlap) return; // ditolak — baris asal tetap seperti semula.
+      if (hasOverlap) {
+        flashLyricsRowDragHint(
+          "Gak bisa numpang — waktu klipnya tabrakan sama klip di baris itu.",
+        );
+        return; // ditolak — baris asal tetap seperti semula.
+      }
 
       // Aman -> semua klip di baris asal pindah numpang ke baris tujuan.
       sourceLayers.forEach((sl) => {
         updateLyricsSetting(sl.id, "row", targetRow);
       });
+      flashLyricsRowDragHint("Klip dipindah ke baris itu.");
     };
     window.addEventListener("pointerup", handleUp);
   }
@@ -4355,7 +4379,15 @@ export default function Editor({
             tombol buat yang lebih presisi/gampang di-tap. Ditampilin
             selalu (bukan cuma pas ada klip terpilih) soalnya zoom
             berlaku ke SELURUH timeline, bukan cuma 1 klip. */}
-        <div className="flex shrink-0 items-center justify-end gap-1 px-4 pb-1.5">
+        <div className="flex shrink-0 items-center justify-between gap-1 px-4 pb-1.5">
+          <span
+            className={`truncate text-[10px] font-medium text-editor-muted transition-opacity duration-300 ${
+              lyricsRowDragHint ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            {lyricsRowDragHint}
+          </span>
+          <div className="flex shrink-0 items-center gap-1">
           <button
             onClick={() => zoomTimelineBy(1 / TIMELINE_ZOOM_STEP)}
             disabled={timelineZoom <= MIN_TIMELINE_ZOOM}
@@ -4380,6 +4412,7 @@ export default function Editor({
           >
             <ZoomIn size={13} />
           </button>
+          </div>
         </div>
         {/* scrollbar-gutter:stable — reservasi ruang scrollbar vertikal
             PERMANEN (baik lagi kepake atau nggak), biar clientWidth
