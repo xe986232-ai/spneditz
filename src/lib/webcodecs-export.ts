@@ -252,10 +252,17 @@ export async function exportTemplateVideoWebCodecs(
   }
 
   const backgroundImageSrc = customBackground?.url ?? template.baseAssetSrc;
-  if (!backgroundImageSrc) {
+  // Template tanpa foto sama sekali (mis. "Lyrics" polos hitam) masih
+  // valid buat di-export SELAMA punya solidBackground — dulu langsung
+  // dilempar error di sini, padahal preview-nya tetap bisa jalan (lihat
+  // Editor.tsx render loop yang juga fallback ke solidBackground).
+  if (!backgroundImageSrc && !template.solidBackground) {
     throw new Error("Template ini belum punya base asset untuk di-export.");
   }
-  if (!customBackground && template.baseAssetType !== "image") {
+  // Cek tipe baseAssetSrc cuma relevan kalau memang ada backgroundImageSrc
+  // yang berasal dari template (bukan customBackground upload, & bukan
+  // solid-color-only case di atas).
+  if (backgroundImageSrc && !customBackground && template.baseAssetType !== "image") {
     throw new Error("Export baseAssetSrc bertipe video belum didukung di versi ini.");
   }
 
@@ -295,33 +302,54 @@ export async function exportTemplateVideoWebCodecs(
 
   let staticBgBitmap: ImageBitmap;
   try {
-    if (needsBackgroundComposite) {
-      // Dulu lewat compositeLayers() -> Blob JPEG (quality 0.92) -> decode
-      // lagi ke ImageBitmap. Encode JPEG itu yang bikin background BLUR
-      // (apalagi blur berat, 80-100px) keliatan pecah/banding — gradasi
-      // halus adalah kasus terburuk buat blocking artifact JPEG. Sekarang
-      // langsung dari <canvas> ke ImageBitmap, TANPA kompresi lossy apa pun.
+    if (backgroundImageSrc) {
+      if (needsBackgroundComposite) {
+        // Dulu lewat compositeLayers() -> Blob JPEG (quality 0.92) -> decode
+        // lagi ke ImageBitmap. Encode JPEG itu yang bikin background BLUR
+        // (apalagi blur berat, 80-100px) keliatan pecah/banding — gradasi
+        // halus adalah kasus terburuk buat blocking artifact JPEG. Sekarang
+        // langsung dari <canvas> ke ImageBitmap, TANPA kompresi lossy apa pun.
+        const bgCanvas = await renderCompositeCanvas(
+          canvasW,
+          canvasH,
+          backgroundImageSrc,
+          backDecorLayers as TemplateDecorLayer[],
+          layerOpacity,
+          backgroundOpacity,
+          backgroundBlur,
+        );
+        staticBgBitmap = await createImageBitmap(bgCanvas);
+      } else {
+        const bgImg = await loadImageEl(backgroundImageSrc);
+        const c = document.createElement("canvas");
+        c.width = canvasW;
+        c.height = canvasH;
+        const cctx = c.getContext("2d");
+        if (!cctx) throw new Error("Gagal membuat canvas background");
+        cctx.imageSmoothingEnabled = true;
+        cctx.imageSmoothingQuality = "high";
+        drawImageCover(cctx, bgImg, 0, 0, canvasW, canvasH);
+        staticBgBitmap = await createImageBitmap(c);
+      }
+    } else {
+      // Tidak ada foto SAMA SEKALI (mis. "Lyrics" belum diisi background) —
+      // pakai solidBackground template sebagai fill polos, tetap lewat
+      // renderCompositeCanvas biar decor layer "back" (kalau ada) tetap
+      // ikut ditumpuk di atasnya, konsisten sama jalur ber-foto di atas.
       const bgCanvas = await renderCompositeCanvas(
         canvasW,
         canvasH,
-        backgroundImageSrc,
+        null,
         backDecorLayers as TemplateDecorLayer[],
         layerOpacity,
         backgroundOpacity,
-        backgroundBlur,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        template.solidBackground ?? "#000000",
       );
       staticBgBitmap = await createImageBitmap(bgCanvas);
-    } else {
-      const bgImg = await loadImageEl(backgroundImageSrc);
-      const c = document.createElement("canvas");
-      c.width = canvasW;
-      c.height = canvasH;
-      const cctx = c.getContext("2d");
-      if (!cctx) throw new Error("Gagal membuat canvas background");
-      cctx.imageSmoothingEnabled = true;
-      cctx.imageSmoothingQuality = "high";
-      drawImageCover(cctx, bgImg, 0, 0, canvasW, canvasH);
-      staticBgBitmap = await createImageBitmap(c);
     }
   } catch (e) {
     throw new Error(

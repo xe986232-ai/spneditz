@@ -3185,7 +3185,11 @@ export default function Editor({
   }
 
   async function handleExport() {
-    if (!template.baseAssetSrc) return;
+    // Dulu di-guard `if (!template.baseAssetSrc) return;` doang — bikin
+    // export VIDEO nggak jalan sama sekali di template kayak "Lyrics" yang
+    // backgroundnya solidBackground (bukan baseAssetSrc). Sekarang cukup
+    // ada salah satu visual dasar (baseAssetSrc ATAU solidBackground).
+    if (!template.baseAssetSrc && !template.solidBackground) return;
     setIsExporting(true);
     setExportKind("video");
     setExportError(null);
@@ -3598,7 +3602,7 @@ export default function Editor({
         <div />
 
         <div className="relative flex shrink-0 items-center justify-end">
-          {template.baseAssetSrc ? (
+          {template.baseAssetSrc || template.solidBackground ? (
             <>
               <button
                 onClick={() => setShowExportMenu((v) => !v)}

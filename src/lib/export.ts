@@ -72,6 +72,11 @@ export async function renderCompositeCanvas(
     peaks?: number[];
     spectrumLayer?: TemplateSpectrumLayer;
   },
+  // Fallback warna solid dipakai kalau `baseSrc` kosong (mis. template
+  // "Lyrics" yang belum diisi foto sama sekali — backgroundnya solid
+  // hitam/warna lain, lihat template.solidBackground). Diabaikan kalau
+  // baseSrc ada isinya (foto tetap prioritas).
+  solidBackgroundColor?: string | null,
 ): Promise<HTMLCanvasElement> {
   const canvas = document.createElement("canvas");
   canvas.width = canvasW;
@@ -99,6 +104,15 @@ export async function renderCompositeCanvas(
     // kayak preview, bukan gepeng/stretch, dan (2) kalau ada blur, tepiannya
     // di-zoom dikit dulu biar nggak ada gradasi hitam pas di-blur.
     drawImageCoverZoomed(ctx, bgImg, 0, 0, canvasW, canvasH, overscan);
+    ctx.restore();
+  } else if (solidBackgroundColor) {
+    // Tidak ada foto sama sekali (mis. "Lyrics" polos) — isi solid color
+    // apa adanya, bukan dibiarkan transparan (yang bakal jadi hitam polos
+    // pas di-encode ke video/JPEG tanpa alpha channel).
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(100, baseOpacity)) / 100;
+    ctx.fillStyle = solidBackgroundColor;
+    ctx.fillRect(0, 0, canvasW, canvasH);
     ctx.restore();
   }
 
