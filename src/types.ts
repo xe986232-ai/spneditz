@@ -259,6 +259,14 @@ export interface TemplateLyricsTextLayer {
    *  Bisa digeser/diperpanjang user lewat panel edit (durasi klip). */
   startSec: number;
   endSec: number;
+
+  /** Nomor "baris track" di timeline (bukan z-order canvas) — klip-klip
+   *  dengan `row` yang SAMA ditampilkan BERDAMPINGAN dalam 1 baris track
+   *  yang sama (kayak beberapa klip di 1 track CapCut), bukan tiap klip
+   *  dapet baris sendiri-sendiri. Opsional: kalau kosong, klip dianggap
+   *  punya baris sendiri (fallback ke urutannya di allLyricsLayers) —
+   *  behavior lama tetap jalan buat template/klip yang belum di-set. */
+  row?: number;
 }
 
 export interface Template {

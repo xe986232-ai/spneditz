@@ -1955,6 +1955,25 @@ export default function Editor({
       [baseId]: { ...prev[baseId], [key]: value },
     }));
   }
+  // ---- Pengelompokan klip lirik jadi "baris track" (row) — beberapa
+  // klip (baseId beda) bisa numpang jadi 1 baris yang sama di timeline
+  // kalau di-drag ke situ (lihat handleLyricsRowDragStart) & waktunya
+  // (startSec-endSec) gak tabrakan. Klip yang belum pernah di-drag
+  // (row-nya kosong) fallback ke baris sendiri berdasarkan urutannya di
+  // allLyricsLayers, PERSIS behavior lama (1 klip = 1 baris).
+  const lyricsRowOf = (baseId: string): number => {
+    const eff = getEffectiveLyricsLayer(baseId);
+    if (eff && typeof eff.row === "number") return eff.row;
+    return allLyricsLayers.findIndex((l) => l.id === baseId);
+  };
+  const lyricsRowGroups = new Map<number, TemplateLyricsTextLayer[]>();
+  allLyricsLayers.forEach((l) => {
+    const row = lyricsRowOf(l.id);
+    const arr = lyricsRowGroups.get(row) ?? [];
+    arr.push(l);
+    lyricsRowGroups.set(row, arr);
+  });
+  const sortedLyricsRows = [...lyricsRowGroups.keys()].sort((a, b) => a - b);
   // ---- Kotak seleksi buat blok teks Lyrics yang lagi diseleksi (via track
   // di timeline ATAU klik langsung di canvas) — dipakai gambar tanda
   // seleksi + handle drag/resize LANGSUNG DI ATAS CANVAS (lihat JSX di
@@ -2211,40 +2230,57 @@ export default function Editor({
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("pointerup", handleUp);
   }
-  // Drag track ATAS-BAWAH di daftar buat ubah URUTAN (customLyricsLayers)
-  // — sekaligus ngatur mana yang digambar belakangan/di depan pas
-  // beberapa teks custom overlap posisinya di canvas (lihat allLyricsLayers
-  // di render loop: makin belakang urutannya, makin di atas/depan).
-  // Cuma track hasil "Add teks" yang bisa di-reorder gini — text layer
-  // bawaan template (judul/artist/dst) urutannya tetap, gak disentuh.
-  function handleCustomLyricsReorderStart(e: React.PointerEvent, baseId: string) {
+  // Drag track ATAS-BAWAH buat pindah BARIS (row) — bisa "numpang" jadi
+  // 1 baris yang sama dengan track lain (klip-klipnya kelihatan
+  // berdampingan di 1 row, kayak track CapCut), ATAU cuma pindah ke
+  // baris kosong (= reorder biasa, behavior lama). Numpang cuma
+  // diizinkan kalau waktu (startSec-endSec) SEMUA klip di baris asal
+  // gak tabrakan sama SEMUA klip di baris tujuan — kalau tabrakan,
+  // ditolak & baris asal gak berubah sama sekali (snap back).
+  function handleLyricsRowDragStart(e: React.PointerEvent, sourceRow: number) {
     e.preventDefault();
     e.stopPropagation();
     const startY = e.clientY;
-    const startIndex = customLyricsLayers.findIndex((l) => l.id === baseId);
-    if (startIndex === -1) return;
     // Tinggi 1 row track (h-8 = 32px) + gap antar row (gap-0.5 = 2px).
     const ROW_STEP_PX = 34;
+    // Snapshot urutan baris & isinya PAS mulai drag — dipakai buat hitung
+    // baris tujuan berdasarkan seberapa jauh jari digeser, biar gak
+    // "loncat-loncat" gara-gara grouping berubah di tengah drag.
+    const rowsAtStart = sortedLyricsRows;
+    const groupsAtStart = lyricsRowGroups;
+    const startIndex = rowsAtStart.indexOf(sourceRow);
+    if (startIndex === -1) return;
 
-    const handleMove = (ev: PointerEvent) => {
+    const handleUp = (ev: PointerEvent) => {
+      window.removeEventListener("pointerup", handleUp);
       const dY = ev.clientY - startY;
       const steps = Math.round(dY / ROW_STEP_PX);
-      setCustomLyricsLayers((prev) => {
-        const maxIndex = prev.length - 1;
-        const targetIndex = clampNum(startIndex + steps, 0, maxIndex);
-        const fromIndex = prev.findIndex((l) => l.id === baseId);
-        if (fromIndex === -1 || fromIndex === targetIndex) return prev;
-        const arr = [...prev];
-        const [moved] = arr.splice(fromIndex, 1);
-        arr.splice(targetIndex, 0, moved);
-        return arr;
+      if (steps === 0) return;
+      const targetIndex = clampNum(startIndex + steps, 0, rowsAtStart.length - 1);
+      const targetRow = rowsAtStart[targetIndex];
+      if (targetRow === sourceRow) return;
+
+      const sourceLayers = groupsAtStart.get(sourceRow) ?? [];
+      const targetLayers = groupsAtStart.get(targetRow) ?? [];
+
+      // Cek tabrakan: SETIAP klip di baris asal vs SETIAP klip di baris
+      // tujuan. Satu pasang aja overlap -> tolak semuanya, gak jadi numpang.
+      const hasOverlap = sourceLayers.some((sl) => {
+        const se = getEffectiveLyricsLayer(sl.id);
+        if (!se) return false;
+        return targetLayers.some((tl) => {
+          const te = getEffectiveLyricsLayer(tl.id);
+          if (!te) return false;
+          return se.startSec < te.endSec && te.startSec < se.endSec;
+        });
+      });
+      if (hasOverlap) return; // ditolak — baris asal tetap seperti semula.
+
+      // Aman -> semua klip di baris asal pindah numpang ke baris tujuan.
+      sourceLayers.forEach((sl) => {
+        updateLyricsSetting(sl.id, "row", targetRow);
       });
     };
-    const handleUp = () => {
-      window.removeEventListener("pointermove", handleMove);
-      window.removeEventListener("pointerup", handleUp);
-    };
-    window.addEventListener("pointermove", handleMove);
     window.addEventListener("pointerup", handleUp);
   }
   // Bikin 1 klip teks lirik BARU (engine animasi sama persis dgn "BUAH"/
@@ -3717,29 +3753,14 @@ export default function Editor({
   // ---- Track teks (dipakai bareng di tab Edit & tab Teks, biar layer
   // teks kelihatan pas lagi ngedit klip media juga). Klik track buat
   // munculin input edit teks khusus layer itu di toolbar bawah.
-  function renderTextTrack(
-    layer: TemplateTextLayer,
-    // Opsional: rentang startSec..endSec klip ini di timeline. Cuma diisi
-    // buat entri LIRIK (baris atas/bawah klip TemplateLyricsTextLayer) —
-    // itu satu-satunya jenis track teks yang beneran punya posisi/panjang
-    // sendiri di waktu (bisa dipotong-potong). Text layer biasa (judul,
-    // artist, dst) nggak punya startSec/endSec di tipenya sama sekali,
-    // jadi tetap 1 blok statis sepanjang DURATION kalau param ini kosong.
-    timeRange?: { start: number; end: number },
-    // Opsional: cuma diisi buat track teks custom hasil "Add teks" — bikin
-    // klipnya bisa di-drag KIRI-KANAN (pindah posisi waktu) & row-nya bisa
-    // di-drag ATAS-BAWAH (ubah urutan/z-order). Text layer bawaan template
-    // (judul/artist/dst) & baris lirik nonaktif TIDAK dikasih ini, jadi
-    // tetap statis kayak sebelumnya.
-    dragCtx?: { baseId: string; eff: TemplateLyricsTextLayer },
-  ) {
+  // Text layer BIASA (judul/artist/dst) — selalu 1 blok statis sepanjang
+  // DURATION, gak punya waktu/row sendiri, gak bisa di-drag posisinya.
+  function renderTextTrack(layer: TemplateTextLayer) {
     const isSelected = selectedTextLayerId === layer.id;
     const value = textValues[layer.id] || layer.defaultText;
     const isTextHidden = hiddenElements.has(layer.id);
-    const clipStart = timeRange?.start ?? 0;
-    const clipEnd = timeRange?.end ?? DURATION;
-    const clipLeft = clipStart * effectivePxPerSec + TIMELINE_CLIP_OFFSET_PX;
-    const clipWidth = Math.max(28, (clipEnd - clipStart) * effectivePxPerSec - 4);
+    const clipLeft = TIMELINE_CLIP_OFFSET_PX;
+    const clipWidth = Math.max(28, DURATION * effectivePxPerSec - 4);
     return (
       <div key={layer.id} className="relative flex h-8 items-center justify-between">
         <TrackLabel
@@ -3749,11 +3770,6 @@ export default function Editor({
           label={layer.label}
           hiddenTitle={`Tampilkan "${layer.label}"`}
           shownTitle={`Sembunyikan "${layer.label}"`}
-          onReorderPointerDown={
-            dragCtx
-              ? (e) => handleCustomLyricsReorderStart(e, dragCtx.baseId)
-              : undefined
-          }
         />
         <div
           onClick={() => {
@@ -3764,18 +3780,7 @@ export default function Editor({
             setShowAddTextStyles(false);
             if (layer.id === "airplayDevice") dismissAirplayHint();
           }}
-          onPointerDown={
-            dragCtx
-              ? (e) => handleLyricsClipDragStart(e, dragCtx.baseId, dragCtx.eff, layer.id)
-              : undefined
-          }
-          className={`absolute inset-y-0.5 overflow-hidden rounded-md border transition ${
-            dragCtx
-              ? isSelected
-                ? "cursor-grabbing touch-none"
-                : "cursor-grab touch-none active:cursor-grabbing"
-              : "cursor-pointer"
-          } ${
+          className={`absolute inset-y-0.5 cursor-pointer overflow-hidden rounded-md border transition ${
             isSelected
               ? "border-paper ring-2 ring-paper bg-emerald-400/20"
               : "border-emerald-400/40 bg-emerald-400/15"
@@ -3797,26 +3802,119 @@ export default function Editor({
               {value}
             </span>
           </div>
-
-          {/* Handle stretch di tepi KANAN — cuma nongol pas klip ini
-              terseleksi (sama kayak pola handle trim audio), biar nggak
-              numpuk-numpuk keliatannya pas klip masih kecil/banyak. Geser
-              ke kanan = panjangin durasi, geser ke kiri = pendekin —
-              startSec/posisi awal klip nggak ikut kegeser (beda sama drag
-              badan klip yang mindahin seluruh klip). */}
-          {dragCtx && isSelected && (
-            <div
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                handleLyricsClipStretchStart(e, dragCtx.baseId, dragCtx.eff);
-              }}
-              className="absolute inset-y-0 right-0 z-20 w-3 cursor-ew-resize touch-none bg-paper/90"
-              title="Geser buat panjangin/pendekin durasi teks ini"
-            >
-              <div className="absolute left-1/2 top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-graphite" />
-            </div>
-          )}
         </div>
+      </div>
+    );
+  }
+
+  // ---- Klip lirik (baris atas/bawah 1 klip TemplateLyricsTextLayer) —
+  // BEDA dari renderTextTrack di atas: cuma badan klip-nya doang (TANPA
+  // TrackLabel/wrapper row), karena sekarang 1 baris track bisa isi
+  // BANYAK klip lirik berdampingan (lihat renderLyricsRow di bawah) —
+  // dipakai bareng lewat drag-numpang-row (handleLyricsRowDragStart).
+  function renderLyricsClipBox(
+    layer: TemplateTextLayer,
+    timeRange: { start: number; end: number },
+    dragCtx: { baseId: string; eff: TemplateLyricsTextLayer },
+  ) {
+    const isSelected = selectedTextLayerId === layer.id;
+    const value = textValues[layer.id] || layer.defaultText;
+    const isTextHidden = hiddenElements.has(layer.id);
+    const clipLeft = timeRange.start * effectivePxPerSec + TIMELINE_CLIP_OFFSET_PX;
+    const clipWidth = Math.max(28, (timeRange.end - timeRange.start) * effectivePxPerSec - 4);
+    return (
+      <div
+        key={layer.id}
+        onClick={() => {
+          setSelectedSlotId(null);
+          setSelectedLayerId(null);
+          setSelectedTextLayerId(layer.id);
+          setTextToolbarMode("quick");
+          setShowAddTextStyles(false);
+        }}
+        onPointerDown={(e) => handleLyricsClipDragStart(e, dragCtx.baseId, dragCtx.eff, layer.id)}
+        className={`absolute inset-y-0.5 overflow-hidden rounded-md border transition ${
+          isSelected ? "cursor-grabbing touch-none" : "cursor-grab touch-none active:cursor-grabbing"
+        } ${
+          isSelected
+            ? "border-paper ring-2 ring-paper bg-emerald-400/20"
+            : "border-emerald-400/40 bg-emerald-400/15"
+        } ${isTextHidden ? "opacity-40 grayscale" : ""}`}
+        style={{
+          left: clipLeft,
+          width: clipWidth,
+        }}
+        title={layer.label}
+      >
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-0.5 px-1.5">
+          <div className="flex items-center gap-1">
+            <Type className="h-[10px] w-[10px] shrink-0 text-emerald-200" />
+            <span className="truncate text-[9px] font-semibold leading-none text-emerald-100">
+              {layer.label}
+            </span>
+          </div>
+          <span className="max-w-full truncate text-[8px] leading-none text-emerald-200/70">
+            {value}
+          </span>
+        </div>
+
+        {/* Handle stretch di tepi KANAN — cuma nongol pas klip ini
+            terseleksi (sama kayak pola handle trim audio), biar nggak
+            numpuk-numpuk keliatannya pas klip masih kecil/banyak. Geser
+            ke kanan = panjangin durasi, geser ke kiri = pendekin —
+            startSec/posisi awal klip nggak ikut kegeser (beda sama drag
+            badan klip yang mindahin seluruh klip). */}
+        {isSelected && (
+          <div
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              handleLyricsClipStretchStart(e, dragCtx.baseId, dragCtx.eff);
+            }}
+            className="absolute inset-y-0 right-0 z-20 w-3 cursor-ew-resize touch-none bg-paper/90"
+            title="Geser buat panjangin/pendekin durasi teks ini"
+          >
+            <div className="absolute left-1/2 top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-graphite" />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ---- 1 baris track lirik — bisa isi 1 ATAU BEBERAPA klip lirik
+  // berdampingan (hasil "numpang row" lewat drag, lihat
+  // handleLyricsRowDragStart). Satu TrackLabel doang per baris (grip buat
+  // drag row & toggle hidden nyentuh SEMUA klip di baris itu bareng).
+  function renderLyricsRow(row: number, entries: TemplateTextLayer[]) {
+    if (entries.length === 0) return null;
+    const allHidden = entries.every((l) => hiddenElements.has(l.id));
+    const label = entries.length > 1 ? `${entries.length} klip` : entries[0].label;
+    return (
+      <div key={`lyrics-row-${row}`} className="relative flex h-8 items-center justify-between">
+        <TrackLabel
+          hidden={allHidden}
+          onToggleHidden={(e) => {
+            e.stopPropagation();
+            setHiddenElements((prev) => {
+              const next = new Set(prev);
+              entries.forEach((l) => {
+                if (allHidden) next.delete(l.id);
+                else next.add(l.id);
+              });
+              return next;
+            });
+          }}
+          icon={Type}
+          label={label}
+          hiddenTitle="Tampilkan baris ini"
+          shownTitle="Sembunyikan baris ini"
+          onReorderPointerDown={(e) => handleLyricsRowDragStart(e, row)}
+        />
+        {entries.map((layer) => {
+          const baseId = lyricsBaseIdOf(layer.id);
+          const eff = baseId ? getEffectiveLyricsLayer(baseId) : null;
+          if (!baseId || !eff) return null;
+          return renderLyricsClipBox(layer, { start: eff.startSec, end: eff.endSec }, { baseId, eff });
+        })}
       </div>
     );
   }
@@ -4352,7 +4450,7 @@ export default function Editor({
               allTextLayers.length || lyricsTextEntries.length ? (
                 <div style={{ width: TRACK_WIDTH }} className="flex flex-col gap-0.5 pb-1">
                   {allTextLayers.map((layer) => renderTextTrack(layer))}
-                  {lyricsTextEntries
+                  {(() => {
                     // Klip "Add teks" (customLyricsLayers) sengaja cuma
                     // punya 1 baris aktif — baris satunya di-set hidden +
                     // transparan biar visualnya 1 baris (lihat
@@ -4362,22 +4460,30 @@ export default function Editor({
                     // 2 track padahal cuma "Add teks" sekali). Klip
                     // "Lirik" bawaan template (bukan custom) tetap
                     // tampilin 2 baris seperti biasa.
-                    .filter((layer) => {
+                    const visibleEntries = lyricsTextEntries.filter((layer) => {
                       const baseId = lyricsBaseIdOf(layer.id);
                       const isCustomSingleLine = baseId
                         ? customLyricsLayers.some((l) => l.id === baseId)
                         : false;
                       return !(isCustomSingleLine && hiddenElements.has(layer.id));
-                    })
-                    .map((layer) => {
-                    const baseId = lyricsBaseIdOf(layer.id);
-                    const eff = baseId ? getEffectiveLyricsLayer(baseId) : null;
-                    return renderTextTrack(
-                      layer,
-                      eff ? { start: eff.startSec, end: eff.endSec } : undefined,
-                      baseId && eff ? { baseId, eff } : undefined,
-                    );
-                  })}
+                    });
+                    // Kelompokin per BARIS (row) — beberapa klip lirik yang
+                    // udah "numpang" ke row yang sama (lihat
+                    // handleLyricsRowDragStart) dirender BERDAMPINGAN
+                    // dalam 1 baris track, bukan baris terpisah-pisah.
+                    const rowMap = new Map<number, TemplateTextLayer[]>();
+                    visibleEntries.forEach((layer) => {
+                      const baseId = lyricsBaseIdOf(layer.id);
+                      if (!baseId) return;
+                      const row = lyricsRowOf(baseId);
+                      const arr = rowMap.get(row) ?? [];
+                      arr.push(layer);
+                      rowMap.set(row, arr);
+                    });
+                    return [...rowMap.keys()]
+                      .sort((a, b) => a - b)
+                      .map((row) => renderLyricsRow(row, rowMap.get(row)!));
+                  })()}
                 </div>
 
               ) : !showAddTextStyles ? (
