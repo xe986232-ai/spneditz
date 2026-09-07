@@ -846,6 +846,16 @@ export default function Editor({
   // 1920x1080, cuma tukar mana yang lebar/tinggi (lihat getRatioCanvasSize).
   const [canvasRatio, setCanvasRatio] = useState<"9:16" | "16:9">("9:16");
   const [isPlaying, setIsPlaying] = useState(false);
+  // Nyala true SELAMA panel "Animasi" klip lirik lagi dibuka & loop
+  // preview-nya jalan (lihat effect "Live preview panel Animasi" di
+  // bawah) — dipakai KHUSUS buat bilang ke drawLyricsTextLayer "animasiin
+  // teks ini", TANPA ikut menyalakan `isPlaying` global (yang juga
+  // ngontrol audio & playhead timeline utama). Dulu preview ini salah
+  // pakai setIsPlaying(false) buat "matiin playback utama", padahal
+  // drawLyricsTextLayer emang sengaja gambar STATIS kalau isPlaying
+  // false — akibatnya preview keliatan diam sama sekali walau
+  // playhead-nya sebenarnya jalan.
+  const [isLyricsPreviewActive, setIsLyricsPreviewActive] = useState(false);
 
   const [currentSec, setCurrentSec] = useState(0);
   // Slot yang lagi diketuk/terseleksi di timeline atau canvas — kalau ada
@@ -2934,8 +2944,12 @@ export default function Editor({
     if (!layer) return;
 
     // Matikan playback utama (kalau kebetulan lagi jalan) biar rAF utama
-    // di atas nggak rebutan nulis currentSec bareng preview ini.
+    // di atas nggak rebutan nulis currentSec bareng preview ini — TAPI
+    // nyalain isLyricsPreviewActive (BUKAN isPlaying) biar
+    // drawLyricsTextLayer tetap ngitung animasi in/loop/out-nya (lihat
+    // catatan di deklarasi isLyricsPreviewActive di atas).
     setIsPlaying(false);
+    setIsLyricsPreviewActive(true);
 
     const clipStart = layer.startSec;
     const clipDuration = Math.max(0.1, layer.endSec - layer.startSec);
@@ -2963,6 +2977,7 @@ export default function Editor({
         cancelAnimationFrame(lyricsPreviewRafRef.current);
         lyricsPreviewRafRef.current = null;
       }
+      setIsLyricsPreviewActive(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -3215,7 +3230,7 @@ export default function Editor({
           currentSec,
           topHidden ? " " : textValues[`${layer.id}__top`],
           bottomHidden ? " " : textValues[`${layer.id}__bottom`],
-          isPlaying,
+          isPlaying || isLyricsPreviewActive,
         );
       }
     }
@@ -3296,6 +3311,7 @@ export default function Editor({
     progressStyle,
     audioInfo,
     isPlaying,
+    isLyricsPreviewActive,
     canvasRatio,
   ]);
 
