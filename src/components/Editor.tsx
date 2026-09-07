@@ -43,6 +43,7 @@ import {
   Copy,
   ZoomIn,
   ZoomOut,
+  Combine,
 } from "lucide-react";
 import ImageCropModal from "./ImageCropModal";
 import type { Template, TemplateSlot, TemplateTextLayer, TemplateLyricsTextLayer, SlotType, LiquidGlassSettings } from "../types";
@@ -2307,6 +2308,39 @@ export default function Editor({
     };
     window.addEventListener("pointerup", handleUp);
   }
+
+  // Tombol "Rapikan" — otomatis numpuk SEMUA klip lirik jadi baris
+  // sesedikit mungkin (greedy, kayak soal klasik "minimum platform"):
+  // urut klip dari yang paling awal waktunya, taro tiap klip di baris
+  // PERTAMA yang klip terakhirnya udah selesai (endSec <= startSec klip
+  // ini), kalau gak ada -> buka baris baru. Hasilnya klip-klip yang
+  // waktunya gak tabrakan otomatis numpuk 1 baris tanpa perlu drag satu-
+  // satu (drag manual tetap ada, ini cuma jalan pintas biar gak capek
+  // narik jari berkali-kali di HP buat klip yang banyak).
+  function autoCompactLyricsRows() {
+    const layers = [...allLyricsLayers].sort((a, b) => {
+      const ea = getEffectiveLyricsLayer(a.id) ?? a;
+      const eb = getEffectiveLyricsLayer(b.id) ?? b;
+      return ea.startSec - eb.startSec;
+    });
+    const rowEnds: number[] = [];
+    layers.forEach((l) => {
+      const eff = getEffectiveLyricsLayer(l.id) ?? l;
+      let targetRow = rowEnds.findIndex((end) => end <= eff.startSec);
+      if (targetRow === -1) {
+        targetRow = rowEnds.length;
+        rowEnds.push(eff.endSec);
+      } else {
+        rowEnds[targetRow] = eff.endSec;
+      }
+      updateLyricsSetting(l.id, "row", targetRow);
+    });
+    flashLyricsRowDragHint(
+      rowEnds.length === 1
+        ? "Dirapikan jadi 1 baris."
+        : `Dirapikan jadi ${rowEnds.length} baris (ada yang waktunya tabrakan, jadi kepisah).`,
+    );
+  }
   // Bikin 1 klip teks lirik BARU (engine animasi sama persis dgn "BUAH"/
   // "MANGGIS") dgn style warna yg dipilih user di "Add teks" — Ungu
   // (baris atas aktif) atau Putih (baris bawah aktif). Baris yang gak
@@ -4380,13 +4414,25 @@ export default function Editor({
             selalu (bukan cuma pas ada klip terpilih) soalnya zoom
             berlaku ke SELURUH timeline, bukan cuma 1 klip. */}
         <div className="flex shrink-0 items-center justify-between gap-1 px-4 pb-1.5">
-          <span
-            className={`truncate text-[10px] font-medium text-editor-muted transition-opacity duration-300 ${
-              lyricsRowDragHint ? "opacity-100" : "opacity-0"
-            }`}
-          >
-            {lyricsRowDragHint}
-          </span>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span
+              className={`truncate text-[10px] font-medium text-editor-muted transition-opacity duration-300 ${
+                lyricsRowDragHint ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              {lyricsRowDragHint}
+            </span>
+            {isTextMode && allLyricsLayers.length > 1 && (
+              <button
+                onClick={autoCompactLyricsRows}
+                className="flex shrink-0 items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-editor-muted active:scale-95"
+                title="Rapatkan otomatis semua klip lirik yang gak tabrakan waktu jadi baris sesedikit mungkin"
+              >
+                <Combine size={11} />
+                Rapikan
+              </button>
+            )}
+          </div>
           <div className="flex shrink-0 items-center gap-1">
           <button
             onClick={() => zoomTimelineBy(1 / TIMELINE_ZOOM_STEP)}
