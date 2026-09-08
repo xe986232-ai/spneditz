@@ -158,9 +158,10 @@ const SLOT_SHORT_LABEL: Record<SlotType, string> = {
 // Daftar warna preset buat color picker di panel edit teks — dipilih yang
 // kontras & gampang kebaca di atas video (putih/hitam netral + beberapa
 // warna terang standar). Urutan dari yang paling sering dipakai (putih,
-// hitam) sampai warna aksen.
+// hitam, lilac/ungu default "Add teks") sampai warna aksen.
 const TEXT_COLOR_SWATCHES: string[] = [
   "#FFFFFF",
+  "#c3b0ff",
   "#000000",
   "#FF3B30",
   "#FF9500",
@@ -5335,7 +5336,7 @@ export default function Editor({
                           <Check
                             size={12}
                             className={
-                              c === "#FFFFFF" || c === "#FFEB3B"
+                              c === "#FFFFFF" || c === "#FFEB3B" || c === "#c3b0ff"
                                 ? "text-graphite"
                                 : "text-white"
                             }
