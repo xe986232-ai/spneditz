@@ -83,13 +83,13 @@ export type DraftRecord = {
   glassSettings: Record<string, Partial<LiquidGlassSettings>>;
   backgroundOpacity: number;
   backgroundBlur: number;
-  /** Rasio canvas yang dipilih user di tab "Rasio" (9:16 / 16:9). FIX:
+  /** Rasio canvas yang dipilih user di tab "Rasio" (9:16 / 16:9 / 4:5). FIX:
    *  field ini dulu gak pernah disimpan sama sekali ke draft, jadi begitu
    *  draft dibuka lagi, rasio SELALU balik ke default "9:16" walaupun user
    *  sempat ganti ke 16:9 sebelumnya. Draft lama (sebelum fix ini) tidak
    *  punya field ini di IndexedDB — dibaca undefined, fallback ke "9:16"
    *  di sisi pemanggil (Editor.tsx). */
-  canvasRatio?: "9:16" | "16:9";
+  canvasRatio?: "9:16" | "16:9" | "4:5";
   progressStyle: "bar" | "waveform";
   /** Intensitas efek Glow (bloom) global, 0-100. Draft lama (sebelum fitur
    *  ini ada) tidak punya field ini di IndexedDB — dibaca undefined, di-
@@ -175,7 +175,7 @@ export async function saveDraft(
     glassSettings: Record<string, Partial<LiquidGlassSettings>>;
     backgroundOpacity: number;
     backgroundBlur: number;
-    canvasRatio?: "9:16" | "16:9";
+    canvasRatio?: "9:16" | "16:9" | "4:5";
     progressStyle: "bar" | "waveform";
     glowIntensity: number;
     textValues: TextValueState;

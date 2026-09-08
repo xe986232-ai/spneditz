@@ -116,17 +116,28 @@ const TOOLS: Tool[] = [
   { id: "ratio", label: "Rasio", icon: MonitorSmartphone },
 ];
 
-/** Ukuran canvas efektif buat tiap pilihan Rasio — SELALU dari budget
- *  resolusi 1920x1080 (cuma orientasinya yang beda), independen dari
- *  canvasWidth/canvasHeight bawaan template (yang semuanya masih 1080x1920
- *  fixed di data/templates.ts). Dipakai di preview (canvas asli & CSS
- *  aspect-ratio-nya) DAN di export (webcodecs-export.ts baca dari
+/** Ukuran canvas efektif buat tiap pilihan Rasio — 9:16 & 16:9 dari budget
+ *  resolusi 1920x1080 (cuma orientasinya yang beda), 4:5 (potret, mis. buat
+ *  feed Instagram) pakai 1080x1350. Independen dari canvasWidth/canvasHeight
+ *  bawaan template (yang semuanya masih 1080x1920 fixed di
+ *  data/templates.ts). Dipakai di preview (canvas asli & CSS aspect-ratio-
+ *  nya) DAN di export (webcodecs-export.ts baca dari
  *  exportTemplate.canvasWidth/Height, lihat handleExport). */
-function getRatioCanvasSize(ratio: "9:16" | "16:9"): {
+function getRatioCanvasSize(ratio: "9:16" | "16:9" | "4:5"): {
   width: number;
   height: number;
 } {
-  return ratio === "16:9" ? { width: 1920, height: 1080 } : { width: 1080, height: 1920 };
+  if (ratio === "16:9") return { width: 1920, height: 1080 };
+  if (ratio === "4:5") return { width: 1080, height: 1350 };
+  return { width: 1080, height: 1920 };
+}
+
+/** Class Tailwind `aspect-[...]` yang sesuai buat tiap pilihan Rasio,
+ *  dipakai di boks preview canvas (lihat pemakaian di JSX di bawah). */
+function getRatioAspectClass(ratio: "9:16" | "16:9" | "4:5"): string {
+  if (ratio === "16:9") return "aspect-[16/9]";
+  if (ratio === "4:5") return "aspect-[4/5]";
+  return "aspect-[9/16]";
 }
 
 const SLOT_ICON: Record<SlotType, LucideIcon> = {
@@ -827,7 +838,7 @@ export default function Editor({
   // Rasio canvas: "9:16" (potret, default — samain sama semua template
   // yang ada sekarang) atau "16:9" (lanskap). Resolusi TETAP di budget
   // 1920x1080, cuma tukar mana yang lebar/tinggi (lihat getRatioCanvasSize).
-  const [canvasRatio, setCanvasRatio] = useState<"9:16" | "16:9">("9:16");
+  const [canvasRatio, setCanvasRatio] = useState<"9:16" | "16:9" | "4:5">("9:16");
   const [isPlaying, setIsPlaying] = useState(false);
   // Nyala true SELAMA panel "Animasi" klip lirik lagi dibuka & loop
   // preview-nya jalan (lihat effect "Live preview panel Animasi" di
@@ -5404,6 +5415,26 @@ export default function Editor({
                       16:9
                     </span>
                   </button>
+                  <button
+                    onClick={() => setCanvasRatio("4:5")}
+                    className={`flex flex-col items-center gap-1.5 rounded-xl border px-3.5 py-2.5 transition active:scale-95 ${
+                      canvasRatio === "4:5"
+                        ? "border-paper bg-paper/10"
+                        : "border-mute/15 bg-graphite/40"
+                    }`}
+                  >
+                    <RectangleVertical
+                      size={22}
+                      className={canvasRatio === "4:5" ? "text-paper" : "text-mute"}
+                    />
+                    <span
+                      className={`text-[10px] font-medium ${
+                        canvasRatio === "4:5" ? "text-paper" : "text-mute"
+                      }`}
+                    >
+                      4:5
+                    </span>
+                  </button>
                 </div>
               )}
               {/* Tab "Gaya" — preview visual tiap opsi progress bar SEBELUM
@@ -5686,7 +5717,7 @@ export default function Editor({
             {isExporting && (
               <div className="relative">
                 {exportSnapshot ? (
-                  <div className={`relative mx-auto mb-4 ${canvasRatio === "16:9" ? "aspect-[16/9]" : "aspect-[9/16]"} w-full overflow-hidden rounded-2xl border border-white/10 bg-black`}>
+                  <div className={`relative mx-auto mb-4 ${getRatioAspectClass(canvasRatio)} w-full overflow-hidden rounded-2xl border border-white/10 bg-black`}>
                     <img
                       src={exportSnapshot}
                       alt=""
@@ -5776,13 +5807,13 @@ export default function Editor({
                   <img
                     src={exportResultUrl}
                     alt="Hasil export"
-                    className={`mt-3 ${canvasRatio === "16:9" ? "aspect-[16/9]" : "aspect-[9/16]"} w-full rounded-2xl border border-white/10 bg-black object-cover`}
+                    className={`mt-3 ${getRatioAspectClass(canvasRatio)} w-full rounded-2xl border border-white/10 bg-black object-cover`}
                   />
                 ) : (
                   <video
                     src={exportResultUrl}
                     controls
-                    className={`mt-3 ${canvasRatio === "16:9" ? "aspect-[16/9]" : "aspect-[9/16]"} w-full rounded-2xl border border-white/10 bg-black`}
+                    className={`mt-3 ${getRatioAspectClass(canvasRatio)} w-full rounded-2xl border border-white/10 bg-black`}
                   />
                 )}
                 <div className="mt-3 flex gap-2">
