@@ -743,7 +743,7 @@ export default function Timeline(props: TimelineProps) {
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2 [scrollbar-gutter:stable]">
         <div
           ref={timelineScrollRef}
-          className="overflow-x-auto touch-pan-x"
+          className="overflow-x-auto touch-none"
           onPointerDown={handleTimelinePinchPointerDown}
           onPointerMove={handleTimelinePinchPointerMove}
           onPointerUp={handleTimelinePinchPointerUp}

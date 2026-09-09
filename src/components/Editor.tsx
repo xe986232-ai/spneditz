@@ -1320,10 +1320,38 @@ export default function Editor({
   const pinchStateRef = useRef<{ startDist: number; startZoom: number } | null>(
     null,
   );
+  // ---- Drag-to-scrub 1 jari di mana aja di badan timeline (ruler / area
+  // kosong track) — SEBELUMNYA cuma garis putih (handlePlayheadPointerDown)
+  // yang bisa nge-set posisi playhead lewat drag; drag di badan timeline
+  // cuma nge-scroll native div-nya (touch-pan-x), yang bikin scrollLeft
+  // "ketinggalan" dari currentSec, terus pas ada re-render yang manggil
+  // centerTimelineOnSec(currentSec) (habis pointerup, ganti track, dst),
+  // scroll-nya "ditarik paksa" balik ke posisi sesuai currentSec — itu yang
+  // kerasa kayak "loncat". Fix-nya: matiin native scroll (lihat
+  // className "touch-none" di TimelineParts.tsx) & drive scrollLeft-nya
+  // manual di sini, pakai rumus DELTA yang SAMA persis kayak
+  // handlePlayheadPointerDown, biar arah & rasa gesernya konsisten di
+  // mana pun user mulai nge-drag. Klip-klip (media/audio/teks) tetep
+  // aman karena masing-masing punya onPointerDown sendiri yang udah
+  // stopPropagation(), jadi event pointerdown-nya nggak nyampe ke sini.
+  const timelineScrubRef = useRef<{ startX: number; startSec: number } | null>(
+    null,
+  );
 
   function handleTimelinePinchPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     pinchPointersRef.current.set(e.pointerId, e.clientX);
-    if (pinchPointersRef.current.size === 2) {
+    if (pinchPointersRef.current.size === 1) {
+      // Jari/mouse pertama nempel di area kosong timeline — mulai scrub
+      // playhead langsung dari sini (bukan cuma bisa dari garis putih).
+      e.currentTarget.setPointerCapture(e.pointerId);
+      setIsPlaying(false);
+      isPlayingRef.current = false;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      timelineScrubRef.current = { startX: e.clientX, startSec: currentSec };
+    } else if (pinchPointersRef.current.size === 2) {
+      // Jari ke-2 nempel juga → ini pinch-zoom, bukan scrub. Batalin
+      // scrub 1 jari yang mungkin lagi jalan.
+      timelineScrubRef.current = null;
       const xs = [...pinchPointersRef.current.values()];
       pinchStateRef.current = {
         startDist: Math.max(1, Math.abs(xs[0] - xs[1])),
@@ -1336,23 +1364,38 @@ export default function Editor({
     if (!pinchPointersRef.current.has(e.pointerId)) return;
     pinchPointersRef.current.set(e.pointerId, e.clientX);
     const pinch = pinchStateRef.current;
-    if (!pinch || pinchPointersRef.current.size !== 2) return;
-    const xs = [...pinchPointersRef.current.values()];
-    const dist = Math.max(1, Math.abs(xs[0] - xs[1]));
-    const newZoom = clampTimelineZoom(
-      pinch.startZoom * (dist / pinch.startDist),
-    );
-    setTimelineZoom(newZoom);
-    // Garis putih diam di tengah — pinch-zoom juga re-center ke
-    // currentSec (bukan lagi ke titik tengah 2 jari), konsisten sama
-    // tombol +/- zoom.
-    requestAnimationFrame(() => centerTimelineOnSec(currentSec));
+    if (pinch && pinchPointersRef.current.size === 2) {
+      const xs = [...pinchPointersRef.current.values()];
+      const dist = Math.max(1, Math.abs(xs[0] - xs[1]));
+      const newZoom = clampTimelineZoom(
+        pinch.startZoom * (dist / pinch.startDist),
+      );
+      setTimelineZoom(newZoom);
+      // Garis putih diam di tengah — pinch-zoom juga re-center ke
+      // currentSec (bukan lagi ke titik tengah 2 jari), konsisten sama
+      // tombol +/- zoom.
+      requestAnimationFrame(() => centerTimelineOnSec(currentSec));
+      return;
+    }
+    const scrub = timelineScrubRef.current;
+    if (scrub && pinchPointersRef.current.size === 1) {
+      const dSec = (e.clientX - scrub.startX) / effectivePxPerSec;
+      const sec = Math.min(DURATION, Math.max(0, scrub.startSec + dSec));
+      setCurrentSec(sec);
+      centerTimelineOnSec(sec);
+    }
   }
 
   function handleTimelinePinchPointerUp(e: React.PointerEvent<HTMLDivElement>) {
     pinchPointersRef.current.delete(e.pointerId);
     if (pinchPointersRef.current.size < 2) {
       pinchStateRef.current = null;
+    }
+    if (pinchPointersRef.current.size === 0) {
+      timelineScrubRef.current = null;
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
     }
   }
 
