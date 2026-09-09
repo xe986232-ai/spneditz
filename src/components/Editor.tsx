@@ -42,7 +42,7 @@ import {
 import ImageCropModal from "./ImageCropModal";
 import Timeline from "./timeline/Timeline";
 import type { Template, TemplateSlot, TemplateTextLayer, TemplateLyricsTextLayer, LyricsGroup, SlotType, LiquidGlassSettings } from "../types";
-import { LYRICS_FONTS, LyricsAnimationPresets, defaultLyricsLayer, buildLyricsUnits, getLyricsTimeline, LYRICS_MIN_SPEED_SCALE, LOOP_CYCLE_SEC, NEW_LYRICS_PRESET_KEYS } from "../lib/lyricsAnim";
+import { LYRICS_FONTS, LyricsAnimationPresets, defaultLyricsLayer, LOOP_CYCLE_SEC, NEW_LYRICS_PRESET_KEYS } from "../lib/lyricsAnim";
 import {
   parseDurationSec,
   initialSlotMedia,
@@ -362,7 +362,7 @@ const MIN_CLIP_DURATION = 0.3;
 // motong track teks nggak bisa bikin salah satu potongannya lebih pendek
 // dari ini (biar animasi in/out-nya masih kelihatan wajar, nggak "kepotong
 // abis" jadi 0 detik).
-const MIN_LYRICS_CLIP_DURATION = 0.4;
+const MIN_LYRICS_CLIP_DURATION = 0.05;
 // Batas bawah "kecepatan" animasi in/out klip lirik pas track-nya
 // dipendekin (drag handle tepi kanan ATAU gunting/cut) — nilainya diimpor
 // dari lib/lyricsAnim.ts (satu sumber kebenaran, dipakai juga sebagai
@@ -2577,27 +2577,14 @@ export default function Editor({
   // animasi super ngebut lewat jalur ini (celah yang belum ke-cover fix
   // sebelumnya).
   function computeLyricsComfortableMin(
-    baseId: string,
-    eff: TemplateLyricsTextLayer,
+    _baseId: string,
+    _eff: TemplateLyricsTextLayer,
   ): number {
-    // Kebutuhan ASLI animasi in+out+stagger klip ini (BELUM di-skala turun
-    // sama sekali — clipDurationSec dikasih angka gede banget di bawah
-    // biar getLyricsTimeline nggak mengaktifkan skala-nya, jadi
-    // inTotal+outTotal yang balik itu murni nilai apa adanya dari setting
-    // layer.inDurationSec/outDurationSec/staggerDelaySec + jumlah
-    // huruf/kata teks SEKARANG).
-    const topText = textValues[`${baseId}__top`] ?? eff.defaultTopText;
-    const bottomText = textValues[`${baseId}__bottom`] ?? eff.defaultBottomText;
-    const units = buildLyricsUnits(topText, bottomText, eff.animMode);
-    const rawTimeline = getLyricsTimeline(
-      units.length,
-      eff.staggerDelaySec,
-      eff.inDurationSec,
-      eff.outDurationSec,
-      Number.MAX_SAFE_INTEGER,
-    );
-    const naturalNeeded = rawTimeline.inTotal + rawTimeline.outTotal;
-    return Math.max(MIN_LYRICS_CLIP_DURATION, naturalNeeded * LYRICS_MIN_SPEED_SCALE);
+    // Batasan berdasarkan kebutuhan animasi in/out/stagger udah dicabut —
+    // track teks/lirik sekarang boleh dipendekin sependek-pendeknya,
+    // cuma dijaga floor kecil (MIN_LYRICS_CLIP_DURATION) biar klipnya
+    // nggak sampai 0 detik / hilang dari timeline.
+    return MIN_LYRICS_CLIP_DURATION;
   }
 
   function handleLyricsClipStretchStart(
