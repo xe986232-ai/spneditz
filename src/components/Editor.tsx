@@ -2760,7 +2760,7 @@ export default function Editor({
   // tetap 1 baris teks (bukan 2 baris kayak klip Lyrics bawaan), TAPI
   // tetap kebawa full animasi in/loop/out + bisa di-custom lewat tab
   // "Animasi". Langsung terseleksi & masuk mode edit teks kosong.
-  function addCustomTextLayer(style: "purple" | "white") {
+  function addCustomTextLayer(style: "purple" | "white" | "rgbglow") {
     customLyricsCounterRef.current += 1;
     let n = customLyricsCounterRef.current;
     // Pengaman ekstra: kalau id ini SOMEHOW udah kepakai (mis. skenario
@@ -2775,6 +2775,11 @@ export default function Editor({
     }
     const newId = `custom-lyrics-${n}`;
     const isPurple = style === "purple";
+    // "rgbglow" dipakein di baris BAWAH juga (pola sama kayak "white") —
+    // bedanya cuma textEffect-nya "rgbGlow" (ghost merah kiri-atas + ghost
+    // biru kanan-bawah + glow tebal, teks putih — lihat buildLyricsLetterSprite
+    // di lib/render.ts), style "purple"/"white" LAMA sama sekali tidak
+    // disentuh (textEffect default undefined -> tetap "default").
     const newLayer = defaultLyricsLayer({
       id: newId,
       label: `Teks ${n}`,
@@ -2784,6 +2789,7 @@ export default function Editor({
       colorBottom: isPurple ? "transparent" : "#FFFFFF",
       topFontSize: isPurple ? 90 : 1,
       bottomFontSize: isPurple ? 1 : 90,
+      textEffect: style === "rgbglow" ? "rgbGlow" : "default",
       startSec: 0,
       endSec: DURATION,
     });
@@ -5250,6 +5256,34 @@ export default function Editor({
                     />
                     <span className="text-[10px] font-semibold text-paper">
                       Putih
+                    </span>
+                  </button>
+                  {/* Style BARU: "RGB Glow" — ghost merah kiri-atas + ghost
+                      biru kanan-bawah + glow tebal, teks utama putih (lihat
+                      addCustomTextLayer("rgbglow") & textEffect "rgbGlow"
+                      di lib/render.ts). Swatch-nya sengaja ditumpuk 3
+                      lingkaran kecil (merah/putih/biru) biar langsung
+                      kebaca beda dari swatch solid "Ungu"/"Putih". */}
+                  <button
+                    onClick={() => addCustomTextLayer("rgbglow")}
+                    className="flex h-14 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-mute/20 bg-graphite transition active:scale-95"
+                  >
+                    <span className="relative flex h-4 w-4 items-center justify-center">
+                      <span
+                        className="absolute h-3.5 w-3.5 rounded-full opacity-90 blur-[1px]"
+                        style={{ backgroundColor: "#ff2a2a", transform: "translate(-2.5px, -2.5px)" }}
+                      />
+                      <span
+                        className="absolute h-3.5 w-3.5 rounded-full opacity-90 blur-[1px]"
+                        style={{ backgroundColor: "#2a6bff", transform: "translate(2.5px, 2.5px)" }}
+                      />
+                      <span
+                        className="absolute h-3 w-3 rounded-full border border-mute/30"
+                        style={{ backgroundColor: "#FFFFFF" }}
+                      />
+                    </span>
+                    <span className="text-[10px] font-semibold text-paper">
+                      RGB Glow
                     </span>
                   </button>
                 </div>

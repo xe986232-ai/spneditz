@@ -267,6 +267,17 @@ export interface TemplateLyricsTextLayer {
    *  punya baris sendiri (fallback ke urutannya di allLyricsLayers) —
    *  behavior lama tetap jalan buat template/klip yang belum di-set. */
   row?: number;
+
+  /** Varian efek visual tiap huruf — "default" = signature halo+RGB-split
+   *  tipis yang udah ada dari awal (lihat buildLyricsLetterSprite di
+   *  lib/render.ts), TIDAK berubah. "rgbGlow" = style BARU yang dipilih
+   *  user lewat tombol "RGB Glow" di panel "Add Text": ghost merah offset
+   *  ke KIRI-ATAS & ghost biru offset ke KANAN-BAWAH, keduanya dengan glow
+   *  blur lebih tebal/jelas (neon-ish), teks utama putih tanpa warna lain —
+   *  terinspirasi video referensi user (chromatic aberration + glow).
+   *  Opsional: kalau kosong dianggap "default", jadi klip/template lama
+   *  tetap tampil identik seperti sebelumnya. */
+  textEffect?: "default" | "rgbGlow";
 }
 
 /** Grup klip lirik ("track Text") yang di-link user lewat fitur seleksi

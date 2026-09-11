@@ -396,6 +396,17 @@ interface LyricsLetterSprite {
 const lyricsSpriteCache = new Map<string, LyricsLetterSprite>();
 const LYRICS_SPRITE_CACHE_MAX = 600;
 
+/** Varian efek sprite huruf:
+ *  - "default": signature halo+RGB-split tipis yang udah ada dari awal,
+ *    TIDAK diubah sama sekali (dipakai kalau layer.textEffect kosong/
+ *    "default" — semua template/klip lama tetap identik).
+ *  - "rgbGlow": style BARU — ghost merah offset KIRI-ATAS & ghost biru
+ *    offset KANAN-BAWAH, offsetnya lebih jauh & glow-nya lebih tebal biar
+ *    kesannya "neon"/menyala jelas (persis referensi user: chromatic
+ *    aberration + glow, bukan cuma shadow tipis). Teks utama selalu putih
+ *    terang dengan glow putih lembut di sekelilingnya. */
+type LyricsLetterEffect = "default" | "rgbGlow";
+
 function buildLyricsLetterSprite(
   text: string,
   fontSize: number,
@@ -403,15 +414,21 @@ function buildLyricsLetterSprite(
   fontStyle: string,
   color: string,
   blurBucket: number,
+  effect: LyricsLetterEffect = "default",
 ): LyricsLetterSprite {
   const font = `900 ${fontStyle} ${fontSize}px ${fontStack}`;
   const measure = document.createElement("canvas").getContext("2d")!;
   measure.font = font;
   const textW = Math.max(1, measure.measureText(text).width);
 
+  // rgbGlow butuh bleed lebih gede (offset ghost lebih jauh + glow lebih
+  // tebal) daripada default, biar gak kepotong di tepi sprite.
+  const isRgbGlow = effect === "rgbGlow";
+  const padExtra = isRgbGlow ? 24 : 0;
+
   // Padding generous buat nampung "bleed" blur/shadow (halo blur radiusnya
   // sampai 16+blurBucket px, shadowBlur 22px) biar nggak kepotong di tepi.
-  const pad = Math.ceil(fontSize * 0.5 + blurBucket * 3 + 48);
+  const pad = Math.ceil(fontSize * 0.5 + blurBucket * 3 + 48 + padExtra);
   const w = Math.ceil(textW + pad * 2);
   const h = Math.ceil(fontSize * 1.6 + pad * 2);
 
@@ -425,6 +442,54 @@ function buildLyricsLetterSprite(
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
+  if (isRgbGlow) {
+    // --- Style BARU: "RGB Glow" ---------------------------------------
+    // Offset & blur diskalakan dikit ke ukuran font biar tetap proporsional
+    // di font kecil maupun besar (referensi dihitung buat ~90-120px).
+    const k = Math.max(0.6, Math.min(1.6, fontSize / 100));
+    const offset = 5 * k;
+
+    // 1) glow putih lembut di belakang (halo menyala)
+    ctx.save();
+    ctx.globalAlpha = 0.45;
+    ctx.filter = `blur(${20 + blurBucket}px)`;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(text, cx, cy);
+    ctx.restore();
+
+    // 2) ghost MERAH — offset ke KIRI-ATAS, dengan glow blur tebal
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.filter = `blur(${4 + blurBucket}px)`;
+    ctx.shadowColor = "#ff2a2a";
+    ctx.shadowBlur = 14 * k;
+    ctx.fillStyle = "#ff2a2a";
+    ctx.fillText(text, cx - offset, cy - offset);
+    ctx.restore();
+
+    // 3) ghost BIRU — offset ke KANAN-BAWAH, dengan glow blur tebal
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.filter = `blur(${4 + blurBucket}px)`;
+    ctx.shadowColor = "#2a6bff";
+    ctx.shadowBlur = 14 * k;
+    ctx.fillStyle = "#2a6bff";
+    ctx.fillText(text, cx + offset, cy + offset);
+    ctx.restore();
+
+    // 4) teks utama putih + glow putih tipis (paling depan, paling tajam)
+    ctx.save();
+    ctx.filter = blurBucket > 0.05 ? `blur(${blurBucket}px)` : "none";
+    ctx.shadowColor = "#ffffff";
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(text, cx, cy);
+    ctx.restore();
+
+    return { canvas, cx, cy };
+  }
+
+  // --- Style LAMA/DEFAULT — tidak diubah sama sekali ------------------
   // 1) halo blur putih (paling belakang)
   ctx.save();
   ctx.globalAlpha = 0.35;
@@ -468,8 +533,9 @@ function getLyricsLetterSprite(
   fontStyle: string,
   color: string,
   blurBucket: number,
+  effect: LyricsLetterEffect = "default",
 ): LyricsLetterSprite {
-  const key = `${text}\u0001${fontSize}\u0001${fontStack}\u0001${fontStyle}\u0001${color}\u0001${blurBucket}`;
+  const key = `${text}\u0001${fontSize}\u0001${fontStack}\u0001${fontStyle}\u0001${color}\u0001${blurBucket}\u0001${effect}`;
   let sprite = lyricsSpriteCache.get(key);
   if (!sprite) {
     if (lyricsSpriteCache.size >= LYRICS_SPRITE_CACHE_MAX) {
@@ -477,7 +543,7 @@ function getLyricsLetterSprite(
       const oldestKey = lyricsSpriteCache.keys().next().value;
       if (oldestKey !== undefined) lyricsSpriteCache.delete(oldestKey);
     }
-    sprite = buildLyricsLetterSprite(text, fontSize, fontStack, fontStyle, color, blurBucket);
+    sprite = buildLyricsLetterSprite(text, fontSize, fontStack, fontStyle, color, blurBucket, effect);
     lyricsSpriteCache.set(key, sprite);
   }
   return sprite;
@@ -682,6 +748,7 @@ export function drawLyricsTextLayer(
         fontStyle,
         color,
         blurBucket,
+        layer.textEffect ?? "default",
       );
 
       ctx.save();
