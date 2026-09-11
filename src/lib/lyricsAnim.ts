@@ -84,6 +84,7 @@ export const NEW_LYRICS_PRESET_KEYS = {
   IN: [
     "flipIn", "dropIn", "zoomSpinIn", "diagonalIn", "expandIn",
     "flipX3DIn", "flipY3DIn", "perspectiveIn", "cubeSpinIn", "depthEmergeIn",
+    "glitchSnapIn", "swoopTopRightIn", "deepEmergeBackIn", "spiralRiseIn", "cornerFlingBottomLeftIn",
   ],
   LOOP: [
     "orbit", "wobble", "flicker", "drift", "heartbeat",
@@ -92,6 +93,7 @@ export const NEW_LYRICS_PRESET_KEYS = {
   OUT: [
     "flipOut", "dropOut", "zoomSpinOut", "diagonalOut", "shrinkOut",
     "flipX3DOut", "flipY3DOut", "perspectiveOut", "cubeSpinOut", "depthRecedeOut",
+    "glitchSnapOut", "swoopBottomLeftOut", "deepRecedeFrontOut", "spiralDropOut", "cornerFlingTopRightOut",
   ],
 } as const;
 
@@ -158,6 +160,92 @@ export const LyricsAnimationPresets: {
       return { opacity: p, scaleX: Math.cos(ang), x: (1 - p) * -50 };
     },
     depthEmergeIn: (p) => ({ opacity: p, scale: 0.15 + p * 0.85, blur: (1 - p) * 12, y: (1 - p) * 20 }),
+
+    // ======================================================================
+    // 5 STYLE IN BARU — beda dari 10 di atas: masuknya BUKAN cuma dari
+    // tengah/1 arah doang, tapi kombinasi posisi (samping/pojok/depan-
+    // belakang) + rotasi + scale, plus 1 varian "glitch" (stutter/patah-
+    // patah). idx (`i`) dipakai buat variasi antar huruf biar kesan glitch-
+    // nya gak seragam kaku.
+    // ======================================================================
+
+    /** Glitch stutter dari SAMPING KIRI — posisi "patah-patah" (nge-snap
+     *  beberapa kali, bukan gerak mulus) sambil rotate goyang kecil &
+     *  blur/opacity flicker, baru di akhir progress gerakannya jadi mulus
+     *  & settle ke posisi asli. */
+    glitchSnapIn: (p, i) => {
+      const glitchPhase = p < 0.7;
+      const cell = Math.floor(p * 18);
+      const jitter = glitchPhase ? (1 - p) : 0;
+      const jitterX = (seededRandom(i * 91 + cell) - 0.5) * 46 * jitter;
+      const jitterY = (seededRandom(i * 91 + cell + 40) - 0.5) * 18 * jitter;
+      const flicker = glitchPhase && cell % 3 === 0 ? 0.3 : 1;
+      return {
+        opacity: Math.min(1, p * 1.4) * flicker,
+        x: (1 - p) * -90 + jitterX,
+        y: jitterY,
+        rotate: (seededRandom(i * 91 + cell + 80) - 0.5) * 14 * jitter,
+        blur: glitchPhase ? seededRandom(i * 91 + cell + 120) * 7 * jitter : 0,
+      };
+    },
+
+    /** Swoop diagonal dari POJOK KANAN-ATAS — melengkung masuk sambil
+     *  berputar (bukan garis lurus kayak diagonalIn), settle dengan
+     *  sedikit overshoot rotasi. */
+    swoopTopRightIn: (p) => {
+      const arc = Math.sin(p * Math.PI) * 26;
+      return {
+        opacity: p,
+        x: (1 - p) * 130 - arc * 0.4,
+        y: (1 - p) * -110 + arc * 0.5,
+        rotate: (1 - p) * 130,
+        scale: 0.7 + p * 0.3,
+      };
+    },
+
+    /** "Dari belakang ke depan" — muncul dari jauh di belakang layar
+     *  (kecil, blur tebal kayak fokus kamera lagi jauh) lalu mendekat ke
+     *  penonton sampai sempat OVERSHOOT (sekilas lebih besar dari ukuran
+     *  normal, kesan "nyodok" keluar layar) sebelum settle normal, dibarengi
+     *  sedikit rotasi miring yang balik lurus. */
+    deepEmergeBackIn: (p) => {
+      const overshoot = Math.sin(p * Math.PI) * 0.22;
+      return {
+        opacity: Math.min(1, p * 1.5),
+        scale: 0.1 + p * 1.0 + overshoot,
+        blur: (1 - p) * 16,
+        rotate: (1 - p) * 18,
+        y: (1 - p) * 14,
+      };
+    },
+
+    /** Spiral naik dari BAWAH — posisi mulai jauh di bawah, muter berkali-
+     *  kali (lebih dari 1 putaran penuh) sambil membesar & bergerak naik,
+     *  kesannya kayak spiral/vortex narik teks masuk. */
+    spiralRiseIn: (p) => {
+      const spiralX = Math.sin(p * Math.PI * 3) * (1 - p) * 34;
+      return {
+        opacity: p,
+        x: spiralX,
+        y: (1 - p) * 160,
+        rotate: (1 - p) * -540,
+        scale: 0.25 + p * 0.75,
+      };
+    },
+
+    /** Dilempar masuk dari POJOK KIRI-BAWAH — posisi & rotasi mulai jauh
+     *  di pojok, mendarat dengan sedikit overshoot scale (memantul dikit)
+     *  sebelum settle pas ukuran normal. */
+    cornerFlingBottomLeftIn: (p) => {
+      const bounce = Math.sin(Math.min(1, p) * Math.PI) * 0.15;
+      return {
+        opacity: Math.min(1, p * 1.3),
+        x: (1 - p) * -100,
+        y: (1 - p) * 90,
+        rotate: (1 - p) * -70,
+        scale: 0.6 + p * 0.4 + bounce,
+      };
+    },
   },
   LOOP: {
     none: () => ({}),
@@ -238,6 +326,88 @@ export const LyricsAnimationPresets: {
       return { opacity: 1 - p, scaleX: Math.cos(ang), x: p * 50 };
     },
     depthRecedeOut: (p) => ({ opacity: 1 - p, scale: 1 - p * 0.85, blur: p * 12, y: p * 20 }),
+
+    // ======================================================================
+    // 5 STYLE OUT BARU — pasangan konsep dari 5 IN baru di atas, tapi
+    // arah & rasa geraknya SENGAJA dibedain (bukan sekadar dibalik mentah)
+    // biar keluarnya juga kerasa unik. Sama-sama campuran posisi+rotasi+
+    // scale, + 1 varian glitch.
+    // ======================================================================
+
+    /** Glitch stutter KELUAR ke SAMPING KANAN — di awal progress teks
+     *  masih diem normal, lalu mulai "korslet" (snap patah-patah + blur
+     *  flicker) sebelum akhirnya lempar keluar ke kanan. */
+    glitchSnapOut: (p, i) => {
+      const glitchPhase = p > 0.25;
+      const cell = Math.floor(p * 18);
+      const jitter = glitchPhase ? p : 0;
+      const jitterX = (seededRandom(i * 137 + cell) - 0.5) * 40 * jitter;
+      const jitterY = (seededRandom(i * 137 + cell + 40) - 0.5) * 16 * jitter;
+      const flicker = glitchPhase && cell % 3 === 0 ? 0.3 : 1;
+      return {
+        opacity: (1 - p) * flicker,
+        x: p * 100 + jitterX,
+        y: jitterY,
+        rotate: (seededRandom(i * 137 + cell + 80) - 0.5) * 16 * jitter,
+        blur: glitchPhase ? seededRandom(i * 137 + cell + 120) * 8 * jitter : 0,
+      };
+    },
+
+    /** Swoop diagonal KELUAR ke POJOK KIRI-BAWAH — melengkung (bukan
+     *  garis lurus), berputar makin cepat sambil ngecil & menghilang. */
+    swoopBottomLeftOut: (p) => {
+      const arc = Math.sin(p * Math.PI) * 24;
+      return {
+        opacity: 1 - p,
+        x: p * -120 + arc * 0.4,
+        y: p * 100 - arc * 0.5,
+        rotate: p * -140,
+        scale: 1 - p * 0.35,
+      };
+    },
+
+    /** "Dari depan ke belakang" — kebalikan deepEmergeBackIn: teks sempat
+     *  MEMBESAR dulu (kesan nyodok maju ke arah penonton / kamera) sebelum
+     *  ngecil drastis & blur tebal seolah tersedot mundur jauh ke belakang
+     *  layar, dibarengi rotasi miring yang tumbuh. */
+    deepRecedeFrontOut: (p) => {
+      const push = Math.sin(Math.min(1, p) * Math.PI) * 0.25;
+      return {
+        opacity: 1 - Math.pow(p, 1.4),
+        scale: 1 + push - p * 0.95,
+        blur: p * 18,
+        rotate: p * -20,
+        y: p * -12,
+      };
+    },
+
+    /** Spiral turun KELUAR ke BAWAH — muter berkali-kali (lebih dari 1
+     *  putaran penuh) sambil ngecil & jatuh ke bawah, kesan tersedot
+     *  spiral/vortex ke arah bawah. */
+    spiralDropOut: (p) => {
+      const spiralX = Math.sin(p * Math.PI * 3) * p * 30;
+      return {
+        opacity: 1 - p,
+        x: spiralX,
+        y: p * 170,
+        rotate: p * 500,
+        scale: 1 - p * 0.75,
+      };
+    },
+
+    /** Dilempar KELUAR ke POJOK KANAN-ATAS — kebalikan arah
+     *  cornerFlingBottomLeftIn, sempat sedikit "narik" (scale turun dulu)
+     *  sebelum melesat & berputar keluar pojok kanan-atas. */
+    cornerFlingTopRightOut: (p) => {
+      const pullBack = Math.sin(Math.min(1, p) * Math.PI * 0.5) * 0.1;
+      return {
+        opacity: 1 - p,
+        x: p * 110,
+        y: p * -95,
+        rotate: p * 75,
+        scale: 1 - pullBack - p * 0.5,
+      };
+    },
   },
 };
 
