@@ -85,6 +85,7 @@ export const NEW_LYRICS_PRESET_KEYS = {
     "flipIn", "dropIn", "zoomSpinIn", "diagonalIn", "expandIn",
     "flipX3DIn", "flipY3DIn", "perspectiveIn", "cubeSpinIn", "depthEmergeIn",
     "glitchSnapIn", "swoopTopRightIn", "deepEmergeBackIn", "spiralRiseIn", "cornerFlingBottomLeftIn",
+    "punchZoomIn", "pullBackZoomIn",
   ],
   LOOP: [
     "orbit", "wobble", "flicker", "drift", "heartbeat",
@@ -94,6 +95,7 @@ export const NEW_LYRICS_PRESET_KEYS = {
     "flipOut", "dropOut", "zoomSpinOut", "diagonalOut", "shrinkOut",
     "flipX3DOut", "flipY3DOut", "perspectiveOut", "cubeSpinOut", "depthRecedeOut",
     "glitchSnapOut", "swoopBottomLeftOut", "deepRecedeFrontOut", "spiralDropOut", "cornerFlingTopRightOut",
+    "rushZoomOut", "shrinkZoomOut",
   ],
 } as const;
 
@@ -246,6 +248,32 @@ export const LyricsAnimationPresets: {
         scale: 0.6 + p * 0.4 + bounce,
       };
     },
+
+    /** ZOOM IN yang KERASA BANGET — mulai dari nyaris tak terlihat (scale
+     *  ~0.02) terus "ditembakkan" membesar dengan OVERSHOOT gede (sempat
+     *  ngelewatin ukuran normal sampai ~1.5x) baru mantul balik settle ke
+     *  ukuran pas. Nyaris murni scale (posisi/rotate dibiarin diam) biar
+     *  efek zoom-nya jadi fokus utama, gak kecampur efek lain. Opacity
+     *  cepat penuh di awal biar dari awal udah keliatan jelas zoom-nya
+     *  (bukan nunggu fade baru kelihatan). */
+    punchZoomIn: (p) => {
+      const overshoot = Math.sin(Math.min(1, p) * Math.PI) * 0.5;
+      return {
+        opacity: Math.min(1, p * 2.2),
+        scale: 0.02 + p * 0.98 + overshoot,
+      };
+    },
+
+    /** ZOOM OUT yang KERASA BANGET buat masuk — kebalikan arah punchZoomIn:
+     *  mulai dari SANGAT BESAR (extreme close-up, ~4.5x, kayak kamera
+     *  nempel banget) lalu ditarik mundur cepat sampai settle ke ukuran
+     *  normal, dibarengi blur yang ilang seiring mundurnya kamera —
+     *  kesannya kayak reveal dari zoom-out kamera. */
+    pullBackZoomIn: (p) => ({
+      opacity: Math.min(1, p * 1.8),
+      scale: 4.5 - p * 3.5,
+      blur: (1 - p) * 6,
+    }),
   },
   LOOP: {
     none: () => ({}),
@@ -408,6 +436,26 @@ export const LyricsAnimationPresets: {
         scale: 1 - pullBack - p * 0.5,
       };
     },
+
+    /** ZOOM (rush toward camera) yang KERASA BANGET buat keluar — teks
+     *  membesar drastis & cepat (kuadratik, sampai 6x) kayak kamera
+     *  nge-zoom nyodok maju ke arah penonton sampai kelewat besar & blur,
+     *  baru fade abis. Nyaris murni scale (posisi/rotate dibiarin diam)
+     *  biar fokus di efek zoom-nya. */
+    rushZoomOut: (p) => ({
+      opacity: 1 - Math.pow(p, 1.6),
+      scale: 1 + p * p * 5,
+      blur: p * 10,
+    }),
+
+    /** ZOOM OUT yang KERASA BANGET buat keluar — kebalikan rushZoomOut:
+     *  teks ngecil DRASTIS & cepat sampai nyaris nol (bukan pelan-pelan
+     *  kayak "shrinkOut" yang cuma turun 80%), opacity ikut ngedrop cepat
+     *  di awal biar kesan "zoom out ngilang"-nya kerasa nendang. */
+    shrinkZoomOut: (p) => ({
+      opacity: 1 - Math.min(1, p * 1.8),
+      scale: Math.max(0.01, 1 - p * 1.05),
+    }),
   },
 };
 
